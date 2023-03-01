@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.1.
+-- This file has been generated from package.yaml by hpack version 0.35.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -26,17 +26,49 @@ source-repository head
 library
   exposed-modules:
       Example.Example1
-      Lib
+      Flex.Flex
+      Flex.Interpretation
+      Flex.Lexing
+      Flex.Parsing
+      Flex.Refining
+      Flex.Shallow
+      Flex.Syntax
+      Flex.Typing
+      Flex.Unif
+      Graph
+      PrettyShow
+      Utility
   other-modules:
       Paths_liquid_flex_hs
   hs-source-dirs:
       src
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  default-extensions:
+      LambdaCase
+      BlockArguments
+      RankNTypes
+      NamedFieldPuns
+      EmptyDataDeriving
+      OverloadedStrings
+      TupleSections
+      ApplicativeDo
+      DeriveFunctor
+      DeriveGeneric
+      FlexibleInstances
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unused-imports
   build-depends:
-      base >=4.7 && <5
+      HUnit
+    , base >=4.7 && <5
+    , containers
     , deepseq
+    , lens
     , liquid-fixpoint
+    , mtl
+    , optparse-applicative
+    , parsec
+    , singletons
+    , singletons-th
     , text
+    , transformers
   default-language: Haskell2010
 
 executable liquid-flex-hs-exe
@@ -45,8 +77,68 @@ executable liquid-flex-hs-exe
       Paths_liquid_flex_hs
   hs-source-dirs:
       app
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  default-extensions:
+      LambdaCase
+      BlockArguments
+      RankNTypes
+      NamedFieldPuns
+      EmptyDataDeriving
+      OverloadedStrings
+      TupleSections
+      ApplicativeDo
+      DeriveFunctor
+      DeriveGeneric
+      FlexibleInstances
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      HUnit
+    , base >=4.7 && <5
+    , containers
+    , lens
     , liquid-flex-hs
+    , mtl
+    , optparse-applicative
+    , parsec
+    , singletons
+    , singletons-th
+    , text
+    , transformers
+  default-language: Haskell2010
+
+test-suite liquid-flex-hs-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Test.Parsing
+      Test.Typing
+      Test.Utility
+      Paths_liquid_flex_hs
+  hs-source-dirs:
+      test
+  default-extensions:
+      LambdaCase
+      BlockArguments
+      RankNTypes
+      NamedFieldPuns
+      EmptyDataDeriving
+      OverloadedStrings
+      TupleSections
+      ApplicativeDo
+      DeriveFunctor
+      DeriveGeneric
+      FlexibleInstances
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      HUnit
+    , base >=4.7 && <5
+    , containers
+    , lens
+    , liquid-flex-hs
+    , mtl
+    , optparse-applicative
+    , parsec
+    , singletons
+    , singletons-th
+    , text
+    , transformers
   default-language: Haskell2010
