@@ -71,9 +71,13 @@ data Atomic
   | AtomicFloat
   | AtomicBit
   | AtomicChar
+  | AtomicString
   deriving (Eq, Show)
 
 -- | FunType
+--
+-- Liquid Flex's function types are simple in that the they cannot express
+-- dependency of one type's refinement on a preceeding parameter's value.
 type FunType = FunType_ F.Reft
 
 data FunType_ r
@@ -81,7 +85,52 @@ data FunType_ r
   deriving (Eq, Show)
 
 -- | Subable (Subtypeable)
-instance F.Subable r => F.Subable (Type_ r) -- TODO
+instance F.Subable r => F.Subable (Type_ r) where
+  syms = \case
+    TypeBaseType baseTy -> case baseTy of
+      TypeAtomic r _ -> F.syms r
+      TypeTuple _r _ -> error "TODO: syms"
+      TypeArray _r _ -> error "TODO: syms"
+      TypeOptional _r _ -> error "TODO: syms"
+    TypeFunType (FunType params outTy) ->
+      concatMap
+        (F.syms . snd)
+        params
+        <> F.syms outTy
+
+  substa f = \case
+    TypeBaseType baseTy -> case baseTy of
+      TypeAtomic r atomic -> TypeBaseType $ TypeAtomic (F.substa f r) atomic
+      TypeTuple _r _ -> error "TODO: substa"
+      TypeArray _r _ -> error "TODO: substa"
+      TypeOptional _r _ -> error "TODO: substa"
+    TypeFunType (FunType params outTy) ->
+      TypeFunType $
+        FunType
+          (second (F.substa f) <$> params)
+          (F.substa f outTy)
+  substf f = \case
+    TypeBaseType baseTy -> case baseTy of
+      TypeAtomic r atomic -> TypeBaseType $ TypeAtomic (F.substf f r) atomic
+      TypeTuple _r _ -> error "TODO: substa"
+      TypeArray _r _ -> error "TODO: substa"
+      TypeOptional _r _ -> error "TODO: substa"
+    TypeFunType (FunType params outTy) ->
+      TypeFunType $
+        FunType
+          (second (F.substf f) <$> params)
+          (F.substf f outTy)
+  subst f = \case
+    TypeBaseType baseTy -> case baseTy of
+      TypeAtomic r atomic -> TypeBaseType $ TypeAtomic (F.subst f r) atomic
+      TypeTuple _r _ -> error "TODO: substa"
+      TypeArray _r _ -> error "TODO: substa"
+      TypeOptional _r _ -> error "TODO: substa"
+    TypeFunType (FunType params outTy) ->
+      TypeFunType $
+        FunType
+          (second (F.subst f) <$> params)
+          (F.subst f outTy)
 
 instance F.Subable r => F.Subable (BaseType_ r) -- TODO
 
@@ -89,9 +138,20 @@ instance F.Subable r => F.Subable (FunType_ r) -- TODO
 
 -- | Substitution
 --
--- TODO: what exactly does this do?
+-- substitute `x` for `y` in `thing` via Subable
 subst :: F.Subable a => a -> F.Symbol -> F.Symbol -> a
-subst = undefined -- TODO
+subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
+
+-- subst' :: F.Subable a => a -> F.Symbol -> Term -> a
+-- subst' thing x y = F.subst sigma thing
+--   where
+--     sigma = F.mkSubst [(x, varExpr y)]
+
+-- varExpr :: F.Symbol -> F.Expr
+-- varExpr = F.expr
+
+-- litExpr :: Literal -> F.Expr
+-- litExpr = error "TODO"
 
 -- | Embedding
 --
@@ -143,20 +203,18 @@ sortPred x = \case
           AtomicChar -> F.charSort,
         mkReft r
       )
-  TypeArray _r _ -> Just undefined -- TODO
-  TypeOptional _r _ -> Just undefined -- TODO
+  TypeTuple _r _ -> Just (error "TODO: how to refine tuples")
+  TypeArray _r _ -> Just (error "TODO: how to refine arrays")
+  TypeOptional _r _ -> Just (error "TODO: how to refine options")
   where
     mkReft r = H.Reft (subst (reftExpr r) (reftSymbol r) x)
-
---   IntType (F.Reft (v, p)) -> Just (F.intSort, H.Reft (subst p v x))
---   _ -> Nothing
 
 -- | Term
 --
 -- TODO: desc
 data Term
   = TermLiteral !Literal
-  | TermNamed !F.Symbol
+  | TermVar !F.Symbol
   | TermTuple ![Term]
   | TermArray ![Term]
   | TermBlock !Block
@@ -244,40 +302,69 @@ checkBlock env (stmt : stmts, tm) tyExp = case stmt of
 -- | Synthesizing (synth)
 synth :: Env -> Term -> CG (Cstr, BaseType)
 synth _env (TermLiteral lit) = (trivialCstr,) <$> synthLiteral lit
-synth env (TermNamed x) =
-  (trivialCstr,)
-    <$> ( lookupEnv x env
-            >>= ( \case
-                    TypeBaseType ty -> return ty
-                    TypeFunType funTy ->
-                      throwCG
-                        [ RefineError . concat $
-                            [ "type synthesis error;",
-                              "expected the variable",
-                              " '" <> show x <> "' ",
-                              "to have be a constant, but it's actually a function of type",
-                              " '" <> show funTy <> "'"
-                            ]
-                        ]
-                )
-        )
-synth env (TermTuple tes) = undefined -- TODO: how to refine tuples? look at SPRITE
-synth env (TermArray tes) = undefined -- TODO: how to refine arrays? look at SPRITE
+synth env (TermVar x) = (trivialCstr,) <$> synthCon env x
+synth env (TermTuple tes) = error "TODO: how to refine tuples? look at SPRITE"
+synth env (TermArray tes) = error "TODO: how to refine arrays? look at SPRITE"
 synth env (TermBlock x0) = throwCG [RefineError "should never synthesize a TermBlock; should only ever check"]
 synth env (TermApplication x args) = do
   -- get the function type
+  FunType params tyOut <- synthFun env x
   -- check the args with their corresponding param types
-  -- substitute the arguments for their values in the output type
-  undefined
+  cstr <-
+    andCstrs
+      <$> mapM
+        -- since function types are _simple_, don't need to update environment
+        -- with values of arguments
+        (\(tm, (_x, ty)) -> check env tm ty)
+        (args `zip` params)
+  -- since function types are _simple_, don't need to substitute parameters for
+  -- their argument values in the output type
+  return (cstr, tyOut)
 synth env (TermAscribe tm ty) = do
   cstr <- check env tm ty
   return (cstr, ty)
 
 synthLiteral :: Literal -> CG BaseType
-synthLiteral = error "synthLiteral"
+synthLiteral = \case
+  Syn.LiteralInteger n ->
+    return $ TypeAtomic (F.exprReft (F.expr n)) AtomicInt
+  Syn.LiteralFloat x ->
+    -- TODO: probably want to use something like sized bitvectors? but need to
+    -- keep track of floating-point math accuracy, so is more complicated
+    error "TODO: embedding floats in LF"
+  Syn.LiteralBit b -> return $ TypeAtomic (F.exprReft (F.expr i)) AtomicBit
+    where
+      i :: Int
+      i = if b then 1 else 0
+  Syn.LiteralChar c ->
+    return $ TypeAtomic (F.exprReft (F.expr (pack [c]))) AtomicChar
+  Syn.LiteralString txt ->
+    return $ TypeAtomic (F.exprReft (F.expr txt)) AtomicString
 
-synthFun :: Env -> Id -> CG FunType
-synthFun = error "synthFun"
+-- error "TODO: synthLiteral LiteralString"
+
+synthCon :: Env -> F.Symbol -> CG BaseType
+synthCon env x =
+  lookupEnv x env
+    >>= ( \case
+            TypeBaseType ty -> return ty
+            TypeFunType funTy ->
+              throwCG
+                [ RefineError . concat $
+                    [ "type synthesis error;",
+                      "expected the variable",
+                      " '" <> show x <> "' ",
+                      "to have be a constant, but it's actually a function of type",
+                      " '" <> show funTy <> "'"
+                    ]
+                ]
+        )
+
+synthFun :: Env -> F.Symbol -> CG FunType
+synthFun env x = case F.lookupSEnv x env of
+  Just (TypeFunType funTy) -> return funTy
+  Just _ -> throwCG [RefineError $ "expected to be a function id: " <> show x]
+  Nothing -> throwCG [RefineError $ "unknown function id: " <> show x]
 
 -- | Subtype checking (checkSubtype)
 --
