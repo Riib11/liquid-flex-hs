@@ -171,22 +171,24 @@ subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
 -- subst' :: F.Subable a => a -> F.Symbol -> Term -> a
 -- subst' thing x y = F.subst sigma thing
 --   where
---     sigma = F.mkSubst [(x, varExpr y)]
-
--- TODO: do I need this?
-varExpr :: F.Symbol -> F.Expr
-varExpr = F.expr
-
--- TODO: do I need this?
-litExpr :: Literal -> F.Expr
-litExpr = error "TODO"
+--     sigma = F.mkSubst [(x, embedVar y)]
 
 -- | Embedding
 --
--- TODO: is this necessary?
 -- Embed a term as a LF expression
-embedTerm :: Term -> F.Expr
-embedTerm = undefined
+embedTerm :: Term -> CG (Cstr, F.Expr)
+embedTerm = \case
+  TermLiteral lit -> return (trivialCstr, embedLiteral lit)
+  TermVar x -> return (trivialCstr, embedVar x)
+  TermBlock block -> error "TODO: embedTerm TermBlock"
+  TermApplication x args -> undefined
+  TermAscribe te bt -> undefined
+
+embedVar :: F.Symbol -> F.Expr
+embedVar = F.expr
+
+embedLiteral :: Literal -> F.Expr
+embedLiteral = error "TODO"
 
 -- | Constraints
 --
