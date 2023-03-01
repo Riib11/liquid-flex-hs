@@ -11,6 +11,7 @@ import Data.Typeable
 import Flex.Syntax (Id, Literal, ModuleId)
 import qualified Flex.Syntax as Syn
 import GHC.Generics
+import GHC.IO.Exception (ExitCode)
 import qualified Language.Fixpoint.Horn.Solve as HS
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Misc as F
@@ -19,9 +20,31 @@ import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Utils.Files as Files
+import System.Exit (exitWith)
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.Printf (printf)
 import Utility
+
+main :: IO ()
+main = do
+  let tm :: Term
+      tm = TermLiteral (Syn.LiteralInteger 1)
+
+      ty :: BaseType
+      ty = TypeAtomic mempty AtomicInt
+
+      fp :: FilePath
+      fp = "Refining.hs"
+
+  print tm
+  res <- case genQuery tm ty of
+    Left errs ->
+      pure $
+        F.Crash
+          (errs <&> \err -> (err, Just $ messageOfRefineError err))
+          "genQuery failure"
+    Right query -> checkValid fp query
+  exitWith =<< resultExitCode res
 
 {-
 Reflection
@@ -160,9 +183,6 @@ litExpr = error "TODO"
 embedTerm :: Term -> F.Expr
 embedTerm = undefined
 
--- | RefineError
-newtype RefineError = RefineError String
-
 -- | Constraints
 --
 -- In Liquid Fixpoint, `H.Cstr` has the following form:
@@ -256,6 +276,48 @@ type CG a = Either [RefineError] a
 
 throwCG :: [RefineError] -> CG a
 throwCG = Left
+
+-- | RefineError
+newtype RefineError = RefineError String
+  deriving (Generic, Show)
+
+instance NFData RefineError
+
+instance Exception [RefineError]
+
+messageOfRefineError :: RefineError -> String
+messageOfRefineError (RefineError msg) = msg
+
+labelOfRefineError :: RefineError -> Label
+labelOfRefineError _ = F.dummySpan
+
+instance F.PPrint RefineError where
+  pprintTidy k = F.pprintTidy k . refineErrorFP
+
+instance F.Fixpoint RefineError where
+  toFix = PJ.text . messageOfRefineError
+
+instance F.Loc RefineError where
+  srcSpan = labelOfRefineError
+
+fpRefineError :: F.Error1 -> RefineError
+fpRefineError e = RefineError (show $ F.errMsg e)
+
+refineErrorFP :: RefineError -> F.Error
+refineErrorFP err =
+  F.err
+    (labelOfRefineError err)
+    (PJ.text $ messageOfRefineError err)
+
+renderRefineError :: RefineError -> IO PJ.Doc
+renderRefineError (RefineError msg) = do
+  -- TODO: can also look up snippet where error originated
+  return $ PJ.text msg
+
+renderRefineErrors :: [RefineError] -> IO PJ.Doc
+renderRefineErrors errs = do
+  errs' <- mapM renderRefineError errs
+  return $ PJ.vcat (PJ.text "Errors found!" : PJ.text "" : errs')
 
 -- | Env
 type Env = F.SEnv Type
@@ -398,3 +460,64 @@ checkSubtype ty1 ty2 =
           <> "cannot be checked to be a subtype of the type"
           <> (" '" <> show ty2 <> "' ")
     ]
+
+-- | Query
+--
+-- The query includes all of the constraints gathered up during
+-- checking/synthesizing.
+type Query = H.Query RefineError
+
+genQuery :: Term -> BaseType -> CG Query
+genQuery tm ty =
+  H.Query [] []
+    <$> check emptyEnv tm ty
+    <*> pure mempty
+    <*> pure mempty
+    <*> pure mempty
+    <*> pure mempty
+    <*> pure mempty
+
+-- | Result
+type Result = F.FixResult RefineError
+
+resultExitCode :: Result -> IO ExitCode
+resultExitCode res = do
+  F.colorStrLn (F.colorResult res) (resultString res)
+  case resultErrors res of
+    [] -> return ()
+    errs -> putStrLn . PJ.render =<< renderRefineErrors errs
+  return (F.resultExit res)
+
+resultErrors :: Result -> [RefineError]
+resultErrors = \case
+  -- TODO: why does each err have a Maybe String also?
+  F.Crash errs msg -> RefineError ("Crash: " <> msg) : (fst <$> errs)
+  F.Unsafe _ errs -> errs
+  F.Safe {} -> []
+
+resultString :: Result -> String
+resultString = \case
+  F.Crash _ msg -> "Crash!: " ++ msg
+  F.Unsafe {} -> "Unsafe"
+  F.Safe {} -> "Safe"
+
+-- | checkValid
+checkValid :: FilePath -> Query -> IO Result
+checkValid fp = checkValidWithConfig fp fpConfig
+
+fpConfig :: FC.Config
+fpConfig =
+  FC.defConfig
+    { FC.eliminate = FC.Some
+    }
+
+checkValidWithConfig :: FilePath -> FC.Config -> Query -> IO Result
+checkValidWithConfig fp config query = do
+  dumpQuery fp query
+  fmap snd . F.resStatus <$> HS.solve config query
+
+dumpQuery :: FilePath -> Query -> IO ()
+dumpQuery fp query = when True do
+  let smtFile = Files.extFileName Files.Smt2 fp
+  Misc.ensurePath smtFile
+  writeFile smtFile (PJ.render . F.pprint $ query)
