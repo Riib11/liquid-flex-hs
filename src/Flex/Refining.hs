@@ -30,14 +30,17 @@ main = do
   let tm :: Term
       tm = TermLiteral (Syn.LiteralInteger 1)
 
-      ty :: BaseType
-      ty = TypeAtomic mempty AtomicInt
+      ty1 :: BaseType
+      ty1 = TypeAtomic mempty AtomicInt
+
+      ty2 :: BaseType
+      ty2 = TypeAtomic (F.exprReft $ F.expr (2 :: Int)) AtomicInt
 
       fp :: FilePath
       fp = "Refining.hs"
 
   print tm
-  res <- case genQuery tm ty of
+  res <- case genQuery tm ty2 of
     Left errs ->
       pure $
         F.Crash
@@ -211,7 +214,7 @@ forallCstr x ty cstr = case sortPred x ty of
 
 -- subtyping constraint (??)
 headCstr :: F.Expr -> Cstr
-headCstr e = H.Head (H.Reft e) (RefineError "Subtype error")
+headCstr e = H.Head (H.Reft e) (RefineError $ "Subtype error: " <> show e)
 
 reftSymbol :: F.Reft -> F.Symbol
 reftSymbol (F.Reft (x, _)) = x
