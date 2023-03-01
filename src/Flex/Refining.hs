@@ -375,9 +375,9 @@ synthFun env x = case F.lookupSEnv x env of
 -- Check that one type is a subtype of another type (taking refinements into
 -- account).
 checkSubtype :: BaseType -> BaseType -> CG Cstr
---    forall x : T, p x ==> (p y)[y := x]
+--    forall x : T, p x ==> (p' x')[x' := x]
 --  ----------------------------------------------
---    {x : T | p x} <: {y : T | p y}
+--    {x : T | p x} <: {x' : T | p' y'}
 checkSubtype ty1@(TypeAtomic r1 atom1) (TypeAtomic r2 atom2)
   | atom1 == atom2 =
       return $
