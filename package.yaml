@@ -38,11 +38,10 @@ ghc-options:
 - -Widentities
 - -Wincomplete-record-updates
 - -Wincomplete-uni-patterns
-# TMP - -Wmissing-export-lists
-- -Wmissing-export-lists
 - -Wmissing-home-modules
 - -Wpartial-fields
 - -Wredundant-constraints
+- -Wno-missing-export-lists #TMP
 - -Wno-unused-imports #TMP
 
 default-extensions:

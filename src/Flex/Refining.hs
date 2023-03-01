@@ -218,19 +218,21 @@ sortPred x = \case
 -- | Term
 --
 -- TODO: desc
+--
+-- TODO: tmp disable advanced terms
+-- | TermTuple ![Term]
+-- | TermArray ![Term]
+-- | TermTuple ![Term]
+-- | TermStructure Structure (Map.Map Text Term)
+-- | TermMember Type -- Term Text
+-- | TermConstructor Type
+-- | TermMatch Type
 data Term
   = TermLiteral !Literal
   | TermVar !F.Symbol
-  | TermTuple ![Term]
-  | TermArray ![Term]
   | TermBlock !Block
-  | -- TODO:
-    --   | TermStructure Structure (Map.Map Text Term)
-    --   | TermMember Type -- Term Text
-    --   | TermConstructor Type
-    TermApplication !F.Symbol [Term]
+  | TermApplication !F.Symbol [Term]
   | TermAscribe !Term !BaseType
-  --   | TermMatch Type
   deriving (Eq, Show)
 
 type Block = ([Statement], Term)
@@ -309,9 +311,7 @@ checkBlock env (stmt : stmts, tm) tyExp = case stmt of
 synth :: Env -> Term -> CG (Cstr, BaseType)
 synth _env (TermLiteral lit) = (trivialCstr,) <$> synthLiteral lit
 synth env (TermVar x) = (trivialCstr,) <$> synthCon env x
-synth env (TermTuple tes) = error "TODO: how to refine tuples? look at SPRITE"
-synth env (TermArray tes) = error "TODO: how to refine arrays? look at SPRITE"
-synth env (TermBlock x0) = throwCG [RefineError "should never synthesize a TermBlock; should only ever check"]
+synth _env (TermBlock _) = throwCG [RefineError "should never synthesize a TermBlock; should only ever check"]
 synth env (TermApplication x args) = do
   -- get the function type
   FunType params tyOut <- synthFun env x
@@ -334,7 +334,7 @@ synthLiteral :: Literal -> CG BaseType
 synthLiteral = \case
   Syn.LiteralInteger n ->
     return $ TypeAtomic (F.exprReft (F.expr n)) AtomicInt
-  Syn.LiteralFloat x ->
+  Syn.LiteralFloat _x ->
     -- TODO: probably want to use something like sized bitvectors? but need to
     -- keep track of floating-point math accuracy, so is more complicated
     error "TODO: embedding floats in LF"
