@@ -53,17 +53,21 @@ data Type_ r
 -- | BaseType
 type BaseType = BaseType_ F.Reft
 
+-- TODO: handle more advanced types
+
+-- | TypeTuple r ![Type_ r]
+-- | TypeArray r !(Type_ r)
+-- | TypeOptional r (Type_ r)
+-- | TypeStructure Structure r
+-- | TypeEnumerated Enumerated r
+-- | TypeVariant Variant r
+-- | TypeNewtype NewType_ r
 data BaseType_ r
   = TypeAtomic r Atomic
-  | TypeTuple r ![Type_ r]
-  | TypeArray r !(Type_ r)
-  | TypeOptional r (Type_ r)
-  -- TODO:
-  --   | TypeStructure Structure r
-  --   | TypeEnumerated Enumerated r
-  --   | TypeVariant Variant r
-  --   | TypeNewtype NewType_ r
-  deriving (Eq, Show)
+  deriving
+    ( Eq,
+      Show
+    )
 
 data Atomic
   = AtomicInt
@@ -87,54 +91,47 @@ data FunType_ r
 -- | Subable (Subtypeable)
 instance F.Subable r => F.Subable (Type_ r) where
   syms = \case
-    TypeBaseType baseTy -> case baseTy of
-      TypeAtomic r _ -> F.syms r
-      TypeTuple _r _ -> error "TODO: syms"
-      TypeArray _r _ -> error "TODO: syms"
-      TypeOptional _r _ -> error "TODO: syms"
-    TypeFunType (FunType params outTy) ->
-      concatMap
-        (F.syms . snd)
-        params
-        <> F.syms outTy
+    TypeBaseType baseTy -> F.syms baseTy
+    TypeFunType funTy -> F.syms funTy
 
   substa f = \case
-    TypeBaseType baseTy -> case baseTy of
-      TypeAtomic r atomic -> TypeBaseType $ TypeAtomic (F.substa f r) atomic
-      TypeTuple _r _ -> error "TODO: substa"
-      TypeArray _r _ -> error "TODO: substa"
-      TypeOptional _r _ -> error "TODO: substa"
-    TypeFunType (FunType params outTy) ->
-      TypeFunType $
-        FunType
-          (second (F.substa f) <$> params)
-          (F.substa f outTy)
+    TypeBaseType baseTy -> TypeBaseType $ F.substa f baseTy
+    TypeFunType funTy -> TypeFunType $ F.substa f funTy
   substf f = \case
-    TypeBaseType baseTy -> case baseTy of
-      TypeAtomic r atomic -> TypeBaseType $ TypeAtomic (F.substf f r) atomic
-      TypeTuple _r _ -> error "TODO: substa"
-      TypeArray _r _ -> error "TODO: substa"
-      TypeOptional _r _ -> error "TODO: substa"
-    TypeFunType (FunType params outTy) ->
-      TypeFunType $
-        FunType
-          (second (F.substf f) <$> params)
-          (F.substf f outTy)
+    TypeBaseType baseTy -> TypeBaseType $ F.substf f baseTy
+    TypeFunType funTy -> TypeFunType $ F.substf f funTy
   subst f = \case
-    TypeBaseType baseTy -> case baseTy of
-      TypeAtomic r atomic -> TypeBaseType $ TypeAtomic (F.subst f r) atomic
-      TypeTuple _r _ -> error "TODO: substa"
-      TypeArray _r _ -> error "TODO: substa"
-      TypeOptional _r _ -> error "TODO: substa"
-    TypeFunType (FunType params outTy) ->
-      TypeFunType $
-        FunType
-          (second (F.subst f) <$> params)
-          (F.subst f outTy)
+    TypeBaseType baseTy -> TypeBaseType $ F.subst f baseTy
+    TypeFunType funTy -> TypeFunType $ F.subst f funTy
 
-instance F.Subable r => F.Subable (BaseType_ r) -- TODO
+instance F.Subable r => F.Subable (BaseType_ r) where
+  syms = \case
+    TypeAtomic r _ -> F.syms r
+  substa f = \case
+    TypeAtomic r atomic -> TypeAtomic (F.substa f r) atomic
+  substf f = \case
+    TypeAtomic r atomic -> TypeAtomic (F.substf f r) atomic
+  subst f = \case
+    TypeAtomic r atomic -> TypeAtomic (F.subst f r) atomic
 
-instance F.Subable r => F.Subable (FunType_ r) -- TODO
+instance F.Subable r => F.Subable (FunType_ r) where
+  syms (FunType params outTy) =
+    concatMap
+      (F.syms . snd)
+      params
+      <> F.syms outTy
+  substa f (FunType params outTy) =
+    FunType
+      (second (F.substa f) <$> params)
+      (F.substa f outTy)
+  substf f (FunType params outTy) =
+    FunType
+      (second (F.substf f) <$> params)
+      (F.substf f outTy)
+  subst f (FunType params outTy) =
+    FunType
+      (second (F.subst f) <$> params)
+      (F.subst f outTy)
 
 -- | Substitution
 --
@@ -142,29 +139,40 @@ instance F.Subable r => F.Subable (FunType_ r) -- TODO
 subst :: F.Subable a => a -> F.Symbol -> F.Symbol -> a
 subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
 
+-- -- TODO: do i need this? could only work on Term(Var|Literal)
 -- subst' :: F.Subable a => a -> F.Symbol -> Term -> a
 -- subst' thing x y = F.subst sigma thing
 --   where
 --     sigma = F.mkSubst [(x, varExpr y)]
 
--- varExpr :: F.Symbol -> F.Expr
--- varExpr = F.expr
+-- TODO: do I need this?
+varExpr :: F.Symbol -> F.Expr
+varExpr = F.expr
 
--- litExpr :: Literal -> F.Expr
--- litExpr = error "TODO"
+-- TODO: do I need this?
+litExpr :: Literal -> F.Expr
+litExpr = error "TODO"
 
 -- | Embedding
 --
+-- TODO: is this necessary?
 -- Embed a term as a LF expression
 embedTerm :: Term -> F.Expr
 embedTerm = undefined
 
 -- | RefineError
-data RefineError = RefineError String
+newtype RefineError = RefineError String
 
 -- | Constraints
 --
--- TODO: desc
+-- In Liquid Fixpoint, `H.Cstr` has the following form:
+--
+--    data Cstr a
+--      = Head  !Pred !a                  -- ^ p
+--      | CAnd  ![Cstr a]                 -- ^ c1 /\ ... /\ cn
+--      | All   !(Bind a)  !(Cstr a)      -- ^ \all x:t. p => c
+--      | Any   !(Bind a)  !(Cstr a)      -- ^ \exi x:t. p /\ c or is it \exi x:t. p => c?
+--      deriving (Data, Typeable, Generic, Functor, Eq)
 type Cstr = H.Cstr RefineError
 
 trivialCstr :: Cstr
@@ -200,12 +208,10 @@ sortPred x = \case
           AtomicUInt -> F.intSort
           AtomicFloat -> F.realSort
           AtomicBit -> F.boolSort
-          AtomicChar -> F.charSort,
+          AtomicChar -> F.charSort
+          AtomicString -> F.strSort,
         mkReft r
       )
-  TypeTuple _r _ -> Just (error "TODO: how to refine tuples")
-  TypeArray _r _ -> Just (error "TODO: how to refine arrays")
-  TypeOptional _r _ -> Just (error "TODO: how to refine options")
   where
     mkReft r = H.Reft (subst (reftExpr r) (reftSymbol r) x)
 
@@ -341,8 +347,6 @@ synthLiteral = \case
   Syn.LiteralString txt ->
     return $ TypeAtomic (F.exprReft (F.expr txt)) AtomicString
 
--- error "TODO: synthLiteral LiteralString"
-
 synthCon :: Env -> F.Symbol -> CG BaseType
 synthCon env x =
   lookupEnv x env
@@ -380,11 +384,12 @@ checkSubtype ty1@(TypeAtomic r1 atom1) (TypeAtomic r2 atom2)
         forallCstr
           (reftSymbol r1)
           ty1
-          (headCstr (subst (reftExpr r2) (reftSymbol r2) (reftSymbol r1)))
-checkSubtype (TypeArray _r1 _ty1) (TypeArray _r2 _ty2) =
-  error "checkSubtype TypeArray"
-checkSubtype (TypeOptional _r1 _ty1) (TypeOptional _t2 _ty2) =
-  error "checkSubtype TypeOptional"
+          ( headCstr $
+              subst
+                (reftExpr r2)
+                (reftSymbol r2)
+                (reftSymbol r1)
+          )
 checkSubtype ty1 ty2 =
   throwCG
     [ RefineError $
