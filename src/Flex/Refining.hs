@@ -30,9 +30,11 @@ main = do
   let tm :: Term
       tm = TermLiteral (Syn.LiteralInteger 1)
 
+      -- {x : Int | x == 1}
       ty1 :: BaseType
-      ty1 = TypeAtomic mempty AtomicInt
+      ty1 = TypeAtomic (F.exprReft $ F.expr (1 :: Int)) AtomicInt
 
+      -- {x : Int | x == 2}
       ty2 :: BaseType
       ty2 = TypeAtomic (F.exprReft $ F.expr (2 :: Int)) AtomicInt
 
@@ -40,7 +42,7 @@ main = do
       fp = "Refining.hs"
 
   print tm
-  res <- case genQuery tm ty2 of
+  res <- case genQuery tm ty1 of
     Left errs ->
       pure $
         F.Crash
