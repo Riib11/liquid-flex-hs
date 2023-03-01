@@ -3,7 +3,7 @@ module Flex.Refining where
 import Control.Applicative (Applicative (liftA2))
 import Control.DeepSeq
 import Control.Exception
-import Control.Monad (void, when)
+import Control.Monad (foldM, void, when)
 import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
@@ -27,27 +27,43 @@ import Utility
 
 main :: IO ()
 main = do
-  let tm :: Term
-      tm = TermLiteral (Syn.LiteralInteger 1)
-
-      -- {x : Int | x == 1}
-      ty1 :: BaseType
-      ty1 = TypeAtomic (F.exprReft $ F.expr (1 :: Int)) AtomicInt
-
-      -- {x : Int | x == 2}
-      ty2 :: BaseType
-      ty2 = TypeAtomic (F.exprReft $ F.expr (2 :: Int)) AtomicInt
-
-      fp :: FilePath
+  let fp :: FilePath
       fp = "Refining.hs"
 
-  print tm
-  res <- case genQuery tm ty1 of
+  {-
+  -- EXAMPLE: this is Unsafe because `1 == 2` is not equal to `true`
+  let tm =
+        TermApp
+          (ApplPrimFun Syn.PrimFunEq)
+          [ TermLit (Syn.LiteralInteger 1),
+            TermLit (Syn.LiteralInteger 2)
+          ]
+  r <- case reftTerm (TermLit (Syn.LiteralBit True)) of
+    Left errs -> error ("reftTerm error: " <> show errs)
+    Right r -> return r
+  let ty = TypeAtomic r AtomicBit
+  -}
+
+  -- EXAMPLE: this is Safe because `true || false` is equal to `true`
+  let tm =
+        TermApp
+          (ApplPrimFun Syn.PrimFunOr)
+          [ TermLit (Syn.LiteralBit True),
+            TermLit (Syn.LiteralBit False)
+          ]
+  r <- case reftTerm (TermLit (Syn.LiteralBit True)) of
+    Left errs -> error ("reftTerm error: " <> show errs)
+    Right r -> return r
+  let ty = TypeAtomic r AtomicBit
+
+  putStrLn $ "tm = " <> show tm
+  putStrLn $ "ty = " <> show ty
+  res <- case genCheckQuery tm ty of
     Left errs ->
       pure $
         F.Crash
           (errs <&> \err -> (err, Just $ messageOfRefineError err))
-          "genQuery failure"
+          "genCheckQuery failure"
     Right query -> checkValid fp query
   exitWith =<< resultExitCode res
 
@@ -93,9 +109,7 @@ type BaseType = BaseType_ F.Reft
 data BaseType_ r
   = TypeAtomic r Atomic
   deriving
-    ( Eq,
-      Show
-    )
+    (Eq, Show, Functor)
 
 data Atomic
   = AtomicInt
@@ -176,19 +190,34 @@ subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
 -- | Embedding
 --
 -- Embed a term as a LF expression
-embedTerm :: Term -> CG (Cstr, F.Expr)
+embedTerm :: Term -> CG F.Expr
 embedTerm = \case
-  TermLiteral lit -> return (trivialCstr, embedLiteral lit)
-  TermVar x -> return (trivialCstr, embedVar x)
+  TermLit lit -> return $ embedLiteral lit
+  TermVar x -> return $ embedVar x
   TermBlock block -> error "TODO: embedTerm TermBlock"
-  TermApplication x args -> undefined
-  TermAscribe te bt -> undefined
+  TermApp (ApplPrimFun Syn.PrimFunEq) [tm1, tm2] ->
+    F.PAtom F.Eq <$> embedTerm tm1 <*> embedTerm tm2
+  TermApp (ApplPrimFun Syn.PrimFunAnd) [tm1, tm2] ->
+    F.PAnd <$> traverse embedTerm [tm1, tm2]
+  TermApp (ApplPrimFun Syn.PrimFunOr) [tm1, tm2] ->
+    F.POr <$> traverse embedTerm [tm1, tm2]
+  TermApp (ApplPrimFun Syn.PrimFunNot) [tm] ->
+    F.PNot <$> embedTerm tm
+  TermApp (ApplPrimFun pf) args -> throwCG [RefineError $ "invalid primitive function application: " <> show (TermApp (ApplPrimFun pf) args)]
+  -- TODO: folds in the right direction??
+  TermApp (ApplVar x) args -> foldM (\e tm -> F.EApp e <$> embedTerm tm) (embedVar x) args
+  TermAscribe tm _ty -> embedTerm tm
 
 embedVar :: F.Symbol -> F.Expr
 embedVar = F.expr
 
 embedLiteral :: Literal -> F.Expr
-embedLiteral = error "TODO"
+embedLiteral = \case
+  Syn.LiteralInteger n -> F.expr n
+  Syn.LiteralFloat x -> error "TODO: how to embed Float?"
+  Syn.LiteralBit b -> if b then F.PTrue else F.PFalse
+  Syn.LiteralChar c -> F.expr (pack [c])
+  Syn.LiteralString txt -> F.expr txt
 
 -- | Constraints
 --
@@ -255,11 +284,16 @@ sortPred x = \case
 -- | TermConstructor Type
 -- | TermMatch Type
 data Term
-  = TermLiteral !Literal
+  = TermLit !Literal
   | TermVar !F.Symbol
   | TermBlock !Block
-  | TermApplication !F.Symbol [Term]
+  | TermApp !Appl [Term]
   | TermAscribe !Term !BaseType
+  deriving (Eq, Show)
+
+data Appl
+  = ApplPrimFun Syn.PrimFun
+  | ApplVar F.Symbol
   deriving (Eq, Show)
 
 type Block = ([Statement], Term)
@@ -378,12 +412,15 @@ checkBlock env (stmt : stmts, tm) tyExp = case stmt of
 
 -- | Synthesizing (synth)
 synth :: Env -> Term -> CG (Cstr, BaseType)
-synth _env (TermLiteral lit) = (trivialCstr,) <$> synthLiteral lit
+synth _env (TermLit lit) = (trivialCstr,) <$> synthLiteral lit
 synth env (TermVar x) = (trivialCstr,) <$> synthCon env x
 synth _env (TermBlock _) = throwCG [RefineError "should never synthesize a TermBlock; should only ever check"]
-synth env (TermApplication x args) = do
-  -- get the function type
-  FunType params tyOut <- synthFun env x
+synth env (TermApp (ApplPrimFun pf) args) = synthAppPrimFun env pf args
+synth env (TermApp (ApplVar x) args) = do
+  -- synth the arg types
+  tyArgs <- (snd <$>) <$> (synth env `traverse` args)
+  -- synth the fun type
+  FunType params tyOut <- synthFun env x tyArgs
   -- check the args with their corresponding param types
   cstr <-
     andCstrs
@@ -399,22 +436,56 @@ synth env (TermAscribe tm ty) = do
   cstr <- check env tm ty
   return (cstr, ty)
 
+reftTerm :: Term -> CG F.Reft
+reftTerm tm = F.exprReft <$> embedTerm tm
+
+synthAppPrimFun :: Env -> Syn.PrimFun -> [Term] -> CG (Cstr, BaseType)
+synthAppPrimFun env Syn.PrimFunEq [tm1, tm2] = do
+  -- synth type of first arg
+  (cstr, ty1) <- synth env tm1
+  -- check that second arg has same (unrefined) type
+  cstr <- andCstr cstr <$> check env tm2 (unrefineBaseType ty1)
+  r <- reftTerm $ TermApp (ApplPrimFun Syn.PrimFunEq) [tm1, tm2]
+  return (cstr, TypeAtomic r AtomicBit)
+synthAppPrimFun env Syn.PrimFunAnd [tm1, tm2] = do
+  cstr <- andCstrs <$> traverse (\tm -> check env tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
+  r <- reftTerm $ TermApp (ApplPrimFun Syn.PrimFunAnd) [tm1, tm2]
+  return (cstr, TypeAtomic r AtomicBit)
+synthAppPrimFun env Syn.PrimFunOr [tm1, tm2] = do
+  cstr <- andCstrs <$> traverse (\tm -> check env tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
+  r <- reftTerm $ TermApp (ApplPrimFun Syn.PrimFunOr) [tm1, tm2]
+  return (cstr, TypeAtomic r AtomicBit)
+synthAppPrimFun env Syn.PrimFunNot [tm] = do
+  cstr <- check env tm (TypeAtomic F.trueReft AtomicBit)
+  r <- reftTerm $ TermApp (ApplPrimFun Syn.PrimFunNot) [tm]
+  return (cstr, TypeAtomic r AtomicBit)
+synthAppPrimFun _env pf args =
+  throwCG
+    [ RefineError $
+        concat
+          [ "primitive function",
+            " '" <> show pf <> "' ",
+            "applied to wrong number of arguments",
+            " '" <> show args <> "'"
+          ]
+    ]
+
+-- clears refinement from type
+unrefineBaseType :: BaseType -> BaseType
+unrefineBaseType = \case
+  TypeAtomic _ atomic -> TypeAtomic mempty atomic
+
 synthLiteral :: Literal -> CG BaseType
-synthLiteral = \case
-  Syn.LiteralInteger n ->
-    return $ TypeAtomic (F.exprReft (F.expr n)) AtomicInt
-  Syn.LiteralFloat _x ->
-    -- TODO: probably want to use something like sized bitvectors? but need to
-    -- keep track of floating-point math accuracy, so is more complicated
-    error "TODO: embedding floats in LF"
-  Syn.LiteralBit b -> return $ TypeAtomic (F.exprReft (F.expr i)) AtomicBit
-    where
-      i :: Int
-      i = if b then 1 else 0
-  Syn.LiteralChar c ->
-    return $ TypeAtomic (F.exprReft (F.expr (pack [c]))) AtomicChar
-  Syn.LiteralString txt ->
-    return $ TypeAtomic (F.exprReft (F.expr txt)) AtomicString
+synthLiteral lit = do
+  TypeAtomic <$> r <*> return atomic
+  where
+    atomic = case lit of
+      Syn.LiteralInteger _ -> AtomicInt
+      Syn.LiteralFloat _ -> AtomicFloat
+      Syn.LiteralBit _ -> AtomicBit
+      Syn.LiteralChar _ -> AtomicChar
+      Syn.LiteralString _ -> AtomicString
+    r = reftTerm $ TermLit lit
 
 synthCon :: Env -> F.Symbol -> CG BaseType
 synthCon env x =
@@ -433,11 +504,21 @@ synthCon env x =
                 ]
         )
 
-synthFun :: Env -> F.Symbol -> CG FunType
-synthFun env x = case F.lookupSEnv x env of
+-- | synthFun
+--
+-- We need to know about `args` since some primitive functions are polymorphic.
+synthFun :: Env -> F.Symbol -> [BaseType] -> CG FunType
+-- types should be structurally the same (ignore refinement)
+synthFun env x _args = case F.lookupSEnv x env of
   Just (TypeFunType funTy) -> return funTy
   Just _ -> throwCG [RefineError $ "expected to be a function id: " <> show x]
   Nothing -> throwCG [RefineError $ "unknown function id: " <> show x]
+
+parseSymbol :: String -> F.Symbol
+parseSymbol = FP.doParse' FP.lowerIdP "parseSymbol"
+
+parsePred :: String -> F.Pred
+parsePred = FP.doParse' FP.predP "parsePred"
 
 -- | Subtype checking (checkSubtype)
 --
@@ -474,8 +555,9 @@ checkSubtype ty1 ty2 =
 -- checking/synthesizing.
 type Query = H.Query RefineError
 
-genQuery :: Term -> BaseType -> CG Query
-genQuery tm ty =
+-- Generates a query that checks that the term has the type.
+genCheckQuery :: Term -> BaseType -> CG Query
+genCheckQuery tm ty =
   H.Query [] []
     <$> check emptyEnv tm ty
     <*> pure mempty
