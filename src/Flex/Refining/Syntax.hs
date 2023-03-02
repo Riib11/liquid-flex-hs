@@ -146,7 +146,13 @@ instance F.Subable r => F.Subable (FunType_ r) where
 -- | TermMember Type -- Term Text
 -- | TermConstructor Type
 -- | TermMatch Type
-data Term
+data Term = Term
+  { termPreterm :: Preterm,
+    termType :: BaseType
+  }
+  deriving (Eq, Show)
+
+data Preterm
   = TermLit !Literal
   | TermVar !F.Symbol
   | TermBlock !Block

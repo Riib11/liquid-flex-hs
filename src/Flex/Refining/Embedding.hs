@@ -31,7 +31,10 @@ import Utility
 --
 -- Embed a term as a LF expression
 embedTerm :: Term -> CG F.Expr
-embedTerm = \case
+embedTerm tm = embedPreterm (termPreterm tm)
+
+embedPreterm :: Preterm -> CG F.Expr
+embedPreterm = \case
   TermLit lit -> return $ embedLiteral lit
   TermVar x -> return $ embedVar x
   TermBlock block -> error "TODO: embedTerm TermBlock"

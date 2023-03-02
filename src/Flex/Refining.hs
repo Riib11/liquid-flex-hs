@@ -50,12 +50,23 @@ main = do
 
   -- EXAMPLE: this is Safe because `true || false` is equal to `true`
   let tm =
-        TermApp
-          (ApplPrimFun Syn.PrimFunOr)
-          [ TermLit (Syn.LiteralBit True),
-            TermLit (Syn.LiteralBit False)
-          ]
-  r <- case reftTerm (TermLit (Syn.LiteralBit True)) of
+        Term
+          ( TermApp
+              (ApplPrimFun Syn.PrimFunOr)
+              [ Term
+                  (TermLit (Syn.LiteralBit True))
+                  (TypeAtomic mempty AtomicBit),
+                Term
+                  (TermLit (Syn.LiteralBit False))
+                  (TypeAtomic mempty AtomicBit)
+              ]
+          )
+          (TypeAtomic mempty AtomicBit)
+      rtm =
+        Term
+          (TermLit (Syn.LiteralBit True))
+          (TypeAtomic mempty AtomicBit)
+  r <- case reftTerm rtm of
     Left errs -> error ("reftTerm error: " <> show errs)
     Right r -> return r
   let ty = TypeAtomic r AtomicBit

@@ -62,32 +62,36 @@ checkBlock env (stmt : stmts, tm) tyExp = case stmt of
 
 -- | Synthesizing (synth)
 synth :: Env -> Term -> CG (Cstr, BaseType)
-synth _env (TermLit lit) = (trivialCstr,) <$> synthLiteral lit
-synth env (TermVar x) = (trivialCstr,) <$> synthCon env x
-synth _env (TermBlock _) = throwCG [RefineError "should never synthesize a TermBlock; should only ever check"]
-synth env (TermApp (ApplPrimFun pf) args) = synthAppPrimFun env pf args
-synth env (TermApp (ApplVar x) args) = do
-  -- synth the arg types
-  tyArgs <- (snd <$>) <$> (synth env `traverse` args)
-  -- synth the fun type
-  FunType params tyOut <- synthFun env x tyArgs
-  -- check the args with their corresponding param types
-  cstr <-
-    andCstrs
-      <$> mapM
-        -- since function types are _simple_, don't need to update environment
-        -- with values of arguments
-        (\(tm, (_x, ty)) -> check env tm ty)
-        (args `zip` params)
-  -- since function types are _simple_, don't need to substitute parameters for
-  -- their argument values in the output type
-  return (cstr, tyOut)
-synth env (TermAscribe tm ty) = do
-  cstr <- check env tm ty
-  return (cstr, ty)
+synth env (Term ptm ty) = case ptm of
+  TermLit lit -> (trivialCstr,) <$> synthLiteral lit ty
+  TermVar x -> (trivialCstr,) <$> synthCon env x
+  TermBlock _ -> throwCG [RefineError "should never synthesize a TermBlock; should only ever check"]
+  TermApp (ApplPrimFun pf) args -> synthAppPrimFun env pf args
+  TermApp (ApplVar x) args -> do
+    -- synth the arg types
+    tyArgs <- (snd <$>) <$> (synth env `traverse` args)
+    -- synth the fun type
+    FunType params tyOut <- synthFun env x tyArgs
+    -- check the args with their corresponding param types
+    cstr <-
+      andCstrs
+        <$> mapM
+          -- since function types are _simple_, don't need to update environment
+          -- with values of arguments
+          (\(tm, (_x, ty)) -> check env tm ty)
+          (args `zip` params)
+    -- since function types are _simple_, don't need to substitute parameters for
+    -- their argument values in the output type
+    return (cstr, tyOut)
+  TermAscribe tm ty -> do
+    cstr <- check env tm ty
+    return (cstr, ty)
 
 reftTerm :: Term -> CG F.Reft
 reftTerm tm = F.exprReft <$> embedTerm tm
+
+reftPreterm :: Preterm -> CG F.Reft
+reftPreterm tm = F.exprReft <$> embedPreterm tm
 
 synthAppPrimFun :: Env -> Syn.PrimFun -> [Term] -> CG (Cstr, BaseType)
 synthAppPrimFun env Syn.PrimFunEq [tm1, tm2] = do
@@ -95,19 +99,19 @@ synthAppPrimFun env Syn.PrimFunEq [tm1, tm2] = do
   (cstr, ty1) <- synth env tm1
   -- check that second arg has same (unrefined) type
   cstr <- andCstr cstr <$> check env tm2 (unrefineBaseType ty1)
-  r <- reftTerm $ TermApp (ApplPrimFun Syn.PrimFunEq) [tm1, tm2]
+  r <- reftPreterm $ TermApp (ApplPrimFun Syn.PrimFunEq) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
 synthAppPrimFun env Syn.PrimFunAnd [tm1, tm2] = do
   cstr <- andCstrs <$> traverse (\tm -> check env tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
-  r <- reftTerm $ TermApp (ApplPrimFun Syn.PrimFunAnd) [tm1, tm2]
+  r <- reftPreterm $ TermApp (ApplPrimFun Syn.PrimFunAnd) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
 synthAppPrimFun env Syn.PrimFunOr [tm1, tm2] = do
   cstr <- andCstrs <$> traverse (\tm -> check env tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
-  r <- reftTerm $ TermApp (ApplPrimFun Syn.PrimFunOr) [tm1, tm2]
+  r <- reftPreterm $ TermApp (ApplPrimFun Syn.PrimFunOr) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
 synthAppPrimFun env Syn.PrimFunNot [tm] = do
   cstr <- check env tm (TypeAtomic F.trueReft AtomicBit)
-  r <- reftTerm $ TermApp (ApplPrimFun Syn.PrimFunNot) [tm]
+  r <- reftPreterm $ TermApp (ApplPrimFun Syn.PrimFunNot) [tm]
   return (cstr, TypeAtomic r AtomicBit)
 synthAppPrimFun _env pf args =
   throwCG
@@ -125,8 +129,9 @@ unrefineBaseType :: BaseType -> BaseType
 unrefineBaseType = \case
   TypeAtomic _ atomic -> TypeAtomic mempty atomic
 
-synthLiteral :: Literal -> CG BaseType
-synthLiteral lit = do
+-- TODO: take `ty` into account
+synthLiteral :: Literal -> BaseType -> CG BaseType
+synthLiteral lit ty = do
   TypeAtomic <$> r <*> return atomic
   where
     atomic = case lit of
@@ -135,7 +140,7 @@ synthLiteral lit = do
       Syn.LiteralBit _ -> AtomicBit
       Syn.LiteralChar _ -> AtomicChar
       Syn.LiteralString _ -> AtomicString
-    r = reftTerm $ TermLit lit
+    r = reftPreterm $ TermLit lit
 
 synthCon :: Env -> F.Symbol -> CG BaseType
 synthCon env x =
