@@ -31,6 +31,12 @@ library
       Flex.Lexing
       Flex.Parsing
       Flex.Refining
+      Flex.Refining.CG
+      Flex.Refining.Check
+      Flex.Refining.Constraint
+      Flex.Refining.Embedding
+      Flex.Refining.Query
+      Flex.Refining.Syntax
       Flex.Shallow
       Flex.Syntax
       Flex.Typing

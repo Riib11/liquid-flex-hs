@@ -548,7 +548,10 @@ instance PrettyShow FloatSize where
 
 -- type Term = (Preterm, Type)
 
-data Term = Term {_termPreterm :: Preterm, _termType :: Maybe Type}
+data Term = Term
+  { _termPreterm :: Preterm,
+    _termType :: Maybe Type
+  }
   deriving (Eq, Show)
 
 -- TODO: add TermTry
