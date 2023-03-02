@@ -157,7 +157,6 @@ data Preterm
   | TermVar !F.Symbol
   | TermBlock !Block
   | TermApp !Appl [Term]
-  | TermAscribe !Term !BaseType
   deriving (Eq, Show)
 
 data Appl
