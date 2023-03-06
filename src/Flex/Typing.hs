@@ -428,16 +428,12 @@ checkBlock (stmts, tm0) = procStatements [] stmts
     procStatements :: [Statement] -> [Statement] -> Typing ([Statement], Term)
     procStatements stmts' [] = (reverse stmts',) <$> inferTerm tm0
     procStatements stmts' (stmt : stmts) = case stmt of
-      StatementLet pat mb_ty tm -> do
+      StatementLet pat tm -> do
         -- TODO: warn about shadowing
-        ty <- case mb_ty of
-          Nothing -> freshUnifType (prettyShow stmt)
-          Just ty -> return ty
-        ty <- normType ty
+        ty <- freshUnifType (prettyShow stmt)
         withProcessCheckPattern ty pat \pat -> do
           tm <- liftM2' checkTerm (inferTerm tm) (return ty)
-          ty <- normType ty
-          procStatements (StatementLet pat (Just ty) tm : stmts') stmts
+          procStatements (StatementLet pat tm : stmts') stmts
       StatementAssert tm -> do
         tm <- liftM2' checkTerm (inferTerm tm) (return TypeBit)
         procStatements (StatementAssert tm : stmts) stmts'

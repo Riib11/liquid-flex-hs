@@ -86,10 +86,10 @@ main = do
                               unsafeCG $
                                 reftTerm $
                                   Term
-                                    (TermLit (Syn.LiteralBit False))
+                                    (TermLiteral (Syn.LiteralBit False))
                                     (TypeAtomic mempty AtomicBit)
                          in Term
-                              (TermLit (Syn.LiteralBit False))
+                              (TermLiteral (Syn.LiteralBit False))
                               (TypeAtomic r AtomicBit)
                       ]
                   )
@@ -110,7 +110,7 @@ main = do
                     unsafeCG $
                       reftTerm
                         ( Term
-                            (TermLit (Syn.LiteralBit True))
+                            (TermLiteral (Syn.LiteralBit True))
                             (TypeAtomic mempty AtomicBit)
                         )
                in TypeFunType $
@@ -124,14 +124,14 @@ main = do
                     unsafeCG $
                       reftTerm
                         ( Term
-                            (TermLit (Syn.LiteralBit False))
+                            (TermLiteral (Syn.LiteralBit False))
                             (TypeAtomic mempty AtomicBit)
                         )
                   r2 =
                     unsafeCG $
                       reftTerm
                         ( Term
-                            (TermLit (Syn.LiteralBit True))
+                            (TermLiteral (Syn.LiteralBit True))
                             (TypeAtomic mempty AtomicBit)
                         )
                in TypeFunType $

@@ -45,17 +45,17 @@ checkBlock env (stmt : stmts, tm) tyExp = case stmt of
     -- signature
     andCstr cstr . forallCstr x sig
       <$> checkBlock (extendEnv x (TypeBaseType sig) env) (stmts, tm) tyExp
-  StatementAssert tm' ty' ->
+  StatementAssert tm' ->
     liftA2
       andCstr
-      -- check that the term has the annotated type
-      (check env tm' ty')
+      -- check that the term has the `true` refinement type
+      (check env tm' trueBaseType)
       (checkBlock env (stmts, tm) tyExp)
 
 -- | Synthesizing (synth)
 synth :: Env -> Term -> CG (Cstr, BaseType)
 synth env (Term ptm ty) = case ptm of
-  TermLit lit -> (trivialCstr,) <$> synthLiteral lit ty
+  TermLiteral lit -> (trivialCstr,) <$> synthLiteral lit ty
   TermVar x -> (trivialCstr,) <$> synthCon env x
   TermBlock _ -> throwCG [RefineError "should never synthesize a TermBlock; should only ever check"]
   TermApp (AppPrimFun pf) args -> synthAppPrimFun env pf args
@@ -125,7 +125,7 @@ synthLiteral lit ty = do
       Syn.LiteralBit _ -> AtomicBit
       Syn.LiteralChar _ -> AtomicChar
       Syn.LiteralString _ -> AtomicString
-    r = reftPreterm $ TermLit lit
+    r = reftPreterm $ TermLiteral lit
 
 synthCon :: Env -> F.Symbol -> CG BaseType
 synthCon env x =
@@ -153,12 +153,6 @@ synthFun env x _args = case F.lookupSEnv x env of
   Just (TypeFunType funTy) -> return funTy
   Just _ -> throwCG [RefineError $ "expected to be a function id: " <> show x]
   Nothing -> throwCG [RefineError $ "unknown function id: " <> show x]
-
-parseSymbol :: String -> F.Symbol
-parseSymbol = FP.doParse' FP.lowerIdP "parseSymbol"
-
-parsePred :: String -> F.Pred
-parsePred = FP.doParse' FP.predP "parsePred"
 
 -- | Subtype checking (checkSubtype)
 --

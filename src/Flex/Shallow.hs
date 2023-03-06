@@ -3,6 +3,7 @@
 module Flex.Shallow where
 
 import qualified Data.Map as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack)
 import Flex.Lexing
 import Flex.Parsing
@@ -41,7 +42,7 @@ structure str_x structureIsMessage mb_str_y ls_structureFields mb_structureRefin
       ((Just <$>) . runShallowParser parseQualCapId)
       mb_str_y
   structureFields <- Map.fromList <$> secondM id `traverse` ls_structureFields
-  structureRefinement <- maybe (return trivialRefinement) id mb_structureRefinement
+  structureRefinement <- fromMaybe (return trivialRefinement) mb_structureRefinement
   return Structure {structureName, structureModuleId = topModuleId, structureIsMessage, structureExtensionId, structureFields, structureRefinement, structureAnnotations = []}
 
 enumerated :: String -> IO Type -> [(Text, Literal)] -> IO Enumerated
@@ -62,7 +63,7 @@ newtype_ str_x newtypeIsMessage str_fieldName io_ty mb_io_rfn = do
   newtypeName <- runShallowParser parseCapName str_x
   newtypeFieldName <- runShallowParser parseName str_fieldName
   newtypeType <- io_ty
-  newtypeRefinement <- maybe (return trivialRefinement) id mb_io_rfn
+  newtypeRefinement <- fromMaybe (return trivialRefinement) mb_io_rfn
   return Newtype {newtypeName, newtypeModuleId = topModuleId, newtypeIsMessage, newtypeFieldName, newtypeType, newtypeRefinement, newtypeAnnotations = []}
 
 alias :: String -> IO Type -> IO Alias
@@ -181,7 +182,7 @@ tmMem :: IO Term -> Text -> IO Term
 tmMem tm txt = fromPreterm `comp2` TermMember <$> tm <*> return txt
 
 tmCnstr :: String -> Maybe (IO Term) -> IO Term
-tmCnstr str_x mb_io_tm = do
+tmCnstr str_x mb_io_tm =
   fromPreterm `comp2` TermConstructor
     <$> runShallowParser parseQualCapId str_x
     <*> sequence mb_io_tm
@@ -195,8 +196,7 @@ tmApp str_x ls_io_tms mb_io_tms =
 
 tmAppPrimFun :: PrimFun -> [IO Term] -> IO Term
 tmAppPrimFun pf ls_io_tms =
-  fromPreterm `comp3` TermApplication
-    <$> return (idOfPrimFun pf)
+  return ((fromPreterm `comp3` TermApplication) (idOfPrimFun pf))
     <*> sequence ls_io_tms
     <*> return Nothing
 
@@ -218,7 +218,6 @@ stmtLet :: Text -> IO Term -> IO Statement
 stmtLet txt_x io_tm =
   StatementLet
     (fromPrepattern . PatternNamed $ txt_x)
-    Nothing
     <$> io_tm
 
 stmtAssert :: IO Term -> IO Statement

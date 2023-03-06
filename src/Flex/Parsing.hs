@@ -353,12 +353,23 @@ parsePattern =
 parseStatement :: Parser Statement
 parseStatement =
   choice
-    [ StatementLet <$ symbol "let" <*> parsePattern
-        <*> choice
-          [ colon *> (Just <$> parseType),
-            return Nothing
-          ]
-        <* symbol "="
+    [ try do
+        -- annotating a `let` is the same as ascribing its imp
+        symbol_ "let"
+        pat <- parsePattern
+        symbol_ ":"
+        sig <- parseType
+        symbol_ "="
+        imp <- parseTerm
+        return $ StatementLet pat (fromPreterm $ TermAscribe imp sig),
+      StatementLet
+        <$ symbol "let"
+        <*> parsePattern
+        -- <*> choice
+        --   [ colon *> (Just <$> parseType),
+        --     return Nothing
+        --   ]
+        -- <* symbol "="
         <*> parseTerm,
       StatementAssert <$ symbol "assert" <*> parens parseTerm
     ]
@@ -382,7 +393,8 @@ mapFromUniqueList :: [(Text, v)] -> Parser (Map.Map Text v)
 mapFromUniqueList vs = do
   let m = Map.fromList vs
   unless (Map.size m == length vs) $
-    unexpected $ "expected labels to be unique among: " <> show (fst <$> vs)
+    unexpected $
+      "expected labels to be unique among: " <> show (fst <$> vs)
   return $ m
 
 -- mapFromUniqueListHas_id :: Show a => Has_id a => [a] -> Parser (Map.Map Id a)

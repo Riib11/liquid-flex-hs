@@ -56,6 +56,7 @@ default-extensions:
 - DeriveFunctor
 - DeriveGeneric
 - FlexibleInstances
+- ScopedTypeVariables
 
 library:
   source-dirs: src

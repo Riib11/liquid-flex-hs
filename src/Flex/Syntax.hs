@@ -667,13 +667,13 @@ fromPrepattern _patternPrepattern = Pattern {_patternPrepattern, _patternType = 
 -- ** statement
 
 data Statement
-  = StatementLet Pattern (Maybe Type) Term
+  = StatementLet Pattern Term
   | StatementAssert Term
   deriving (Eq, Show)
 
 instance PrettyShow Statement where
   prettyShow = \case
-    StatementLet pat mb_ty tm -> "let " <> prettyShow pat <> (maybe "" ((": " <>) . prettyShow) mb_ty) <> " = " <> prettyShow tm
+    StatementLet pat tm -> "let " <> prettyShow pat <> " = " <> prettyShow tm
     StatementAssert tm -> "assert(" <> prettyShow tm <> ")"
 
 -- ** primitives

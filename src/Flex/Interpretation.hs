@@ -204,7 +204,7 @@ evalStatement :: Statement -> Interp a -> Interp a
 evalStatement stmt m = do
   debug $ "evalStatement: " <> prettyShow stmt
   case stmt of
-    StatementLet pat _ty tm -> do
+    StatementLet pat tm -> do
       tm' <- evalTerm tm
       debug $ "evalStatement: " <> prettyShow stmt <> " ==> " <> prettyShow tm'
       introPattern pat tm' m

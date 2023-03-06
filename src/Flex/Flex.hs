@@ -53,7 +53,10 @@ data FlexEnv = FlexEnv
     -- | type variable substitution
     _envUnifSubst :: Map.Map Unif.Id Type,
     -- | unification id environment
-    _envUnif :: Unif.Env
+    _envUnif :: Unif.Env,
+    -- | index for fresh symbols used for translation to refinement-checking
+    -- syntax
+    _envFreshSymbolIndex :: Int
   }
 
 emptyFlexEnv :: FlexEnv
@@ -61,7 +64,8 @@ emptyFlexEnv =
   FlexEnv
     { _envModuleCtx = topModuleCtx,
       _envUnifSubst = Map.empty,
-      _envUnif = Unif.emptyEnv
+      _envUnif = Unif.emptyEnv,
+      _envFreshSymbolIndex = 0
     }
 
 makeLenses ''FlexEnv

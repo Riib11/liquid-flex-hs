@@ -5,9 +5,11 @@ module Flex.Refining.Translation () where
 import Control.Lens
 import Control.Monad.Error.Class (MonadError (throwError))
 import Control.Monad.Reader (ReaderT, asks)
+import Control.Monad.State (StateT, gets, modify')
 import qualified Data.Map as Map
-import Data.Text (Text)
-import Flex.Flex (FlexError (RefineError), FlexT)
+import Data.Text (Text, unpack)
+import Flex.Flex
+import Flex.Refining.Syntax (parseSymbol)
 import qualified Flex.Refining.Syntax as Reft
 import qualified Flex.Syntax as Base
 import qualified Language.Fixpoint.Types as F
@@ -19,40 +21,40 @@ import Utility (fromJust')
 --
 -- Translate terms and types from Flex to LiquidFlex
 
--- | TranslationCtx
-data TranslationCtx = TranslationCtx
+-- | TransCtx
+data TransCtx = TransCtx
   { _idSymbols :: Map.Map Base.Id F.Symbol
   }
 
-makeLenses ''TranslationCtx
+makeLenses ''TransCtx
 
-type T m a = FlexT (ReaderT TranslationCtx m) a
+type T m a = FlexT (ReaderT TransCtx m) a
 
 -- | transTerm
 transTerm :: Monad m => Base.Term -> T m Reft.Term
 transTerm tm = case tm ^. Base.termPreterm of
-  Base.TermLiteral lit -> transLiteral (fromJust' "TODO" (tm ^. Base.termMaybeType)) lit
+  Base.TermLiteral lit -> transLiteral lit =<< (transType =<< termType tm)
   Base.TermCast _ -> throwError $ RefineError $ "there should be no `cast`s left after type-checking, yet there is: " <> prettyShow tm
-  Base.TermNamed x ->
-    asks (^. idSymbols)
-      >>= ( \case
-              Nothing ->
-                throwError . RefineError $
-                  "transTerm: can't find translation of id '" <> prettyShow x <> "' in environment"
-              Just x' -> do
-                ty <- transType =<< termType tm
-                pure $ Reft.Term (Reft.TermVar x') ty
-          )
-        . Map.lookup x
-  Base.TermTuple tes -> error "TODO: transTerm TermTuple"
-  Base.TermArray tes -> error "TODO: transTerm TermArray"
-  Base.TermBlock block -> transBlock (fromJust' "TODO" (tm ^. Base.termMaybeType)) block
+  Base.TermNamed x -> Reft.Term <$> (Reft.TermVar <$> transIdRef x) <*> (transType =<< termType tm)
+  Base.TermTuple _tes -> error "TODO: transTerm TermTuple"
+  Base.TermArray _tes -> error "TODO: transTerm TermArray"
+  Base.TermBlock (stmts, tm') -> transBlock (stmts, tm')
   Base.TermStructure _id _map -> error "TODO: transTerm TermStructure"
   Base.TermMember _te _txt -> error "TODO: transTerm TermMember"
   Base.TermConstructor _id _m_te -> error "TODO: transTerm TermConstructor"
-  Base.TermApplication _id _tes _m_e -> error "TODO: transTerm"
-  Base.TermIf te te' te2 -> error "TODO: transTerm"
-  Base.TermAscribe te ty -> error "TODO: transTerm"
+  Base.TermApplication x args cxargs -> do
+    ty <- transType =<< termType tm
+    args <- transTerm `mapM` args
+    cxargs <-
+      case cxargs of
+        Nothing -> return []
+        Just (Left _) -> throwError $ RefineError $ "expected application with contextual arguments to already be typechecked: " <> prettyShow tm
+        Just (Right cxargs') -> transTerm `mapM` Map.elems cxargs'
+    app <- transApp x
+    pure $ Reft.Term (Reft.TermApp app (args <> cxargs)) ty
+  -- TODO: do i need to add TermIf to Reft.Term?
+  Base.TermIf te te' te2 -> error "TODO: transTerm Termif"
+  Base.TermAscribe te ty -> throwError $ RefineError $ "there should be no `ascribe`s left after type-checking, yet there is: " <> prettyShow tm
   Base.TermMatch _te _x0 -> error "TODO: transTerm TermMatch"
 
 termType :: Monad m => Base.Term -> T m Base.Type
@@ -62,11 +64,105 @@ termType tm = case tm ^. Base.termMaybeType of
       "expected term to be type-annotated before translation to refinement syntax: " <> prettyShow tm
   Just ty -> pure ty
 
-transLiteral :: Monad m => Base.Type -> Base.Literal -> T m Reft.Term
-transLiteral = undefined
+transBlock :: forall m. Monad m => Base.Block -> T m Reft.Term
+transBlock (stmts, tm0) = go stmts []
+  where
+    go :: [Base.Statement] -> [Reft.Statement] -> T m Reft.Term
+    go [] stmts = do
+      ty <- transType =<< termType tm0
+      tm0 <- transTerm tm0
+      return $ Reft.Term (Reft.TermBlock (reverse stmts, tm0)) ty
+    go (stmtsBase : stmtsBase') stmts = case stmtsBase of
+      Base.StatementLet pat imp -> case pat ^. Base.patternPrepattern of
+        Base.PatternNamed txt -> do
+          x <- transNameBind txt
+          imp <- transTerm imp
+          go stmtsBase' (Reft.StatementLet x imp : stmts)
+        Base.PatternDiscard -> do
+          x <- freshSymbol ""
+          imp <- transTerm imp
+          go stmtsBase' (Reft.StatementLet x imp : stmts)
+        Base.PatternLiteral lit -> error "TODO: how to translate pattern matching on a literal?"
+      Base.StatementAssert tm -> do
+        tm <- transTerm tm
+        go stmtsBase' (Reft.StatementAssert tm : stmts)
 
-transBlock :: Monad m => Base.Type -> Base.Block -> T m Reft.Term
-transBlock = error "TODO"
+freshSymbol :: Monad m => String -> T m F.Symbol
+freshSymbol str = do
+  i <- gets (^. envFreshSymbolIndex)
+  modify' $ envFreshSymbolIndex %~ (1 +)
+  return $ parseSymbol ("$discard" <> show i)
+
+transNameBind :: Monad m => Text -> T m F.Symbol
+transNameBind txt = do
+  i <- gets (^. envFreshSymbolIndex)
+  modify' $ envFreshSymbolIndex %~ (1 +)
+  return $ parseSymbol (unpack txt <> "#" <> show i)
+
+transIdBind :: Monad m => Base.Id -> T m F.Symbol
+transIdBind = error "TODO: transIdBind"
+
+transIdRef :: Monad m => Base.Id -> T m F.Symbol
+transIdRef x =
+  asks (^. idSymbols)
+    >>= ( \case
+            Nothing ->
+              throwError . RefineError $
+                "transTerm: can't find translation of id '" <> prettyShow x <> "' in environment"
+            Just x' -> do
+              pure x'
+        )
+      . Map.lookup x
 
 transType :: Monad m => Base.Type -> T m Reft.BaseType
-transType = error "TODO"
+transType ty0 = case ty0 of
+  -- IntSize bounds value
+  Base.TypeInt (Base.IntSize is) -> do
+    x <- freshSymbol (show is)
+    let n = 2 ^ (is - 1) :: Int
+    -- -n < x < n
+    return $
+      Reft.TypeAtomic
+        ( F.reft
+            x
+            ( F.PAnd
+                [ F.PAtom F.Lt (F.expr (-n)) (F.expr x),
+                  F.PAtom F.Lt (F.expr x) (F.expr n)
+                ]
+            )
+        )
+        Reft.AtomicInt
+  Base.TypeUInt (Base.UIntSize uis) -> do
+    x <- freshSymbol (show uis)
+    let n = 2 ^ uis :: Int
+    -- 0 <= x < n
+    return $
+      Reft.TypeAtomic
+        ( F.reft
+            x
+            ( F.PAnd
+                [ F.PAtom F.Le (F.expr (0 :: Int)) (F.expr x),
+                  F.PAtom F.Lt (F.expr x) (F.expr n)
+                ]
+            )
+        )
+        Reft.AtomicInt
+  Base.TypeFloat _fs -> error "TODO: transType TypeFloat"
+  Base.TypeBit -> return $ Reft.TypeAtomic mempty Reft.AtomicBit
+  Base.TypeChar -> return $ Reft.TypeAtomic mempty Reft.AtomicChar
+  Base.TypeArray _ty -> error "TODO: transType TypeArray"
+  Base.TypeTuple _tys -> error "TODO: transType TypeTuple"
+  Base.TypeOptional _ty -> error "TODO: transType TypeOptional"
+  Base.TypeNamed _id -> throwError $ RefineError $ "TypeNamed should not appear after typechecking since types should be normalized: " <> show ty0
+  Base.TypeCast _ty -> throwError $ RefineError $ "TypeCast should not appear after typechecking since types should be normalized: " <> show ty0
+  Base.TypeUnif _id -> throwError $ RefineError $ "TypeUnif should not appear after typechecking since types should be normalized: " <> show ty0
+  Base.TypeStructure _struc -> error "TODO: transType TypeStructure"
+  Base.TypeEnumerated _enu -> error "TODO: transType TypeEnumerated"
+  Base.TypeVariant _vari -> error "TODO: transType Variant"
+  Base.TypeNewtype _new -> error "TODO: transType Newtype"
+
+transLiteral :: Monad m => Base.Literal -> Reft.BaseType -> T m Reft.Term
+transLiteral lit ty = pure $ Reft.Term (Reft.TermLiteral lit) ty
+
+transApp :: Monad m => Base.Id -> T m Reft.App
+transApp x = Reft.AppVar <$> transIdRef x

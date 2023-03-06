@@ -89,6 +89,12 @@ instance Show r => PrettyShow (BaseType_ r) where
       AtomicChar -> "char{" <> show r <> "}"
       AtomicString -> "string{" <> show r <> "}"
 
+trueBaseType :: BaseType
+trueBaseType = TypeAtomic F.trueReft AtomicBit
+
+falseBaseType :: BaseType
+falseBaseType = TypeAtomic F.falseReft AtomicBit
+
 -- | FunType
 --
 -- Liquid Flex's function types are simple in that the they cannot express
@@ -145,7 +151,7 @@ instance F.Subable r => F.Subable (FunType_ r) where
 -- | TermMatch Type
 data Term = Term
   { termPreterm :: Preterm,
-    termMaybeType :: BaseType
+    termType :: BaseType
   }
   deriving (Eq, Show)
 
@@ -153,7 +159,7 @@ instance PrettyShow Term where
   prettyShow = prettyShow . termPreterm
 
 data Preterm
-  = TermLit !Literal
+  = TermLiteral !Literal
   | TermVar !F.Symbol
   | TermBlock !Block
   | TermApp !App [Term]
@@ -161,7 +167,7 @@ data Preterm
 
 instance PrettyShow Preterm where
   prettyShow = \case
-    TermLit lit -> prettyShow lit
+    TermLiteral lit -> prettyShow lit
     TermVar x -> show x
     TermBlock block -> prettyShowBlock block
     TermApp app args -> prettyShow app <> "(" <> List.intercalate ", " (prettyShow <$> args) <> ")"
@@ -190,13 +196,13 @@ prettyShowBlock (stmts, tm) = "{" <> go stmts <> "}"
 
 data Statement
   = StatementLet !F.Symbol !Term
-  | StatementAssert !Term !BaseType
+  | StatementAssert !Term
   deriving (Eq, Show)
 
 instance PrettyShow Statement where
   prettyShow = \case
     StatementLet x tm -> show x <> " = " <> show tm
-    StatementAssert tm ty -> prettyShow tm <> " : " <> prettyShow ty
+    StatementAssert tm -> "assert(" <> prettyShow tm <> ")"
 
 instance HasLabel Term where
   getLabel _ = F.dummySpan
@@ -231,3 +237,10 @@ subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
 -- subst' thing x y = F.subst sigma thing
 --   where
 --     sigma = F.mkSubst [(x, embedVar y)]
+
+-- | parsing
+parseSymbol :: String -> F.Symbol
+parseSymbol = FP.doParse' FP.lowerIdP "parseSymbol"
+
+parsePred :: String -> F.Pred
+parsePred = FP.doParse' FP.predP "parsePred"
