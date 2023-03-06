@@ -35,10 +35,10 @@ import Utility
 type Query = H.Query RefineError
 
 -- Generates a query that checks that the term has the type.
-genCheckQuery :: Term -> BaseType -> CG Query
-genCheckQuery tm ty =
+genCheckQuery :: Env -> Term -> BaseType -> CG Query
+genCheckQuery env tm ty =
   H.Query [] []
-    <$> check emptyEnv tm ty
+    <$> check env tm ty
     <*> pure mempty
     <*> pure mempty
     <*> pure mempty

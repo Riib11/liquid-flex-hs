@@ -5,10 +5,12 @@ import Control.DeepSeq
 import Control.Exception
 import Control.Monad (foldM, void, when)
 import Data.Bifunctor (second)
+-- import Flex.Refining.Syntax
+
+import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
--- import Flex.Refining.Syntax
 import Flex.Syntax (Id, Literal, ModuleId)
 import qualified Flex.Syntax as Syn
 import GHC.Generics
@@ -31,6 +33,11 @@ type CG a = Either [RefineError] a
 
 throwCG :: [RefineError] -> CG a
 throwCG = Left
+
+unsafeCG :: CG a -> a
+unsafeCG cg = case cg of
+  Left errs -> error $ "unsafeCG: \n" <> List.intercalate "\n" (show <$> errs)
+  Right a -> a
 
 -- | RefineError
 newtype RefineError = RefineError String

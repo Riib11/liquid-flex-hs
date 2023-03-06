@@ -8,8 +8,8 @@ import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.CG (messageOfRefineError)
-import Flex.Refining.Check (reftTerm)
+import Flex.Refining.CG (messageOfRefineError, unsafeCG)
+import Flex.Refining.Check (reftPreterm, reftTerm)
 import Flex.Refining.Query (checkValid, genCheckQuery, resultExitCode)
 import Flex.Refining.Syntax
 import Flex.Syntax (Id, Literal, ModuleId)
@@ -49,6 +49,7 @@ main = do
   let ty = TypeAtomic r AtomicBit
   -}
 
+  {-
   -- EXAMPLE: this is Safe because `true || false` is equal to `true`
   let tm =
         Term
@@ -71,14 +72,77 @@ main = do
     Left errs -> error ("reftTerm error: " <> show errs)
     Right r -> return r
   let ty = TypeAtomic r AtomicBit
+  -}
+
+  let tm =
+        Term
+          ( TermApp
+              (AppVar "f")
+              [ Term
+                  ( TermApp
+                      (AppVar "g")
+                      -- [Term (TermLit (Syn.LiteralBit True)) ()]
+                      [ let r =
+                              unsafeCG $
+                                reftTerm $
+                                  Term
+                                    (TermLit (Syn.LiteralBit False))
+                                    (TypeAtomic mempty AtomicBit)
+                         in Term
+                              (TermLit (Syn.LiteralBit False))
+                              (TypeAtomic r AtomicBit)
+                      ]
+                  )
+                  (TypeAtomic mempty AtomicBit)
+              ]
+          )
+          (TypeAtomic mempty AtomicBit)
+
+  let ty = TypeAtomic mempty AtomicBit
+
+  let env =
+        foldr
+          (uncurry extendEnv)
+          emptyEnv
+          [ ( -- f : bit{ b | b == true} -> bit
+              "f",
+              let r =
+                    unsafeCG $
+                      reftTerm
+                        ( Term
+                            (TermLit (Syn.LiteralBit True))
+                            (TypeAtomic mempty AtomicBit)
+                        )
+               in TypeFunType $
+                    FunType
+                      [TypeAtomic r AtomicBit]
+                      (TypeAtomic mempty AtomicBit)
+            ),
+            ( -- g : bit{ b : b == false } -> bit{ b : b == true }
+              "g",
+              let r1 =
+                    unsafeCG $
+                      reftTerm
+                        ( Term
+                            (TermLit (Syn.LiteralBit False))
+                            (TypeAtomic mempty AtomicBit)
+                        )
+                  r2 =
+                    unsafeCG $
+                      reftTerm
+                        ( Term
+                            (TermLit (Syn.LiteralBit True))
+                            (TypeAtomic mempty AtomicBit)
+                        )
+               in TypeFunType $
+                    FunType
+                      [TypeAtomic r1 AtomicBit]
+                      (TypeAtomic r2 AtomicBit)
+            )
+          ]
 
   putStrLn $ "tm = " <> prettyShow tm
   putStrLn $ "ty = " <> prettyShow ty
-  res <- case genCheckQuery tm ty of
-    Left errs ->
-      pure $
-        F.Crash
-          (errs <&> \err -> (err, Just $ messageOfRefineError err))
-          "genCheckQuery failure"
-    Right query -> checkValid fp query
-  exitWith =<< resultExitCode res
+  let query = unsafeCG $ genCheckQuery env tm ty
+  result <- checkValid fp query
+  exitWith =<< resultExitCode result

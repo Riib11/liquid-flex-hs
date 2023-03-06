@@ -3,7 +3,7 @@ module Flex.Refining.Check where
 import Control.Applicative (Applicative (liftA2))
 import Control.DeepSeq
 import Control.Exception
-import Control.Monad (foldM, void, when)
+import Control.Monad (foldM, void, when, zipWithM)
 import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
@@ -72,16 +72,12 @@ synth env (Term ptm ty) = case ptm of
     tyArgs <- (snd <$>) <$> (synth env `traverse` args)
     -- synth the fun type
     FunType params tyOut <- synthFun env x tyArgs
-    -- check the args with their corresponding param types
-    cstr <-
-      andCstrs
-        <$> mapM
-          -- since function types are _simple_, don't need to update environment
-          -- with values of arguments
-          (\(tm, (_x, ty)) -> check env tm ty)
-          (args `zip` params)
-    -- since function types are _simple_, don't need to substitute parameters for
-    -- their argument values in the output type
+    -- check the args with their corresponding param types; note that since
+    -- function types are _simple_, don't need to update environment with values
+    -- of arguments
+    cstr <- andCstrs <$> zipWithM (check env) args params
+    -- since function types are _simple_, don't need to substitute parameters
+    -- for their argument values in the output type
     return (cstr, tyOut)
 
 reftTerm :: Term -> CG F.Reft

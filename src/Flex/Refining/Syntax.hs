@@ -96,7 +96,7 @@ instance Show r => PrettyShow (BaseType_ r) where
 type FunType = FunType_ F.Reft
 
 data FunType_ r
-  = FunType ![(F.Symbol, BaseType_ r)] !(BaseType_ r)
+  = FunType ![BaseType_ r] !(BaseType_ r)
   deriving (Eq, Show)
 
 -- | Subable (Subtypeable)
@@ -126,23 +126,10 @@ instance F.Subable r => F.Subable (BaseType_ r) where
     TypeAtomic r atomic -> TypeAtomic (F.subst f r) atomic
 
 instance F.Subable r => F.Subable (FunType_ r) where
-  syms (FunType params outTy) =
-    concatMap
-      (F.syms . snd)
-      params
-      <> F.syms outTy
-  substa f (FunType params outTy) =
-    FunType
-      (second (F.substa f) <$> params)
-      (F.substa f outTy)
-  substf f (FunType params outTy) =
-    FunType
-      (second (F.substf f) <$> params)
-      (F.substf f outTy)
-  subst f (FunType params outTy) =
-    FunType
-      (second (F.subst f) <$> params)
-      (F.subst f outTy)
+  syms (FunType _params outTy) = F.syms outTy
+  substa f (FunType params outTy) = FunType params (F.substa f outTy)
+  substf f (FunType params outTy) = FunType params (F.substf f outTy)
+  subst f (FunType params outTy) = FunType params (F.subst f outTy)
 
 -- | Term
 --
