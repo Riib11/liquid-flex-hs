@@ -38,18 +38,17 @@ embedPreterm = \case
   TermLit lit -> return $ embedLiteral lit
   TermVar x -> return $ embedVar x
   TermBlock block -> error "TODO: embedTerm TermBlock"
-  TermApp (ApplPrimFun Syn.PrimFunEq) [tm1, tm2] ->
+  TermApp (AppPrimFun Syn.PrimFunEq) [tm1, tm2] ->
     F.PAtom F.Eq <$> embedTerm tm1 <*> embedTerm tm2
-  TermApp (ApplPrimFun Syn.PrimFunAnd) [tm1, tm2] ->
+  TermApp (AppPrimFun Syn.PrimFunAnd) [tm1, tm2] ->
     F.PAnd <$> traverse embedTerm [tm1, tm2]
-  TermApp (ApplPrimFun Syn.PrimFunOr) [tm1, tm2] ->
+  TermApp (AppPrimFun Syn.PrimFunOr) [tm1, tm2] ->
     F.POr <$> traverse embedTerm [tm1, tm2]
-  TermApp (ApplPrimFun Syn.PrimFunNot) [tm] ->
+  TermApp (AppPrimFun Syn.PrimFunNot) [tm] ->
     F.PNot <$> embedTerm tm
-  TermApp (ApplPrimFun pf) args -> throwCG [RefineError $ "invalid primitive function application: " <> show (TermApp (ApplPrimFun pf) args)]
+  TermApp (AppPrimFun pf) args -> throwCG [RefineError $ "invalid primitive function application: " <> show (TermApp (AppPrimFun pf) args)]
   -- TODO: folds in the right direction??
-  TermApp (ApplVar x) args -> foldM (\e tm -> F.EApp e <$> embedTerm tm) (embedVar x) args
-  TermAscribe tm _ty -> embedTerm tm
+  TermApp (AppVar x) args -> foldM (\e tm -> F.EApp e <$> embedTerm tm) (embedVar x) args
 
 embedVar :: F.Symbol -> F.Expr
 embedVar = F.expr

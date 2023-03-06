@@ -5,6 +5,7 @@ import Control.DeepSeq
 import Control.Exception
 import Control.Monad (foldM, void, when)
 import Data.Bifunctor (second)
+import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
@@ -21,6 +22,7 @@ import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Utils.Files as Files
+import PrettyShow (PrettyShow (prettyShow))
 import System.Exit (exitWith)
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.Printf (printf)
@@ -72,12 +74,20 @@ data BaseType_ r
 
 data Atomic
   = AtomicInt
-  | AtomicUInt
   | AtomicFloat
   | AtomicBit
   | AtomicChar
   | AtomicString
   deriving (Eq, Show)
+
+instance Show r => PrettyShow (BaseType_ r) where
+  prettyShow = \case
+    TypeAtomic r at -> case at of
+      AtomicInt -> "int{" <> show r <> "}"
+      AtomicFloat -> "float{" <> show r <> "}"
+      AtomicBit -> "bit{" <> show r <> "}"
+      AtomicChar -> "char{" <> show r <> "}"
+      AtomicString -> "string{" <> show r <> "}"
 
 -- | FunType
 --
@@ -152,24 +162,54 @@ data Term = Term
   }
   deriving (Eq, Show)
 
+instance PrettyShow Term where
+  prettyShow = prettyShow . termPreterm
+
 data Preterm
   = TermLit !Literal
   | TermVar !F.Symbol
   | TermBlock !Block
-  | TermApp !Appl [Term]
+  | TermApp !App [Term]
   deriving (Eq, Show)
 
-data Appl
-  = ApplPrimFun Syn.PrimFun
-  | ApplVar F.Symbol
+instance PrettyShow Preterm where
+  prettyShow = \case
+    TermLit lit -> prettyShow lit
+    TermVar x -> show x
+    TermBlock block -> prettyShowBlock block
+    TermApp app args -> prettyShow app <> "(" <> List.intercalate ", " (prettyShow <$> args) <> ")"
+
+data App
+  = AppPrimFun Syn.PrimFun
+  | AppVar F.Symbol
   deriving (Eq, Show)
+
+instance PrettyShow App where
+  prettyShow = \case
+    AppPrimFun pf -> case pf of
+      Syn.PrimFunEq -> "=="
+      Syn.PrimFunOr -> "||"
+      Syn.PrimFunAnd -> "&&"
+      Syn.PrimFunNot -> "!"
+    AppVar x -> show x
 
 type Block = ([Statement], Term)
+
+prettyShowBlock :: Block -> String
+prettyShowBlock (stmts, tm) = "{" <> go stmts <> "}"
+  where
+    go [] = prettyShow tm
+    go (stmt : stmts') = prettyShow stmt <> "; " <> go stmts'
 
 data Statement
   = StatementLet !F.Symbol !(Maybe BaseType) !Term
   | StatementAssert !Term !BaseType
   deriving (Eq, Show)
+
+instance PrettyShow Statement where
+  prettyShow = \case
+    StatementLet x mb_ty tm -> show x <> maybe "" ((" : " <>) . prettyShow) mb_ty <> " = " <> show tm
+    StatementAssert tm ty -> prettyShow tm <> " : " <> prettyShow ty
 
 instance HasLabel Term where
   getLabel _ = F.dummySpan

@@ -69,7 +69,6 @@ sortPred x = \case
     Just
       ( case atom of
           AtomicInt -> F.intSort
-          AtomicUInt -> F.intSort
           AtomicFloat -> F.realSort
           AtomicBit -> F.boolSort
           AtomicChar -> F.charSort

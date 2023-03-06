@@ -66,8 +66,8 @@ synth env (Term ptm ty) = case ptm of
   TermLit lit -> (trivialCstr,) <$> synthLiteral lit ty
   TermVar x -> (trivialCstr,) <$> synthCon env x
   TermBlock _ -> throwCG [RefineError "should never synthesize a TermBlock; should only ever check"]
-  TermApp (ApplPrimFun pf) args -> synthAppPrimFun env pf args
-  TermApp (ApplVar x) args -> do
+  TermApp (AppPrimFun pf) args -> synthAppPrimFun env pf args
+  TermApp (AppVar x) args -> do
     -- synth the arg types
     tyArgs <- (snd <$>) <$> (synth env `traverse` args)
     -- synth the fun type
@@ -83,9 +83,6 @@ synth env (Term ptm ty) = case ptm of
     -- since function types are _simple_, don't need to substitute parameters for
     -- their argument values in the output type
     return (cstr, tyOut)
-  TermAscribe tm ty -> do
-    cstr <- check env tm ty
-    return (cstr, ty)
 
 reftTerm :: Term -> CG F.Reft
 reftTerm tm = F.exprReft <$> embedTerm tm
@@ -99,19 +96,19 @@ synthAppPrimFun env Syn.PrimFunEq [tm1, tm2] = do
   (cstr, ty1) <- synth env tm1
   -- check that second arg has same (unrefined) type
   cstr <- andCstr cstr <$> check env tm2 (unrefineBaseType ty1)
-  r <- reftPreterm $ TermApp (ApplPrimFun Syn.PrimFunEq) [tm1, tm2]
+  r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunEq) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
 synthAppPrimFun env Syn.PrimFunAnd [tm1, tm2] = do
   cstr <- andCstrs <$> traverse (\tm -> check env tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
-  r <- reftPreterm $ TermApp (ApplPrimFun Syn.PrimFunAnd) [tm1, tm2]
+  r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunAnd) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
 synthAppPrimFun env Syn.PrimFunOr [tm1, tm2] = do
   cstr <- andCstrs <$> traverse (\tm -> check env tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
-  r <- reftPreterm $ TermApp (ApplPrimFun Syn.PrimFunOr) [tm1, tm2]
+  r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunOr) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
 synthAppPrimFun env Syn.PrimFunNot [tm] = do
   cstr <- check env tm (TypeAtomic F.trueReft AtomicBit)
-  r <- reftPreterm $ TermApp (ApplPrimFun Syn.PrimFunNot) [tm]
+  r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunNot) [tm]
   return (cstr, TypeAtomic r AtomicBit)
 synthAppPrimFun _env pf args =
   throwCG

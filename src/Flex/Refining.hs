@@ -24,6 +24,7 @@ import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Utils.Files as Files
+import PrettyShow (PrettyShow (prettyShow))
 import System.Exit (exitWith)
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.Printf (printf)
@@ -52,7 +53,7 @@ main = do
   let tm =
         Term
           ( TermApp
-              (ApplPrimFun Syn.PrimFunOr)
+              (AppPrimFun Syn.PrimFunOr)
               [ Term
                   (TermLit (Syn.LiteralBit True))
                   (TypeAtomic mempty AtomicBit),
@@ -71,8 +72,8 @@ main = do
     Right r -> return r
   let ty = TypeAtomic r AtomicBit
 
-  putStrLn $ "tm = " <> show tm
-  putStrLn $ "ty = " <> show ty
+  putStrLn $ "tm = " <> prettyShow tm
+  putStrLn $ "ty = " <> prettyShow ty
   res <- case genCheckQuery tm ty of
     Left errs ->
       pure $
