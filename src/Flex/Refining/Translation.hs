@@ -31,20 +31,22 @@ type T m a = FlexT (ReaderT TranslationCtx m) a
 -- | transTerm
 transTerm :: Monad m => Base.Term -> T m Reft.Term
 transTerm tm = case tm ^. Base.termPreterm of
-  Base.TermLiteral lit -> transLiteral (fromJust' "TODO" (tm ^. Base.termType)) lit
+  Base.TermLiteral lit -> transLiteral (fromJust' "TODO" (tm ^. Base.termMaybeType)) lit
   Base.TermCast _ -> throwError $ RefineError $ "there should be no `cast`s left after type-checking, yet there is: " <> prettyShow tm
   Base.TermNamed x ->
     asks (^. idSymbols)
       >>= ( \case
-              Nothing -> throwError $ RefineError $ "transTerm: can't find translation of id '" <> prettyShow x <> "' in environment"
-              Just x -> do
-                ty <- transType (fromJust' "TODO" (tm ^. Base.termType))
-                pure $ Reft.Term (Reft.TermVar x) ty
+              Nothing ->
+                throwError . RefineError $
+                  "transTerm: can't find translation of id '" <> prettyShow x <> "' in environment"
+              Just x' -> do
+                ty <- transType =<< termType tm
+                pure $ Reft.Term (Reft.TermVar x') ty
           )
         . Map.lookup x
   Base.TermTuple tes -> error "TODO: transTerm TermTuple"
   Base.TermArray tes -> error "TODO: transTerm TermArray"
-  Base.TermBlock block -> transBlock (fromJust' "TODO" (tm ^. Base.termType)) block
+  Base.TermBlock block -> transBlock (fromJust' "TODO" (tm ^. Base.termMaybeType)) block
   Base.TermStructure _id _map -> error "TODO: transTerm TermStructure"
   Base.TermMember _te _txt -> error "TODO: transTerm TermMember"
   Base.TermConstructor _id _m_te -> error "TODO: transTerm TermConstructor"
@@ -52,6 +54,13 @@ transTerm tm = case tm ^. Base.termPreterm of
   Base.TermIf te te' te2 -> error "TODO: transTerm"
   Base.TermAscribe te ty -> error "TODO: transTerm"
   Base.TermMatch _te _x0 -> error "TODO: transTerm TermMatch"
+
+termType :: Monad m => Base.Term -> T m Base.Type
+termType tm = case tm ^. Base.termMaybeType of
+  Nothing ->
+    throwError . RefineError $
+      "expected term to be type-annotated before translation to refinement syntax: " <> prettyShow tm
+  Just ty -> pure ty
 
 transLiteral :: Monad m => Base.Type -> Base.Literal -> T m Reft.Term
 transLiteral = undefined

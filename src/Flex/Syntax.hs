@@ -423,7 +423,7 @@ eqRefinement tm1 tm2 =
   Refinement . Just $
     Term
       { _termPreterm = TermApplication (fromUnqualText $ nameOfPrimFun PrimFunEq) [tm1, tm2] Nothing,
-        _termType = Just TypeBit
+        _termMaybeType = Just TypeBit
       }
 
 instance PrettyShow Refinement where
@@ -548,7 +548,7 @@ instance PrettyShow FloatSize where
 
 data Term = Term
   { _termPreterm :: Preterm,
-    _termType :: Maybe Type
+    _termMaybeType :: Maybe Type
   }
   deriving (Eq, Show)
 
@@ -578,10 +578,10 @@ termApp2 :: Id -> Term -> Term -> Preterm
 termApp2 x tm1 tm2 = TermApplication x [tm1, tm2] Nothing
 
 fromPreterm :: Preterm -> Term
-fromPreterm _termPreterm = Term {_termPreterm, _termType = Nothing}
+fromPreterm _termPreterm = Term {_termPreterm, _termMaybeType = Nothing}
 
 makeTerm :: Preterm -> Type -> Term
-makeTerm _termPreterm ty = Term {_termPreterm, _termType = Just ty}
+makeTerm _termPreterm ty = Term {_termPreterm, _termMaybeType = Just ty}
 
 instance PrettyShow Term where
   prettyShow tm = prettyShow (_termPreterm tm)

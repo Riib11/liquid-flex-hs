@@ -145,7 +145,7 @@ instance F.Subable r => F.Subable (FunType_ r) where
 -- | TermMatch Type
 data Term = Term
   { termPreterm :: Preterm,
-    termType :: BaseType
+    termMaybeType :: BaseType
   }
   deriving (Eq, Show)
 

@@ -141,7 +141,7 @@ evalTerm tm = do
                       (throwInterpError $ "explicit contextual arguments passed to '" <> prettyShow tm <> "', but could not find the contextual argument that has the same type as contextual paramter '" <> prettyShow txt <> ": " <> prettyShow ty <> "'")
                       pure
                       =<< findM
-                        ( \tmArg -> case tmArg ^. termType of
+                        ( \tmArg -> case tmArg ^. termMaybeType of
                             Nothing -> throwInterpError $ "explicit contextual argument no type-checked: " <> prettyShow tm
                             Just tyArg -> return (ty == tyArg)
                         )
@@ -185,14 +185,14 @@ evalPrimFun pf args = case (pf, args) of
   (PrimFunAnd, [a, b])
     | TermLiteral (LiteralBit a) <- a ^. termPreterm,
       TermLiteral (LiteralBit b) <- b ^. termPreterm ->
-      return $ makeTerm (TermLiteral (LiteralBit (a && b))) TypeBit
+        return $ makeTerm (TermLiteral (LiteralBit (a && b))) TypeBit
   (PrimFunOr, [a, b])
     | TermLiteral (LiteralBit a) <- a ^. termPreterm,
       TermLiteral (LiteralBit b) <- b ^. termPreterm ->
-      return $ makeTerm (TermLiteral (LiteralBit (a || b))) TypeBit
+        return $ makeTerm (TermLiteral (LiteralBit (a || b))) TypeBit
   (PrimFunNot, [a])
     | TermLiteral (LiteralBit a) <- a ^. termPreterm ->
-      return $ makeTerm (TermLiteral (LiteralBit (not a))) TypeBit
+        return $ makeTerm (TermLiteral (LiteralBit (not a))) TypeBit
   _ -> invalid
   where
     invalid = throwInterpError $ "primitive function application was given invalid arguments: " <> prettyShow (TermApplication (idOfPrimFun pf) args Nothing)

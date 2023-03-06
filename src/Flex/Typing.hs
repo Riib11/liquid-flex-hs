@@ -267,7 +267,7 @@ inferTerm tm = do
     TermLiteral (LiteralString _) -> return $ setType (TypeCast (TypeArray TypeChar))
     TermNamed x -> do
       locs <- asks (^. ctxLocals)
-      setType <$> (normType =<< lookupTerm (fromJust . (^. termType)) locs ScopingError x)
+      setType <$> (normType =<< lookupTerm (fromJust . (^. termMaybeType)) locs ScopingError x)
     TermCast tm -> do
       tm <- inferTerm tm
       ty <- getInferredType tm
@@ -413,7 +413,7 @@ inferTerm tm = do
     setPretermAndType :: Preterm -> Type -> Term
     setPretermAndType pt ty =
       tm
-        & ( termType %~ \case
+        & ( termMaybeType %~ \case
               Nothing -> Just ty
               Just _ -> error "tried to initialize the type of a term that already had an initialized type"
           )
@@ -463,12 +463,12 @@ checkTerm :: Term -> Type -> Typing Term
 checkTerm tm ty = do
   debug $ "checkTerm: " <> prettyShow tm <> " :? " <> prettyShow ty
   ty <- join $ liftM2 checkUnify (getInferredType tm) (return ty)
-  return $ tm & termType .~ Just ty
+  return $ tm & termMaybeType .~ Just ty
 
 -- ** type inference
 
 getInferredType :: Term -> Typing Type
-getInferredType tm = case tm ^. termType of
+getInferredType tm = case tm ^. termMaybeType of
   Nothing -> error $ "tried to get inferred type of a term before before inference: " <> prettyShow tm
   Just ty -> normType ty
 
