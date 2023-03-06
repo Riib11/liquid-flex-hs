@@ -546,8 +546,6 @@ instance PrettyShow FloatSize where
 
 -- ** term
 
--- type Term = (Preterm, Type)
-
 data Term = Term
   { _termPreterm :: Preterm,
     _termType :: Maybe Type

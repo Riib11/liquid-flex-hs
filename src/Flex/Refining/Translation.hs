@@ -14,6 +14,12 @@ import qualified Language.Fixpoint.Types as F
 import PrettyShow (PrettyShow (prettyShow))
 import Utility (fromJust')
 
+-- * Translation
+
+--
+-- Translate terms and types from Flex to LiquidFlex
+
+-- | TranslationCtx
 data TranslationCtx = TranslationCtx
   { _idSymbols :: Map.Map Base.Id F.Symbol
   }
@@ -22,9 +28,7 @@ makeLenses ''TranslationCtx
 
 type T m a = FlexT (ReaderT TranslationCtx m) a
 
--- | Translation
---
--- Translate terms and types from Flex to LiquidFlex
+-- | transTerm
 transTerm :: Monad m => Base.Term -> T m Reft.Term
 transTerm tm = case tm ^. Base.termPreterm of
   Base.TermLiteral lit -> transLiteral (fromJust' "TODO" (tm ^. Base.termType)) lit
