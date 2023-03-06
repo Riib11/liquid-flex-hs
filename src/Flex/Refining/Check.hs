@@ -39,16 +39,8 @@ check env tm tyExp = do
 checkBlock :: Env -> Block -> BaseType -> CG Cstr
 checkBlock env ([], tm) tyExp = check env tm tyExp
 checkBlock env (stmt : stmts, tm) tyExp = case stmt of
-  StatementLet x mb_sigExp imp -> do
-    (cstr, sigInf) <- synth env imp
-    (cstr, sig) <-
-      case mb_sigExp of
-        -- if there is an annotated signature, then check that the
-        -- implementation satisfies it i.e. the inferred signature is a subtype
-        -- of the annotated (expected) signature
-        Just sigExp -> checkSubtype sigInf sigExp <&> (,sigExp)
-        -- otherwise, just use the inferred signature
-        Nothing -> return (andCstr cstr trivialCstr, sigInf)
+  StatementLet x imp -> do
+    (cstr, sig) <- synth env imp
     -- universally quantify over the introduced value with the appropriate
     -- signature
     andCstr cstr . forallCstr x sig

@@ -189,13 +189,13 @@ prettyShowBlock (stmts, tm) = "{" <> go stmts <> "}"
     go (stmt : stmts') = prettyShow stmt <> "; " <> go stmts'
 
 data Statement
-  = StatementLet !F.Symbol !(Maybe BaseType) !Term
+  = StatementLet !F.Symbol !Term
   | StatementAssert !Term !BaseType
   deriving (Eq, Show)
 
 instance PrettyShow Statement where
   prettyShow = \case
-    StatementLet x mb_ty tm -> show x <> maybe "" ((" : " <>) . prettyShow) mb_ty <> " = " <> show tm
+    StatementLet x tm -> show x <> " = " <> show tm
     StatementAssert tm ty -> prettyShow tm <> " : " <> prettyShow ty
 
 instance HasLabel Term where
