@@ -37,6 +37,7 @@ library
       Flex.Refining.Embedding
       Flex.Refining.Query
       Flex.Refining.Syntax
+      Flex.Refining.Translation
       Flex.Shallow
       Flex.Syntax
       Flex.Typing

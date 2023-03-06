@@ -561,7 +561,7 @@ data Preterm
   | TermNamed Id
   | TermTuple [Term]
   | TermArray [Term]
-  | TermBlock ([Statement], Term)
+  | TermBlock Block
   | TermStructure Id (Map.Map Text Term)
   | TermMember Term Text
   | TermConstructor Id (Maybe Term)
@@ -570,6 +570,8 @@ data Preterm
   | TermAscribe Term Type
   | TermMatch Term [(Pattern, Term)]
   deriving (Eq, Show)
+
+type Block = ([Statement], Term)
 
 termApp1 :: Id -> Term -> Preterm
 termApp1 x tm = TermApplication x [tm] Nothing

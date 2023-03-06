@@ -32,6 +32,7 @@ data FlexError
   = ScopingError String
   | TypingError String
   | InterpError [Term] String
+  | RefineError String
   | -- | can be raised by partial functions during interpretation
     PartialError String
   deriving (Show)

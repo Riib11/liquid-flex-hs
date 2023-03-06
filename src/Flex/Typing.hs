@@ -80,7 +80,8 @@ procImport _imp =
 procTypeId :: Id -> Typing ()
 procTypeId x =
   unlessM (isJust <$> gets (^. envModuleCtx . ctxModuleTypes . at x)) $
-    throwError . ScopingError $ "unknown type id: " <> prettyShow x
+    throwError . ScopingError $
+      "unknown type id: " <> prettyShow x
 
 -- check is an existing structure id
 procStructureId :: Id -> Typing ()
@@ -114,25 +115,36 @@ procDeclaration decl = do
       procStructureId `mapM_` structureExtensionId struct
       structureFields <- normType `mapM` structureFields struct
       structureRefinement <- procRefinement (structureRefinement struct)
-      envModuleCtx . ctxModuleTypes . at (fromUnqualText $ structureName struct)
+      envModuleCtx
+        . ctxModuleTypes
+        . at (fromUnqualText $ structureName struct)
         .= Just (DeclarationTypeStructure struct {structureFields, structureRefinement})
     DeclarationNewtype newty -> do
       newtypeType <- normType $ newtypeType newty
       newtypeRefinement <- procRefinement $ newtypeRefinement newty
-      envModuleCtx . ctxModuleTypes . at (fromUnqualText $ newtypeName newty)
+      envModuleCtx
+        . ctxModuleTypes
+        . at (fromUnqualText $ newtypeName newty)
         .= Just (DeclarationTypeNewtype newty {newtypeType, newtypeRefinement})
     DeclarationVariant varnt -> do
       variantConstructors <- normType `mapM` variantConstructors varnt
-      envModuleCtx . ctxModuleTypes . at (fromUnqualText $ variantName varnt)
+      envModuleCtx
+        . ctxModuleTypes
+        . at (fromUnqualText $ variantName varnt)
         .= Just (DeclarationTypeVariant varnt {variantConstructors})
     DeclarationEnumerated enm -> do
       unless (isLiteralType (enumeratedLiteralType enm)) $
-        throwError . TypingError $ "the type of an enum must be a literal type, but instead it is: " <> prettyShow (enumeratedLiteralType enm)
-      envModuleCtx . ctxModuleTypes . at (fromUnqualText $ enumeratedName enm)
+        throwError . TypingError $
+          "the type of an enum must be a literal type, but instead it is: " <> prettyShow (enumeratedLiteralType enm)
+      envModuleCtx
+        . ctxModuleTypes
+        . at (fromUnqualText $ enumeratedName enm)
         .= Just (DeclarationTypeEnumerated enm)
     DeclarationAlias alias -> do
       aliasType <- normType $ aliasType alias
-      envModuleCtx . ctxModuleTypes . at (fromUnqualText $ aliasName alias)
+      envModuleCtx
+        . ctxModuleTypes
+        . at (fromUnqualText $ aliasName alias)
         .= Just (DeclarationTypeAlias alias {aliasType})
     DeclarationFunction fun -> do
       let funTy = functionType fun
@@ -147,14 +159,18 @@ procDeclaration decl = do
           ( procDefinitionBody (functionTypeOutput funTy) $
               functionBody fun
           )
-      envModuleCtx . ctxModuleFunctions . at (fromUnqualText $ functionName fun)
+      envModuleCtx
+        . ctxModuleFunctions
+        . at (fromUnqualText $ functionName fun)
         .= Just (fun {functionType, functionBody})
     DeclarationConstant con -> do
       constantType <- normType $ constantType con
       constantBody <- procDefinitionBody constantType $ constantBody con
       let con' = con {constantType, constantBody}
       debug $ "procDeclaration: " <> prettyShow (get_name decl) <> " ==> " <> prettyShow con'
-      envModuleCtx . ctxModuleConstants . at (fromUnqualText $ constantName con)
+      envModuleCtx
+        . ctxModuleConstants
+        . at (fromUnqualText $ constantName con)
         .= Just con'
 
 normFunctionType :: FunctionType -> Typing FunctionType
@@ -172,14 +188,17 @@ normTransformFunctionType funTy = do
   functionTypeParams <- flip mapM (functionTypeParams funTy) \(txt, ty) -> do
     ty <- normType ty
     unlessM (isMessageType ty) $
-      throwError . TypingError $ "the parameter '" <> prettyShow txt <> ": " <> prettyShow ty <> "' must be a message type in order to be the parameter of a transform function"
+      throwError . TypingError $
+        "the parameter '" <> prettyShow txt <> ": " <> prettyShow ty <> "' must be a message type in order to be the parameter of a transform function"
     return (txt, ty)
   functionTypeContextualParams <- normType `mapM` functionTypeContextualParams funTy
   functionTypeOutput <- normType (functionTypeOutput funTy)
   unlessM (isMessageType functionTypeOutput) $
-    throwError . TypingError $ "the function output type '" <> prettyShow functionTypeOutput <> "' must be a message type in order to be the output of a transform function"
+    throwError . TypingError $
+      "the function output type '" <> prettyShow functionTypeOutput <> "' must be a message type in order to be the output of a transform function"
   unlessM (isMessageType functionTypeOutput) $
-    throwError . TypingError $ "the output type '" <> prettyShow functionTypeOutput <> "' must be a message type in order to be the output of a transform function"
+    throwError . TypingError $
+      "the output type '" <> prettyShow functionTypeOutput <> "' must be a message type in order to be the output of a transform function"
   return funTy {functionTypeParams, functionTypeContextualParams, functionTypeOutput}
 
 -- expects type to be normalized
@@ -349,7 +368,7 @@ inferTerm tm = do
                       Nothing -> throwError . TypingError $ "missing explicit contextual argument: " <> prettyShow tm
                       Just (ty, tm') -> return (ty, tm')
                 )
-            `traverse` cxargsList
+              `traverse` cxargsList
         Just (Right _) -> throwError . TypingError $ "should not already be typ-checked here"
       debug $ "inferTerm: output preterm = " <> prettyShow (TermApplication x args (Just . Right $ cxargsMap))
       return $ setPretermAndType (TermApplication x args (Just . Right $ cxargsMap)) (functionTypeOutput funTy)
@@ -515,12 +534,12 @@ isExtensionOf :: Id -> Id -> Typing Bool
 isExtensionOf x xExt
   | x == xExt = return True
   | otherwise =
-    gets (^. envModuleCtx . ctxModuleTypes . at x) >>= \case
-      Nothing -> False <$ (throwError . ScopingError $ "unknown id: " <> prettyShow x)
-      Just (DeclarationTypeStructure struct) -> case structureExtensionId struct of
-        Nothing -> return False
-        Just x' -> x' `isExtensionOf` xExt
-      _ -> False <$ (throwError . ScopingError $ "id must be a structure id: " <> prettyShow x)
+      gets (^. envModuleCtx . ctxModuleTypes . at x) >>= \case
+        Nothing -> False <$ (throwError . ScopingError $ "unknown id: " <> prettyShow x)
+        Just (DeclarationTypeStructure struct) -> case structureExtensionId struct of
+          Nothing -> return False
+          Just x' -> x' `isExtensionOf` xExt
+        _ -> False <$ (throwError . ScopingError $ "id must be a structure id: " <> prettyShow x)
 
 isCastableTo :: Type -> Type -> Bool
 isCastableTo ty1 ty2 = case (ty1, ty2) of
