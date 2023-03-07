@@ -40,7 +40,7 @@ runTypingM :: Ctx -> TypingM a -> IO a
 runTypingM ctx m = runReaderT m ctx
 
 tryTyping :: Typing a -> Typing (Maybe a)
-tryTyping m = do
+tryTyping m =
   tryFlexT m >>= \case
     Left _err -> return Nothing
     Right a -> return $ Just a
@@ -155,7 +155,7 @@ procDeclaration decl = do
       functionBody <-
         ffoldr312
           (functionTypeParams funTy <> (fmap (first Just) . Map.toList $ functionTypeContextualParams funTy))
-          (\(mb_txt, ty) -> maybe id (\txt -> introLocal txt ty) mb_txt)
+          (\(mb_txt, ty) -> maybe id (`introLocal` ty) mb_txt)
           ( procDefinitionBody (functionTypeOutput funTy) $
               functionBody fun
           )
@@ -185,7 +185,7 @@ normTransformFunctionType :: FunctionType -> Typing FunctionType
 normTransformFunctionType funTy = do
   debug $ "normTransformFunctionType: " <> prettyShow funTy
   -- check that the input and output types are messages
-  functionTypeParams <- flip mapM (functionTypeParams funTy) \(txt, ty) -> do
+  functionTypeParams <- forM (functionTypeParams funTy) \(txt, ty) -> do
     ty <- normType ty
     unlessM (isMessageType ty) $
       throwError . TypingError $
@@ -212,17 +212,14 @@ isMessageType ty = do
 
 procDefinitionBody :: Type -> DefinitionBody -> Typing DefinitionBody
 procDefinitionBody ty = \case
-  DefinitionBodyTerm tm -> DefinitionBodyTerm <$> (liftM2' checkTerm (inferTerm tm) (return ty))
-  DefinitionBodyDerived (Just tm) -> DefinitionBodyDerived . Just <$> (liftM2' checkTerm (inferTerm tm) (return ty))
+  DefinitionBodyTerm tm -> DefinitionBodyTerm <$> liftM2' checkTerm (inferTerm tm) (return ty)
+  DefinitionBodyDerived (Just tm) -> DefinitionBodyDerived . Just <$> liftM2' checkTerm (inferTerm tm) (return ty)
   body -> return body
 
 procIntroId :: Id -> Typing ()
 procIntroId x@(Id mb_mdlId _) = case mb_mdlId of
   Nothing -> return ()
-  Just _mdlId -> do
-    -- mdlId' <- asks (^. ctxModule . ctxModuleId)
-    -- when (mdlId /= mdlId') $ throwError . ScopingError $ "incorrect qualification of introduced id: " <> prettyShow x
-    throwError . ScopingError $ "unnecessary qualification of introduced id: " <> prettyShow x
+  Just _mdlId -> throwError . ScopingError $ "unnecessary qualification of introduced id: " <> prettyShow x
 
 procRefinement :: Refinement -> Typing Refinement
 procRefinement rfn@(Refinement Nothing) = return rfn
@@ -293,7 +290,7 @@ inferTerm tm = do
       ty <- getInferredType tm
       return $ setPretermAndType (TermBlock (stmts, tm)) ty
     -- decide whether this is a variant constructor or newtype constructor
-    TermConstructor x mb_tm -> do
+    TermConstructor x mb_tm ->
       lookupConstructor x >>= \case
         ConstructorEnumerated enm _lit ->
           case mb_tm of
@@ -319,7 +316,7 @@ inferTerm tm = do
 
       funTy <-
         case functionBody fun of
-          DefinitionBodyPrimFun pf -> freshenFunctionTypeUnifIds $ functionType fun
+          DefinitionBodyPrimFun _pf -> freshenFunctionTypeUnifIds $ functionType fun
           _ -> return $ functionType fun
       debug $ "funTy = " <> prettyShow funTy
 
@@ -334,8 +331,7 @@ inferTerm tm = do
         Nothing -> do
           locs <- asks (^. ctxLocals)
           Map.fromList
-            <$> ( ( \(txt, ty) -> do
-                      -- find a local var that has the matching type
+            <$> ( ( \(txt, ty) ->
                       findM
                         (\(_txtLoc, tyLoc) -> isJust <$> tryTyping (checkUnify tyLoc ty))
                         (Map.toList locs)
@@ -413,11 +409,10 @@ inferTerm tm = do
     setPretermAndType :: Preterm -> Type -> Term
     setPretermAndType pt ty =
       tm
-        & ( termMaybeType %~ \case
-              Nothing -> Just ty
-              Just _ -> error "tried to initialize the type of a term that already had an initialized type"
-          )
-        & (termPreterm .~ pt)
+        & termMaybeType %~ \case
+          Nothing -> Just ty
+          Just _ -> error "tried to initialize the type of a term that already had an initialized type"
+        & termPreterm .~ pt
 
     setType :: Type -> Term
     setType = setPretermAndType (tm ^. termPreterm)
@@ -441,12 +436,12 @@ checkBlock (stmts, tm0) = procStatements [] stmts
 withProcessCheckPattern :: Type -> Pattern -> (Pattern -> Typing a) -> Typing a
 withProcessCheckPattern ty pat k = case pat ^. patternPrepattern of
   PatternDiscard ->
-    k (pat & patternType .~ Just ty)
+    k (pat & patternType ?~ ty)
   PatternNamed x ->
-    locally ctxLocals (Map.insert x ty) $ k (pat & patternType .~ Just ty)
+    locally ctxLocals (Map.insert x ty) $ k (pat & patternType ?~ ty)
   PatternLiteral lit -> do
     ty <- liftM2' checkUnify (inferLiteral lit) (return ty)
-    k (pat & patternType .~ Just ty)
+    k (pat & patternType ?~ ty)
 
 introLocal :: Text -> Type -> Typing a -> Typing a
 introLocal x ty = locally ctxLocals (Map.insert x ty)
@@ -459,7 +454,7 @@ checkTerm :: Term -> Type -> Typing Term
 checkTerm tm ty = do
   debug $ "checkTerm: " <> prettyShow tm <> " :? " <> prettyShow ty
   ty <- join $ liftM2 checkUnify (getInferredType tm) (return ty)
-  return $ tm & termMaybeType .~ Just ty
+  return $ tm & termMaybeType ?~ ty
 
 -- ** type inference
 
@@ -492,12 +487,13 @@ checkUnify tyInf tyExp = do
     (TypeUnif u, ty) -> substUnifId u ty
     (ty, TypeUnif u) -> substUnifId u ty
     -- base types
+    -- TODO: check that int/uint sizes are valid (i.e. are non-zero)
     (TypeInt s1, TypeInt s2) | s1 == s2 -> return tyExp
     (TypeUInt s1, TypeUInt s2) | s1 == s2 -> return tyExp
     (TypeFloat s1, TypeFloat s2) | s1 == s2 -> return tyExp
     -- polymorphic types
     (TypeArray ty1, TypeArray ty2) -> TypeArray <$> checkUnify ty1 ty2
-    (TypeTuple tys1, TypeTuple tys2) | length tys1 == length tys2 -> TypeTuple <$> mapM (uncurry checkUnify) (tys1 `zip` tys2)
+    (TypeTuple tys1, TypeTuple tys2) | length tys1 == length tys2 -> TypeTuple <$> zipWithM checkUnify tys1 tys2
     (TypeOptional ty1, TypeOptional ty2) -> TypeOptional <$> checkUnify ty1 ty2
     -- casting
     -- TODO: if ty2 is a Cast also, then should be able to cast
@@ -591,7 +587,7 @@ unwrapCasts = \case
 --     return $ FunctionType [(Nothing, TypeBit)] Map.empty TypeBit
 
 primitive_constants :: Map.Map Text (Typing Type)
-primitive_constants = Map.fromList []
+primitive_constants = Map.empty
 
 -- ** utilities
 
@@ -620,7 +616,7 @@ freshenFunctionTypeUnifIds funTy = do
   --   foldM
   --     ( \(m, cxparams) (txt, )
   --     )
-  (m, functionTypeOutput) <- go m (functionTypeOutput funTy)
+  (_m, functionTypeOutput) <- go m (functionTypeOutput funTy)
   return
     FunctionType
       { functionTypeParams,
@@ -631,15 +627,15 @@ freshenFunctionTypeUnifIds funTy = do
     go :: Map.Map Unif.Id Unif.Id -> Type -> Typing (Map.Map Unif.Id Unif.Id, Type)
     go m = \case
       TypeUnif u -> case Map.lookup u m of
-        Just u' -> return $ (m, TypeUnif u')
+        Just u' -> return (m, TypeUnif u')
         Nothing -> do
           u' <- freshUnifId (Unif.getLabel u)
-          return $ (Map.insert u u' m, TypeUnif u')
+          return (Map.insert u u' m, TypeUnif u')
       TypeArray a -> go m a >>= \(m, a') -> return (m, TypeArray a')
       TypeOptional a -> go m a >>= \(m, a') -> return (m, TypeOptional a')
       TypeCast a -> go m a >>= \(m, a') -> return (m, TypeCast a')
       TypeTuple [] -> return (m, TypeTuple [])
-      TypeTuple (a : as) -> do
+      TypeTuple as -> do
         (m', as') <-
           foldM
             (\(m', as') a' -> go m' a' >>= \(m'', a'') -> return (m'', a'' : as'))
@@ -654,15 +650,15 @@ freshenTypeUnifIds = fmap snd . go Map.empty
     go :: Map.Map Unif.Id Unif.Id -> Type -> Typing (Map.Map Unif.Id Unif.Id, Type)
     go m = \case
       TypeUnif u -> case Map.lookup u m of
-        Just u' -> return $ (m, TypeUnif u')
+        Just u' -> return (m, TypeUnif u')
         Nothing -> do
           u' <- freshUnifId (Unif.getLabel u)
-          return $ (Map.insert u u' m, TypeUnif u')
+          return (Map.insert u u' m, TypeUnif u')
       TypeArray a -> go m a >>= \(m, a') -> return (m, TypeArray a')
       TypeOptional a -> go m a >>= \(m, a') -> return (m, TypeOptional a')
       TypeCast a -> go m a >>= \(m, a') -> return (m, TypeCast a')
       TypeTuple [] -> return (m, TypeTuple [])
-      TypeTuple (a : as) -> do
+      TypeTuple as -> do
         (m', as') <-
           foldM
             (\(m', as') a' -> go m' a' >>= \(m'', a'') -> return (m'', a'' : as'))
