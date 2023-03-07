@@ -1,28 +1,28 @@
 module Flex.Refining
-  ( module Flex.Refining.Refining,
+  ( module Flex.Refining.Common,
     module Flex.Refining.Check,
     module Flex.Refining.Query,
     module Flex.Refining.Syntax,
     module Flex.Refining.Translation,
-    main,
   )
 where
 
-import Control.Applicative (Applicative (liftA2))
 import Control.DeepSeq
 import Control.Exception
 import Control.Monad (foldM, void, when)
+import Control.Monad.Error.Class (MonadError (throwError))
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.Check (reftPreterm, reftTerm)
-import Flex.Refining.Query (checkValid, genCheckQuery, resultExitCode)
-import Flex.Refining.Refining (messageOfRefineError, unsafeRefining)
+import Flex.Flex
+import Flex.Refining.Check
+import Flex.Refining.Common
+import Flex.Refining.Query
 import Flex.Refining.Syntax
 import Flex.Refining.Translation
-import Flex.Syntax (Id, Literal, ModuleId)
-import qualified Flex.Syntax as Syn
+import qualified Flex.Syntax as Base
 import GHC.Generics
 import GHC.IO.Exception (ExitCode)
 import qualified Language.Fixpoint.Horn.Solve as HS
@@ -39,49 +39,75 @@ import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.Printf (printf)
 import Utility
 
+checkModule :: Env -> Base.Module -> Refining ()
+checkModule = undefined
+
+checkDeclaration :: Env -> Base.Declaration -> Refining ()
+checkDeclaration = undefined
+
+checkFunction :: Env -> Base.Function -> Refining ()
+checkFunction = undefined
+
+checkConstant :: Env -> Base.Constant -> Refining ()
+checkConstant env con = do
+  k <- case Base.constantBody con of
+    Base.DefinitionBodyTerm tm -> return \f -> f tm
+    Base.DefinitionBodyDerived (Just tm) -> return \f -> f tm
+    _ -> return \f -> return ()
+  k \tm -> do
+    tm' <- runTranslating $ transTerm tm
+    runCheck env tm' (termType tm')
+
+runCheck :: Env -> Term -> BaseType -> Refining ()
+runCheck env tm ty = do
+  query <- genCheckQuery env tm ty
+  result <- liftIO $ checkValid "TODO: filepath" query
+  case result of
+    -- TODO: print better
+    F.Crash x s -> throwError . refineError $ "Crash: " <> show (x, s)
+    F.Unsafe st res -> throwError . refineError $ "Unsafe: " <> show (st, res)
+    F.Safe st -> return ()
+
+{-
 main :: IO ()
 main = do
   let fp :: FilePath
       fp = "Refining.hs"
 
-  {-
-  -- EXAMPLE: this is Unsafe because `1 == 2` is not equal to `true`
-  let tm =
-        TermApp
-          (ApplPrimFun Syn.PrimFunEq)
-          [ TermLit (Syn.LiteralInteger 1),
-            TermLit (Syn.LiteralInteger 2)
-          ]
-  r <- case reftTerm (TermLit (Syn.LiteralBit True)) of
-    Left errs -> error ("reftTerm error: " <> show errs)
-    Right r -> return r
-  let ty = TypeAtomic r AtomicBit
-  -}
+  -- -- EXAMPLE: this is Unsafe because `1 == 2` is not equal to `true`
+  -- let tm =
+  --       TermApp
+  --         (ApplPrimFun Base.PrimFunEq)
+  --         [ TermLit (Base.LiteralInteger 1),
+  --           TermLit (Base.LiteralInteger 2)
+  --         ]
+  -- r <- case reftTerm (TermLit (Base.LiteralBit True)) of
+  --   Left errs -> error ("reftTerm error: " <> show errs)
+  --   Right r -> return r
+  -- let ty = TypeAtomic r AtomicBit
 
-  {-
-  -- EXAMPLE: this is Safe because `true || false` is equal to `true`
-  let tm =
-        Term
-          ( TermApp
-              (AppPrimFun Syn.PrimFunOr)
-              [ Term
-                  (TermLit (Syn.LiteralBit True))
-                  (TypeAtomic mempty AtomicBit),
-                Term
-                  (TermLit (Syn.LiteralBit False))
-                  (TypeAtomic mempty AtomicBit)
-              ]
-          )
-          (TypeAtomic mempty AtomicBit)
-      rtm =
-        Term
-          (TermLit (Syn.LiteralBit True))
-          (TypeAtomic mempty AtomicBit)
-  r <- case reftTerm rtm of
-    Left errs -> error ("reftTerm error: " <> show errs)
-    Right r -> return r
-  let ty = TypeAtomic r AtomicBit
-  -}
+  -- -- EXAMPLE: this is Safe because `true || false` is equal to `true`
+  -- let tm =
+  --       Term
+  --         ( TermApp
+  --             (AppPrimFun Base.PrimFunOr)
+  --             [ Term
+  --                 (TermLit (Base.LiteralBit True))
+  --                 (TypeAtomic mempty AtomicBit),
+  --               Term
+  --                 (TermLit (Base.LiteralBit False))
+  --                 (TypeAtomic mempty AtomicBit)
+  --             ]
+  --         )
+  --         (TypeAtomic mempty AtomicBit)
+  --     rtm =
+  --       Term
+  --         (TermLit (Base.LiteralBit True))
+  --         (TypeAtomic mempty AtomicBit)
+  -- r <- case reftTerm rtm of
+  --   Left errs -> error ("reftTerm error: " <> show errs)
+  --   Right r -> return r
+  -- let ty = TypeAtomic r AtomicBit
 
   let tm =
         Term
@@ -90,15 +116,15 @@ main = do
               [ Term
                   ( TermApp
                       (AppVar "g")
-                      -- [Term (TermLit (Syn.LiteralBit True)) ()]
+                      -- [Term (TermLit (Base.LiteralBit True)) ()]
                       [ let r =
                               unsafeRefining $
                                 reftTerm $
                                   Term
-                                    (TermLiteral (Syn.LiteralBit False))
+                                    (TermLiteral (Base.LiteralBit False))
                                     (TypeAtomic mempty AtomicBit)
-                         in Term
-                              (TermLiteral (Syn.LiteralBit False))
+     unsafeRefining                    in Term
+                              (TermLiteral (Base.LiteralBit False))
                               (TypeAtomic r AtomicBit)
                       ]
                   )
@@ -119,7 +145,7 @@ main = do
                     unsafeRefining $
                       reftTerm
                         ( Term
-                            (TermLiteral (Syn.LiteralBit True))
+                            (TermLiteral (Base.LiteralBit True))
                             (TypeAtomic mempty AtomicBit)
                         )
                in TypeFunType $
@@ -133,14 +159,14 @@ main = do
                     unsafeRefining $
                       reftTerm
                         ( Term
-                            (TermLiteral (Syn.LiteralBit False))
+                            (TermLiteral (Base.LiteralBit False))
                             (TypeAtomic mempty AtomicBit)
                         )
                   r2 =
                     unsafeRefining $
                       reftTerm
                         ( Term
-                            (TermLiteral (Syn.LiteralBit True))
+                            (TermLiteral (Base.LiteralBit True))
                             (TypeAtomic mempty AtomicBit)
                         )
                in TypeFunType $
@@ -155,3 +181,4 @@ main = do
   let query = unsafeRefining $ genCheckQuery env tm ty
   result <- checkValid fp query
   exitWith =<< resultExitCode result
+-}

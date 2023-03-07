@@ -4,14 +4,15 @@ import Control.Applicative (Applicative (liftA2))
 import Control.DeepSeq
 import Control.Exception
 import Control.Monad (foldM, void, when)
+import Control.Monad.Error.Class (MonadError (throwError))
 import Data.Bifunctor (second)
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.Refining
-import Flex.Syntax (Id, Literal, ModuleId)
-import qualified Flex.Syntax as Syn
+import Flex.Flex (FlexError (RefineError), RefineError (MakeRefineError))
+import Flex.Refining.Common
+import qualified Flex.Syntax as Base
 import GHC.Generics
 import GHC.IO.Exception (ExitCode)
 import qualified Language.Fixpoint.Horn.Solve as HS
@@ -171,7 +172,7 @@ instance PrettyShow Term where
   prettyShow = prettyShow . termPreterm
 
 data Preterm
-  = TermLiteral !Literal
+  = TermLiteral !Base.Literal
   | TermVar !F.Symbol
   | TermBlock !Block
   | TermApp !App [Term]
@@ -185,17 +186,17 @@ instance PrettyShow Preterm where
     TermApp app args -> prettyShow app <> "(" <> List.intercalate ", " (prettyShow <$> args) <> ")"
 
 data App
-  = AppPrimFun Syn.PrimFun
+  = AppPrimFun Base.PrimFun
   | AppVar F.Symbol
   deriving (Eq, Show)
 
 instance PrettyShow App where
   prettyShow = \case
     AppPrimFun pf -> case pf of
-      Syn.PrimFunEq -> "=="
-      Syn.PrimFunOr -> "||"
-      Syn.PrimFunAnd -> "&&"
-      Syn.PrimFunNot -> "!"
+      Base.PrimFunEq -> "=="
+      Base.PrimFunOr -> "||"
+      Base.PrimFunAnd -> "&&"
+      Base.PrimFunNot -> "!"
     AppVar x -> show x
 
 type Block = ([Statement], Term)
@@ -216,7 +217,7 @@ instance PrettyShow Statement where
     StatementLet x tm -> show x <> " = " <> show tm
     StatementAssert tm -> "assert(" <> prettyShow tm <> ")"
 
-instance HasLabel Term where
+instance Base.HasLabel Term where
   getLabel _ = F.dummySpan
 
 -- | Env
@@ -231,11 +232,9 @@ extendEnv = F.insertSEnv
 lookupEnv :: F.Symbol -> Env -> Refining Type
 lookupEnv x env = case F.lookupSEnv x env of
   Nothing ->
-    throwRefining
-      [ RefineError $
-          "Can't find variable's refinement type in environment: "
-            <> show x
-      ]
+    throwError . RefineError . MakeRefineError $
+      "Can't find variable's refinement type in environment: "
+        <> show x
   Just ty -> return ty
 
 -- | Substitution

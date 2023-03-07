@@ -33,10 +33,10 @@ library
       Flex.Parsing
       Flex.Refining
       Flex.Refining.Check
+      Flex.Refining.Common
       Flex.Refining.Constraint
       Flex.Refining.Embedding
       Flex.Refining.Query
-      Flex.Refining.Refining
       Flex.Refining.Syntax
       Flex.Refining.Translation
       Flex.Shallow

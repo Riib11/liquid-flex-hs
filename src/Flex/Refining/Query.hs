@@ -8,8 +8,9 @@ import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.Check (check)
-import Flex.Refining.Refining
+import Flex.Flex
+import Flex.Refining.Check (checkTerm)
+import Flex.Refining.Common
 import Flex.Refining.Syntax
 import Flex.Syntax (Id, Literal, ModuleId)
 import qualified Flex.Syntax as Syn
@@ -38,7 +39,7 @@ type Query = H.Query RefineError
 genCheckQuery :: Env -> Term -> BaseType -> Refining Query
 genCheckQuery env tm ty =
   H.Query [] []
-    <$> check env tm ty
+    <$> checkTerm env tm ty
     <*> pure mempty
     <*> pure mempty
     <*> pure mempty
@@ -59,7 +60,7 @@ resultExitCode res = do
 resultErrors :: Result -> [RefineError]
 resultErrors = \case
   -- TODO: why does each err have a Maybe String also?
-  F.Crash errs msg -> RefineError ("Crash: " <> msg) : (fst <$> errs)
+  F.Crash errs msg -> MakeRefineError ("Crash: " <> msg) : (fst <$> errs)
   F.Unsafe _ errs -> errs
   F.Safe {} -> []
 

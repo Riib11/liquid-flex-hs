@@ -11,6 +11,7 @@ import qualified Data.List as List
 import qualified Data.Map as Map
 import Data.Text (Text, pack, unpack)
 import qualified Flex.Unif as Unif
+import qualified Language.Fixpoint.Types as F
 import PrettyShow
 import Utility
 
@@ -909,3 +910,9 @@ toAliasedModuleCtx = error "TODO: adds only aliased ids"
 
 subModuleCtx :: ModuleCtx -> ModuleCtx -> ModuleCtx
 subModuleCtx = error "TODO: add sub module ctx stuff to parent module ctx"
+
+-- | Label
+type Label = F.SrcSpan
+
+class HasLabel a where
+  getLabel :: a -> Label

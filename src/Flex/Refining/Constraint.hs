@@ -8,7 +8,8 @@ import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.Refining
+import Flex.Flex
+import Flex.Refining.Common
 import Flex.Refining.Syntax
 import Flex.Syntax (Id, Literal, ModuleId)
 import qualified Flex.Syntax as Syn
@@ -50,12 +51,12 @@ andCstrs = H.CAnd
 
 forallCstr :: F.Symbol -> BaseType -> Cstr -> Cstr
 forallCstr x ty cstr = case sortPred x ty of
-  Just (srt, prd) -> H.All (H.Bind x srt prd (RefineError "forallCstr")) cstr
+  Just (srt, prd) -> H.All (H.Bind x srt prd (MakeRefineError "forallCstr")) cstr
   _ -> cstr
 
 -- subtyping constraint (??)
 headCstr :: F.Expr -> Cstr
-headCstr e = H.Head (H.Reft e) (RefineError $ "Subtype error: " <> show e)
+headCstr e = H.Head (H.Reft e) (MakeRefineError $ "Subtype error: " <> show e)
 
 reftSymbol :: F.Reft -> F.Symbol
 reftSymbol (F.Reft (x, _)) = x

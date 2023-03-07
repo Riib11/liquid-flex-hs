@@ -84,7 +84,7 @@ initTransCtx = do
 transTerm :: Base.Term -> Translating Reft.Term
 transTerm tm = case tm ^. Base.termPreterm of
   Base.TermLiteral lit -> transLiteral lit =<< (transType =<< termType tm)
-  Base.TermCast _ -> lift $ throwError $ RefineError $ "there should be no `cast`s left after type-checking, yet there is: " <> prettyShow tm
+  Base.TermCast _ -> lift $ throwError $ refineError $ "there should be no `cast`s left after type-checking, yet there is: " <> prettyShow tm
   Base.TermNamed x -> transVar x =<< (transType =<< termType tm)
   Base.TermTuple _tes -> error "TODO: transTerm TermTuple"
   Base.TermArray _tes -> error "TODO: transTerm TermArray"
@@ -98,19 +98,19 @@ transTerm tm = case tm ^. Base.termPreterm of
     cxargs <-
       case cxargs of
         Nothing -> return []
-        Just (Left _) -> throwError $ RefineError $ "expected application with contextual arguments to already be typechecked: " <> prettyShow tm
+        Just (Left _) -> throwError $ refineError $ "expected application with contextual arguments to already be typechecked: " <> prettyShow tm
         Just (Right cxargs') -> transTerm `mapM` Map.elems cxargs'
     app <- transApp x
     pure $ Reft.Term (Reft.TermApp app (args <> cxargs)) ty
   -- TODO: do i need to add TermIf to Reft.Term?
   Base.TermIf _te _te' _te2 -> error "TODO: transTerm Termif"
-  Base.TermAscribe _te _ty -> throwError $ RefineError $ "there should be no `ascribe`s left after type-checking, yet there is: " <> prettyShow tm
+  Base.TermAscribe _te _ty -> throwError $ refineError $ "there should be no `ascribe`s left after type-checking, yet there is: " <> prettyShow tm
   Base.TermMatch _te _x0 -> error "TODO: transTerm TermMatch"
 
 termType :: Base.Term -> Translating Base.Type
 termType tm = case tm ^. Base.termMaybeType of
   Nothing ->
-    throwError . RefineError $
+    throwError . refineError $
       "expected term to be type-annotated before translation to refinement syntax: " <> prettyShow tm
   Just ty -> pure ty
 
@@ -154,7 +154,7 @@ transIdRef x =
   asks (^. idSymbols)
     >>= ( \case
             Nothing ->
-              throwError . RefineError $
+              throwError . refineError $
                 "transTerm: can't find translation of id '" <> prettyShow x <> "' in environment"
             Just x' -> do
               pure x'
@@ -184,9 +184,9 @@ transType ty0 = case ty0 of
   Base.TypeEnumerated _enu -> error "TODO: transType TypeEnumerated"
   Base.TypeVariant _vari -> error "TODO: transType Variant"
   Base.TypeNewtype _new -> error "TODO: transType Newtype"
-  Base.TypeNamed _id -> throwError $ RefineError $ "TypeNamed should not appear after typechecking since types should be normalized: " <> show ty0
-  Base.TypeCast _ty -> throwError $ RefineError $ "TypeCast should not appear after typechecking since types should be normalized: " <> show ty0
-  Base.TypeUnif _id -> throwError $ RefineError $ "TypeUnif should not appear after typechecking since types should be normalized: " <> show ty0
+  Base.TypeNamed _id -> throwError $ refineError $ "TypeNamed should not appear after typechecking since types should be normalized: " <> show ty0
+  Base.TypeCast _ty -> throwError $ refineError $ "TypeCast should not appear after typechecking since types should be normalized: " <> show ty0
+  Base.TypeUnif _id -> throwError $ refineError $ "TypeUnif should not appear after typechecking since types should be normalized: " <> show ty0
   where
     boundedIntExpr :: F.Symbol -> Int -> Int -> F.Expr
     boundedIntExpr x nMin nMax =

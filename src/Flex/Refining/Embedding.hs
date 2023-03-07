@@ -5,11 +5,13 @@ import Control.DeepSeq
 import Control.Exception
 import Control.Lens
 import Control.Monad (foldM, void, when)
+import Control.Monad.Error.Class (MonadError (throwError))
 import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.Refining
+import Flex.Flex (refineError)
+import Flex.Refining.Common
 import Flex.Refining.Syntax
 import Flex.Syntax (Id, Literal, ModuleId)
 import qualified Flex.Syntax as Base
@@ -57,7 +59,7 @@ embedAppPrimFun pf args = case (pf, args) of
     F.POr <$> traverse embedTerm [tm1, tm2]
   (Base.PrimFunNot, [tm]) ->
     F.PNot <$> embedTerm tm
-  (pf, args) -> throwRefining [RefineError $ "invalid primitive function application: " <> show (TermApp (AppPrimFun pf) args)]
+  (pf, args) -> throwError . refineError $ "invalid primitive function application: " <> show (TermApp (AppPrimFun pf) args)
 
 embedVar :: F.Symbol -> F.Expr
 embedVar = F.expr

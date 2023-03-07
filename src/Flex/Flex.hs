@@ -2,17 +2,20 @@
 
 module Flex.Flex where
 
+import Control.DeepSeq (NFData)
+import Control.Exception (Exception)
 import Control.Lens
 import Control.Monad.Except
 import Control.Monad.State
 import qualified Data.Map as Map
 import Data.Text (Text)
-import qualified Flex.Refining.Syntax as Reft
 import Flex.Syntax
 import qualified Flex.Unif as Unif
+import GHC.Generics (Generic)
 import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
 import PrettyShow
+import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Utility
 
 type FlexResult a = Either FlexError (a, FlexEnv)
@@ -35,7 +38,7 @@ data FlexError
   = ScopingError String
   | TypingError String
   | InterpError [Term] String
-  | RefineError String
+  | RefineError RefineError
   | -- | can be raised by partial functions during interpretation
     PartialError String
   deriving (Show)
@@ -49,9 +52,58 @@ instance PrettyShow FlexError where
         [ "interpretation error: " <> str,
           "call stack:\n" <> unlines (prettyShow <$> stack)
         ]
-    RefineError str -> "refining error: " <> str
+    RefineError err -> "refining error: " <> prettyShow err
     PartialError str -> "partial error: " <> str
 
+refineError :: String -> FlexError
+refineError = RefineError . MakeRefineError
+
+-- | RefineError
+newtype RefineError = MakeRefineError String
+  deriving (Generic, Show)
+
+instance NFData RefineError
+
+instance Exception [RefineError]
+
+instance PrettyShow RefineError where
+  prettyShow (MakeRefineError str) = "refinement error: " <> str
+
+messageOfRefineError :: RefineError -> String
+messageOfRefineError (MakeRefineError msg) = msg
+
+labelOfRefineError :: RefineError -> Label
+labelOfRefineError _ = F.dummySpan
+
+instance F.PPrint RefineError where
+  pprintTidy k = F.pprintTidy k . refineErrorFP
+
+instance F.Fixpoint RefineError where
+  toFix = PJ.text . messageOfRefineError
+
+instance F.Loc RefineError where
+  srcSpan = labelOfRefineError
+
+fpRefineError :: F.Error1 -> RefineError
+fpRefineError e = MakeRefineError (show $ F.errMsg e)
+
+refineErrorFP :: RefineError -> F.Error
+refineErrorFP err =
+  F.err
+    (labelOfRefineError err)
+    (PJ.text $ messageOfRefineError err)
+
+renderRefineError :: RefineError -> IO PJ.Doc
+renderRefineError (MakeRefineError msg) = do
+  -- TODO: can also look up snippet where error originated
+  return $ PJ.text msg
+
+renderRefineErrors :: [RefineError] -> IO PJ.Doc
+renderRefineErrors errs = do
+  errs' <- mapM renderRefineError errs
+  return $ PJ.vcat (PJ.text "Errors found!" : PJ.text "" : errs')
+
+-- | FlexEnv
 data FlexEnv = FlexEnv
   { _envModuleCtx :: ModuleCtx,
     -- | type variable substitution
