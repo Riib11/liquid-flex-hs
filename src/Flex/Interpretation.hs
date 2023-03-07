@@ -6,7 +6,9 @@ module Flex.Interpretation where
 import Control.Lens hiding (enum)
 import Control.Monad.Error.Class
 import Control.Monad.Reader.Class
+import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
+import Data.Functor
 import qualified Data.Map as Map
 import Data.Text (Text)
 import Flex.Flex
@@ -16,16 +18,15 @@ import Utility
 
 -- ** interpretation monad
 
-type Interp = FlexT InterpM
+type Interp = ReaderT Ctx FlexT
 
-type InterpM = ReaderT Ctx IO
-
-runInterpM :: Ctx -> InterpM a -> IO a
-runInterpM ctx m = runReaderT m ctx
+runInterp :: Ctx -> Interp a -> FlexT a
+runInterp ctx m = runReaderT m ctx
 
 tryInterp :: Interp a -> Interp (Maybe a)
 tryInterp m = do
-  tryFlexT m >>= \case
+  ctx <- ask
+  lift (tryFlexT (runInterp ctx m)) >>= \case
     Left _err -> return Nothing
     Right a -> return $ Just a
 
@@ -65,7 +66,7 @@ procDeclaration :: Declaration -> Interp ()
 procDeclaration = \case
   DeclarationConstant con_orig -> do
     let x = fromUnqualText $ get_name con_orig
-    con <- lookupConstant x
+    con <- lift $ lookupConstant x
     constantBody <- evalDefinitionBody (constantBody con)
     envModuleCtx . ctxModuleConstants . ix x .= con {constantBody}
   -- don't need to process anything else
@@ -94,7 +95,7 @@ evalTerm tm = do
         TermNamed x -> do
           locs <- asks (^. ctxLocals)
           cs <- asks (^. callStack)
-          lookupTerm id locs (InterpError cs) x
+          lift $ lookupTerm id locs (InterpError cs) x
         TermTuple tms -> setPreterm $ TermTuple <$> evalTerm `mapM` tms
         TermArray tms -> setPreterm $ TermArray <$> evalTerm `mapM` tms
         TermBlock (stmts, tm') -> foldr evalStatement (evalTerm tm') stmts
@@ -106,22 +107,23 @@ evalTerm tm = do
               case fields Map.!? txt of
                 Nothing -> throwInterpError $ "type error: structure '" <> prettyShow x <> "' doesn't have field '" <> prettyShow txt <> "'"
                 Just tm'' -> return tm''
-            _ -> throwInterpError $ "type error: TermMember of non-Structure"
+            _ -> throwInterpError "type error: TermMember of non-Structure"
         TermConstructor x mb_tm -> setPreterm $ TermConstructor x <$> (evalTerm `traverse` mb_tm)
         TermApplication x args mb_cxargs -> do
-          fun <- lookupFunction x
+          fun <- lift $ lookupFunction x
 
           -- evaluate args
           argsList <-
-            fmap (mconcatMap (\(mb_txt, tm) -> maybe [] (\txt -> [(txt, tm)]) mb_txt)) $
-              traverse (bimapM (return . fst) evalTerm) $
+            mconcatMap (\(mb_txt, tm) -> maybe [] (\txt -> [(txt, tm)]) mb_txt)
+              <$> traverse
+                (bimapM (return . fst) evalTerm)
                 ((functionTypeParams . functionType $ fun) `zip` args)
           let argsMap = Map.fromList argsList
 
           -- all contextual arguments must be given, since already type-checked
           cxargs <- case mb_cxargs of
-            Nothing -> throwInterpError $ "contextual arguments not made explicit"
-            Just (Left _) -> throwInterpError $ "contextual arguments not type-checked"
+            Nothing -> throwInterpError "contextual arguments not made explicit"
+            Just (Left _) -> throwInterpError "contextual arguments not type-checked"
             Just (Right cxargs) -> return cxargs
           cxargs <- evalTerm `traverse` cxargs
 
@@ -162,12 +164,15 @@ evalTerm tm = do
                 _ -> error "TODO: eval other kinds of DefinitionBody"
             )
         TermIf tmIf tmThen tmElse ->
-          evalTerm tmIf >>= pure . (^. termPreterm) >>= \case
-            TermLiteral (LiteralBit b) ->
-              if b
-                then evalTerm tmThen
-                else evalTerm tmElse
-            _ -> throwInterpError $ "`if` must have a boolean condition term: " <> prettyShow tm
+          evalTerm tmIf
+            >>= ( \case
+                    TermLiteral (LiteralBit b) ->
+                      if b
+                        then evalTerm tmThen
+                        else evalTerm tmElse
+                    _ -> throwInterpError $ "`if` must have a boolean condition term: " <> prettyShow tm
+                )
+              . (^. termPreterm)
         TermAscribe _tm' _ty -> throwInterpError $ "`ascribe` should not apear in type-checked term: " <> prettyShow tm
         TermMatch _tm' _branches -> unimplemented "pattern matching logic"
   {- TermEq tm1 tm2 ->
@@ -208,8 +213,8 @@ evalStatement stmt m = do
       tm' <- evalTerm tm
       debug $ "evalStatement: " <> prettyShow stmt <> " ==> " <> prettyShow tm'
       introPattern pat tm' m
-    StatementAssert tm -> do
-      evalTerm tm >>= pure . (^. termPreterm) >>= \case
+    StatementAssert tm ->
+      (evalTerm tm <&> (^. termPreterm)) >>= \case
         TermLiteral (LiteralBit True) -> m
         tm' -> throwError . PartialError $ "assertion failure: " <> prettyShow tm <> " ==> " <> prettyShow tm'
 

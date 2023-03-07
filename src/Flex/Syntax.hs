@@ -571,6 +571,18 @@ data Preterm
 
 type Block = ([Statement], Term)
 
+mapTermType :: (Type -> Type) -> Term -> Term
+mapTermType f tm =
+  tm
+    { _termMaybeType =
+        case _termMaybeType tm of
+          Nothing -> error "mapTermType: expects term to have annotated type"
+          Just ty -> Just $ f ty
+    }
+
+mapTermMaybeType :: (Maybe Type -> Maybe Type) -> Term -> Term
+mapTermMaybeType f tm = tm {_termMaybeType = f (_termMaybeType tm)}
+
 termApp1 :: Id -> Term -> Preterm
 termApp1 x tm = TermApplication x [tm] Nothing
 
@@ -630,6 +642,8 @@ instance PrettyShow Literal where
     LiteralBit b -> if b then "true" else "false"
     LiteralChar c -> show c
     LiteralString s -> show s
+
+-- TODO: make convenient constructors
 
 -- ** pattern
 

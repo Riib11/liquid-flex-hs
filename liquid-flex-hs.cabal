@@ -103,7 +103,9 @@ executable liquid-flex-hs-exe
       HUnit
     , base >=4.7 && <5
     , containers
+    , deepseq
     , lens
+    , liquid-fixpoint
     , liquid-flex-hs
     , mtl
     , optparse-applicative
@@ -119,6 +121,7 @@ test-suite liquid-flex-hs-test
   main-is: Spec.hs
   other-modules:
       Test.Parsing
+      Test.Refining
       Test.Typing
       Test.Utility
       Paths_liquid_flex_hs
@@ -142,7 +145,9 @@ test-suite liquid-flex-hs-test
       HUnit
     , base >=4.7 && <5
     , containers
+    , deepseq
     , lens
+    , liquid-fixpoint
     , liquid-flex-hs
     , mtl
     , optparse-applicative

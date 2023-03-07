@@ -8,6 +8,7 @@ import Control.Monad
 import Control.Monad.Error.Class
 import Control.Monad.Reader.Class
 import Control.Monad.State.Class
+import Control.Monad.Trans
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
 import Data.Bifunctor
 import qualified Data.Map as Map
@@ -32,18 +33,22 @@ this I need to statically keep track of whether or not a type is normalized.
 
 -- ** typing monad
 
-type Typing = FlexT TypingM
+-- type Typing = FlexT TypingM
 
-type TypingM = ReaderT Ctx IO
+type Typing = ReaderT Ctx FlexT
 
-runTypingM :: Ctx -> TypingM a -> IO a
-runTypingM ctx m = runReaderT m ctx
+runTyping :: Ctx -> Typing a -> FlexT a
+runTyping ctx m = runReaderT m ctx
 
 tryTyping :: Typing a -> Typing (Maybe a)
-tryTyping m =
-  tryFlexT m >>= \case
+tryTyping m = do
+  env <- get
+  ctx <- ask
+  (lift . lift . lift) (runFlexT env (runTyping ctx m)) >>= \case
     Left _err -> return Nothing
-    Right a -> return $ Just a
+    Right (a, env) -> do
+      put env
+      return $ Just a
 
 data Ctx = Ctx
   { -- | local variable typings
@@ -264,7 +269,7 @@ inferTerm tm = do
     TermLiteral (LiteralString _) -> return $ setType (TypeCast (TypeArray TypeChar))
     TermNamed x -> do
       locs <- asks (^. ctxLocals)
-      setType <$> (normType =<< lookupTerm (fromJust . (^. termMaybeType)) locs ScopingError x)
+      setType <$> (normType =<< lift (lookupTerm (fromJust . (^. termMaybeType)) locs ScopingError x))
     TermCast tm -> do
       tm <- inferTerm tm
       ty <- getInferredType tm
@@ -291,7 +296,7 @@ inferTerm tm = do
       return $ setPretermAndType (TermBlock (stmts, tm)) ty
     -- decide whether this is a variant constructor or newtype constructor
     TermConstructor x mb_tm ->
-      lookupConstructor x >>= \case
+      lift (lookupConstructor x) >>= \case
         ConstructorEnumerated enm _lit ->
           case mb_tm of
             Just _ -> throwError . TypingError $ "an enum constructor must not have any arguments"
@@ -312,7 +317,7 @@ inferTerm tm = do
               tm <- checkTerm tm ty
               return $ setPretermAndType (TermConstructor x (Just tm)) (TypeVariant varnt)
     TermApplication x args cxargs -> do
-      fun <- lookupFunction x
+      fun <- lift $ lookupFunction x
 
       funTy <-
         case functionBody fun of
@@ -369,7 +374,7 @@ inferTerm tm = do
       debug $ "inferTerm: output preterm = " <> prettyShow (TermApplication x args (Just . Right $ cxargsMap))
       return $ setPretermAndType (TermApplication x args (Just . Right $ cxargsMap)) (functionTypeOutput funTy)
     TermStructure x fields -> do
-      struct <- lookupStructure x
+      struct <- lift $ lookupStructure x
       fields <-
         mapAsListM
           ( \(txt, field) -> do
@@ -555,7 +560,7 @@ normType = \case
   TypeTuple tys -> TypeTuple <$> mapM normType tys
   TypeOptional ty -> TypeOptional <$> normType ty
   TypeCast ty -> TypeCast . unwrapCasts <$> normType ty
-  TypeNamed x -> lookupType x
+  TypeNamed x -> lift $ lookupType x
   TypeUnif u ->
     gets (^. envUnifSubst . at u) >>= \case
       Nothing -> return (TypeUnif u)
@@ -588,6 +593,24 @@ unwrapCasts = \case
 
 primitive_constants :: Map.Map Text (Typing Type)
 primitive_constants = Map.empty
+
+-- ** defaulting
+
+-- | Some types can be defaulted if they are not constrained by type-checking.
+-- For example, cast types (which only exist during type-checking) that inferred
+-- but never checked against an expected type can be defaulted to a certain
+-- instance of the casted type. A particular example: defaultType
+-- `'cast(int<n>)' = 'int<n>'`.
+-- - eliminates `cast` forms
+-- - expects type to be normal
+defaultType :: Type -> Type
+defaultType = \case
+  TypeArray ty -> TypeArray $ defaultType ty
+  TypeTuple tys -> TypeTuple $ defaultType <$> tys
+  TypeOptional ty -> TypeOptional $ defaultType ty
+  -- defaults to casted type
+  TypeCast ty -> ty
+  ty -> ty
 
 -- ** utilities
 

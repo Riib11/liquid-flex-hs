@@ -1,3 +1,8 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Use camelCase" #-}
+{-# HLINT ignore "Use ++" #-}
+
 module Test.Typing where
 
 import Control.Monad
@@ -125,7 +130,8 @@ makeTest_checkTerm :: Bool -> String -> String -> Test
 makeTest_checkTerm pass tmStr tyStr = TestCase do
   tm <- runParser "makeTest_checkTerm.term" parseTerm tmStr
   ty <- runParser "makeTest_checkTerm.type" parseType tyStr
-  ei_tm <- runTypingM emptyCtx . runFlexT emptyFlexEnv $ liftM2' checkTerm (inferTerm tm) (return ty)
+  ei_tm <- runFlexT topFlexEnv $ runTyping emptyCtx $ liftM2' checkTerm (inferTerm tm) (return ty)
+
   case ei_tm of
     Left err ->
       when pass $
@@ -137,7 +143,7 @@ makeTest_checkTerm pass tmStr tyStr = TestCase do
               show err
             ]
     Right _ ->
-      when (not pass) $
+      unless pass $
         assertFailure $
           unlines . fmap ("    " <>) $
             [ "expected",

@@ -1,4 +1,12 @@
-module Flex.Refining where
+module Flex.Refining
+  ( module Flex.Refining.CG,
+    module Flex.Refining.Check,
+    module Flex.Refining.Query,
+    module Flex.Refining.Syntax,
+    module Flex.Refining.Translation,
+    main,
+  )
+where
 
 import Control.Applicative (Applicative (liftA2))
 import Control.DeepSeq
@@ -12,6 +20,7 @@ import Flex.Refining.CG (messageOfRefineError, unsafeCG)
 import Flex.Refining.Check (reftPreterm, reftTerm)
 import Flex.Refining.Query (checkValid, genCheckQuery, resultExitCode)
 import Flex.Refining.Syntax
+import Flex.Refining.Translation
 import Flex.Syntax (Id, Literal, ModuleId)
 import qualified Flex.Syntax as Syn
 import GHC.Generics

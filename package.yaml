@@ -31,6 +31,8 @@ dependencies:
 - singletons-th
 - parsec
 - optparse-applicative
+- liquid-fixpoint
+- deepseq
 
 ghc-options:
 - -Wall
@@ -60,11 +62,6 @@ default-extensions:
 
 library:
   source-dirs: src
-  dependencies:
-  - base >= 4.7 && < 5
-  - liquid-fixpoint
-  - deepseq
-  - text
 
 executables:
   liquid-flex-hs-exe:

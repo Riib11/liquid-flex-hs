@@ -90,10 +90,22 @@ instance Show r => PrettyShow (BaseType_ r) where
       AtomicString -> "string{" <> show r <> "}"
 
 trueBaseType :: BaseType
-trueBaseType = TypeAtomic F.trueReft AtomicBit
+trueBaseType = bitBaseType F.trueReft
 
 falseBaseType :: BaseType
-falseBaseType = TypeAtomic F.falseReft AtomicBit
+falseBaseType = bitBaseType F.falseReft
+
+intBaseType :: F.Reft -> BaseType
+intBaseType r = TypeAtomic r AtomicInt
+
+bitBaseType :: F.Reft -> BaseType
+bitBaseType r = TypeAtomic r AtomicBit
+
+charBaseType :: F.Reft -> BaseType
+charBaseType r = TypeAtomic r AtomicBit
+
+stringBaseType :: F.Reft -> BaseType
+stringBaseType r = TypeAtomic r AtomicString
 
 -- | FunType
 --

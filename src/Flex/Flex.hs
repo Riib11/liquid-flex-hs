@@ -14,10 +14,10 @@ import Utility
 
 type FlexResult a = Either FlexError (a, FlexEnv)
 
-runFlexT :: FlexEnv -> FlexT m a -> m (Either FlexError (a, FlexEnv))
+runFlexT :: FlexEnv -> FlexT a -> IO (Either FlexError (a, FlexEnv))
 runFlexT env m = runExceptT (runStateT m env)
 
-tryFlexT :: Monad m => FlexT m a -> FlexT m (Either FlexError a)
+tryFlexT :: FlexT a -> FlexT (Either FlexError a)
 tryFlexT m = do
   env <- get
   (lift . lift) (runFlexT env m) >>= \case
@@ -26,7 +26,7 @@ tryFlexT m = do
 
 -- TODO: actually, flex should be a monad transformer, and then typing and
 -- interpreting should go on the end of the monad transformer, right??
-type FlexT m = StateT FlexEnv (ExceptT FlexError m)
+type FlexT = StateT FlexEnv (ExceptT FlexError IO)
 
 data FlexError
   = ScopingError String
@@ -46,6 +46,7 @@ instance PrettyShow FlexError where
         [ "interpretation error: " <> str,
           "call stack:\n" <> unlines (prettyShow <$> stack)
         ]
+    RefineError str -> "refining error: " <> str
     PartialError str -> "partial error: " <> str
 
 data FlexEnv = FlexEnv
@@ -59,8 +60,8 @@ data FlexEnv = FlexEnv
     _envFreshSymbolIndex :: Int
   }
 
-emptyFlexEnv :: FlexEnv
-emptyFlexEnv =
+topFlexEnv :: FlexEnv
+topFlexEnv =
   FlexEnv
     { _envModuleCtx = topModuleCtx,
       _envUnifSubst = Map.empty,
@@ -76,12 +77,12 @@ instance PrettyShow FlexEnv where
       [ ["[module context]"],
         ("  " <>) <$> lines (prettyShow (env ^. envModuleCtx)),
         ["[unification substitution]"],
-        (("  " <>) . show) <$> Map.toList (env ^. envUnifSubst),
+        ("  " <>) . show <$> Map.toList (env ^. envUnifSubst),
         ["[unification id environment]"],
         ["  " <> show (env ^. envUnif)]
       ]
 
-lookupTerm :: Monad m => (Term -> a) -> Map.Map Text a -> (String -> FlexError) -> Id -> FlexT m a
+lookupTerm :: (Term -> a) -> Map.Map Text a -> (String -> FlexError) -> Id -> FlexT a
 lookupTerm proj locs makeError x =
   case tryUnqualify x of
     -- if qualified, try global constants
@@ -102,31 +103,31 @@ lookupTerm proj locs makeError x =
               DefinitionBodyTerm tm -> return (proj tm)
               _ -> throwError . makeError $ "looked up the constant but it was not evaluated: " <> prettyShow x
 
-lookupFunction :: Monad m => Id -> FlexT m Function
+lookupFunction :: Id -> FlexT Function
 lookupFunction x =
   gets (^. envModuleCtx . ctxModuleFunctions . at x) >>= \case
     Nothing -> throwError . ScopingError $ "unknown function id: " <> prettyShow x
     Just fun -> return fun
 
-lookupConstructor :: Monad m => Id -> FlexT m Constructor
+lookupConstructor :: Id -> FlexT Constructor
 lookupConstructor x =
   gets (^. envModuleCtx . ctxModuleConstructors . at x) >>= \case
     Nothing -> throwError . ScopingError $ "unknown constructor id: " <> prettyShow x
     Just cnstr -> return cnstr
 
-lookupStructure :: Monad m => Id -> FlexT m Structure
+lookupStructure :: Id -> FlexT Structure
 lookupStructure x =
   lookupType x >>= \case
     TypeStructure struct -> return struct
     _ -> throwError . TypingError $ "expected to be a structure id: " <> prettyShow x
 
-lookupConstant :: Monad m => Id -> FlexT m Constant
+lookupConstant :: Id -> FlexT Constant
 lookupConstant x =
   gets (^. envModuleCtx . ctxModuleConstants . at x) >>= \case
     Nothing -> throwError . ScopingError $ "unknown constant id: " <> prettyShow x
     Just con -> return con
 
-lookupType :: Monad m => Id -> FlexT m Type
+lookupType :: Id -> FlexT Type
 lookupType x =
   gets (^. envModuleCtx . ctxModuleTypes . at x) >>= \case
     Nothing -> throwError . ScopingError $ "unknown type id: " <> prettyShow x
@@ -137,7 +138,7 @@ lookupType x =
     -- alias's type should already be normalized during typechecking
     Just (DeclarationTypeAlias alias) -> return $ aliasType alias
 
-loadModule :: Monad m => Module -> FlexT m ()
+loadModule :: Module -> FlexT ()
 loadModule mdl = do
   -- initialize envModuleCtx for this module
   envModuleCtx .= toOpenedModuleCtx mdl
@@ -145,17 +146,18 @@ loadModule mdl = do
   loadImport `mapM_` moduleImports mdl
 
 -- add imported stuff to module envModuleCtx
-loadImport :: Monad m => Import -> FlexT m ()
+loadImport :: Import -> FlexT ()
 loadImport _imp =
   -- error "TODO"
   return ()
 
 -- ** debugging
 
-debug :: MonadIO m => String -> FlexT m ()
+-- TODO: better way of writing this constraint?
+debug :: (MonadIO (t FlexT)) => String -> t FlexT ()
 debug msg =
   when False do
     let ls = lines msg
      in if length ls <= 1
           then liftIO $ putStrLn $ "[>] " <> msg
-          else liftIO $ putStrLn $ "[>] " <> ls !! 0 <> "\n" <> unlines (indentLines $ drop 1 ls)
+          else liftIO $ putStrLn $ "[>] " <> head ls <> "\n" <> unlines (indentLines $ drop 1 ls)

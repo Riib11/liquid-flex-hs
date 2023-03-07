@@ -30,4 +30,4 @@ instance PrettyShow Text where
   prettyShow = unpack
 
 indent :: String -> String
-indent = unlines . (("  " <>) <$>) . lines
+indent = intercalate "\n" . (("  " <>) <$>) . lines
