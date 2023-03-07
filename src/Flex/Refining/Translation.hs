@@ -85,7 +85,7 @@ transTerm :: Base.Term -> Translating Reft.Term
 transTerm tm = case tm ^. Base.termPreterm of
   Base.TermLiteral lit -> transLiteral lit =<< (transType =<< termType tm)
   Base.TermCast _ -> lift $ throwError $ RefineError $ "there should be no `cast`s left after type-checking, yet there is: " <> prettyShow tm
-  Base.TermNamed x -> Reft.Term <$> (Reft.TermVar <$> transIdRef x) <*> (transType =<< termType tm)
+  Base.TermNamed x -> transVar x =<< (transType =<< termType tm)
   Base.TermTuple _tes -> error "TODO: transTerm TermTuple"
   Base.TermArray _tes -> error "TODO: transTerm TermArray"
   Base.TermBlock (stmts, tm') -> transBlock (stmts, tm')
@@ -201,3 +201,7 @@ transLiteral lit ty = pure $ Reft.Term (Reft.TermLiteral lit) ty
 transApp :: Base.Id -> Translating Reft.App
 transApp (Base.Id Nothing n) | Just pf <- Base.toPrimFun n = return $ Reft.AppPrimFun pf
 transApp x = Reft.AppVar <$> transIdRef x
+
+-- TODO: handle primitive constants differently? what if there is an "error" constant??
+transVar :: Base.Id -> Reft.BaseType -> Translating Reft.Term
+transVar x ty = Reft.Term <$> (Reft.TermVar <$> transIdRef x) <*> return ty
