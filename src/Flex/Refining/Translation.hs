@@ -180,13 +180,13 @@ transType ty0 = case ty0 of
   Base.TypeArray _ty -> error "TODO: transType TypeArray"
   Base.TypeTuple _tys -> error "TODO: transType TypeTuple"
   Base.TypeOptional _ty -> error "TODO: transType TypeOptional"
-  Base.TypeNamed _id -> throwError $ RefineError $ "TypeNamed should not appear after typechecking since types should be normalized: " <> show ty0
-  Base.TypeCast _ty -> throwError $ RefineError $ "TypeCast should not appear after typechecking since types should be normalized: " <> show ty0
-  Base.TypeUnif _id -> throwError $ RefineError $ "TypeUnif should not appear after typechecking since types should be normalized: " <> show ty0
   Base.TypeStructure _struc -> error "TODO: transType TypeStructure"
   Base.TypeEnumerated _enu -> error "TODO: transType TypeEnumerated"
   Base.TypeVariant _vari -> error "TODO: transType Variant"
   Base.TypeNewtype _new -> error "TODO: transType Newtype"
+  Base.TypeNamed _id -> throwError $ RefineError $ "TypeNamed should not appear after typechecking since types should be normalized: " <> show ty0
+  Base.TypeCast _ty -> throwError $ RefineError $ "TypeCast should not appear after typechecking since types should be normalized: " <> show ty0
+  Base.TypeUnif _id -> throwError $ RefineError $ "TypeUnif should not appear after typechecking since types should be normalized: " <> show ty0
   where
     boundedIntExpr :: F.Symbol -> Int -> Int -> F.Expr
     boundedIntExpr x nMin nMax =
@@ -199,4 +199,5 @@ transLiteral :: Base.Literal -> Reft.BaseType -> Translating Reft.Term
 transLiteral lit ty = pure $ Reft.Term (Reft.TermLiteral lit) ty
 
 transApp :: Base.Id -> Translating Reft.App
+transApp (Base.Id Nothing n) | Just pf <- Base.toPrimFun n = return $ Reft.AppPrimFun pf
 transApp x = Reft.AppVar <$> transIdRef x
