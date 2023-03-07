@@ -8,8 +8,8 @@ import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.CG
 import Flex.Refining.Check (check)
+import Flex.Refining.Refining
 import Flex.Refining.Syntax
 import Flex.Syntax (Id, Literal, ModuleId)
 import qualified Flex.Syntax as Syn
@@ -35,7 +35,7 @@ import Utility
 type Query = H.Query RefineError
 
 -- Generates a query that checks that the term has the type.
-genCheckQuery :: Env -> Term -> BaseType -> CG Query
+genCheckQuery :: Env -> Term -> BaseType -> Refining Query
 genCheckQuery env tm ty =
   H.Query [] []
     <$> check env tm ty

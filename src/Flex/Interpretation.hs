@@ -65,7 +65,7 @@ procModule mdl =
 procDeclaration :: Declaration -> Interp ()
 procDeclaration = \case
   DeclarationConstant con_orig -> do
-    let x = fromUnqualText $ get_name con_orig
+    let x = fromUnqualName $ get_name con_orig
     con <- lift $ lookupConstant x
     constantBody <- evalDefinitionBody (constantBody con)
     envModuleCtx . ctxModuleConstants . ix x .= con {constantBody}

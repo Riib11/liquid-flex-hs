@@ -59,6 +59,8 @@ default-extensions:
 - DeriveGeneric
 - FlexibleInstances
 - ScopedTypeVariables
+- MultiParamTypeClasses
+- FunctionalDependencies
 
 library:
   source-dirs: src

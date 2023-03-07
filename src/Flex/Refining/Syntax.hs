@@ -9,7 +9,7 @@ import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.CG
+import Flex.Refining.Refining
 import Flex.Syntax (Id, Literal, ModuleId)
 import qualified Flex.Syntax as Syn
 import GHC.Generics
@@ -228,10 +228,10 @@ emptyEnv = F.emptySEnv
 extendEnv :: F.Symbol -> Type -> Env -> Env
 extendEnv = F.insertSEnv
 
-lookupEnv :: F.Symbol -> Env -> CG Type
+lookupEnv :: F.Symbol -> Env -> Refining Type
 lookupEnv x env = case F.lookupSEnv x env of
   Nothing ->
-    throwCG
+    throwRefining
       [ RefineError $
           "Can't find variable's refinement type in environment: "
             <> show x
@@ -249,10 +249,3 @@ subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
 -- subst' thing x y = F.subst sigma thing
 --   where
 --     sigma = F.mkSubst [(x, embedVar y)]
-
--- | parsing
-parseSymbol :: String -> F.Symbol
-parseSymbol = FP.doParse' FP.lowerIdP "parseSymbol"
-
-parsePred :: String -> F.Pred
-parsePred = FP.doParse' FP.predP "parsePred"

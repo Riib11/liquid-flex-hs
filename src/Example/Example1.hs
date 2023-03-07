@@ -183,21 +183,21 @@ emptyEnv = F.emptySEnv
 extendEnv :: Bind -> ReftType -> Env -> Env
 extendEnv (Bind x _) = F.insertSEnv x
 
-lookupEnv :: F.Symbol -> Label -> Env -> CG ReftType
+lookupEnv :: F.Symbol -> Label -> Env -> Refining ReftType
 lookupEnv x l env = case F.lookupSEnv x env of
-  Nothing -> throwCG [UserError (pack $ "Can't find variable's refinement type in environment: " <> show x) l]
+  Nothing -> throwRefining [UserError (pack $ "Can't find variable's refinement type in environment: " <> show x) l]
   Just rty -> return rty
 
--- | CG
-type CG a = Either [UserError] a
+-- | Refining
+type Refining a = Either [UserError] a
 
-throwCG :: [UserError] -> CG a
-throwCG = Left
+throwRefining :: [UserError] -> Refining a
+throwRefining = Left
 
 -- | Check/Synth
 -- Check handles DefConTerm, DefFunTerm
 -- Synth handles ImmTerm, AppTerm, AnnTerm
-check :: Env -> Term -> ReftType -> CG Cstr
+check :: Env -> Term -> ReftType -> Refining Cstr
 check env (DefConTerm bx@(Bind x lx) imp bod _) ty = do
   (cstr, sig) <- synth env imp
   cstr' <- check (extendEnv bx sig env) bod ty
@@ -208,12 +208,12 @@ check env tm tyExp = do
   cstr' <- subType (getLabel tm) tyInf tyExp
   return (andCstrs [cstr, cstr'])
 
-checkImm :: Env -> Imm -> ReftType -> CG Cstr
+checkImm :: Env -> Imm -> ReftType -> Refining Cstr
 checkImm env imm rty = do
   rty' <- synthImm env imm
   subType (getLabel imm) rty' rty
 
-synth :: Env -> Term -> CG (Cstr, ReftType)
+synth :: Env -> Term -> Refining (Cstr, ReftType)
 synth env = \case
   ImmTerm imm -> (trivialCstr,) <$> synthImm env imm
   AppTerm imm args l ->
@@ -230,17 +230,17 @@ synth env = \case
               rty
               (params `zip` args)
           )
-      _ -> throwCG [UserError "Applicant does not have function type" l]
+      _ -> throwRefining [UserError "Applicant does not have function type" l]
   AnnTerm tm rty _ -> (,rty) <$> check env tm rty
-  tm -> throwCG [UserError (pack $ "`synth` should never be called on this form: " <> show tm) (getLabel tm)]
+  tm -> throwRefining [UserError (pack $ "`synth` should never be called on this form: " <> show tm) (getLabel tm)]
 
-synthImm :: Env -> Imm -> CG ReftType
+synthImm :: Env -> Imm -> Refining ReftType
 synthImm env = \case
   VarImm x l -> lookupEnv x l env
   PrimImm pr _ -> return $ primType pr
 
 -- check that `rty` is a subtype of `rty'`
-subType :: Label -> ReftType -> ReftType -> CG Cstr
+subType :: Label -> ReftType -> ReftType -> Refining Cstr
 subType l rty@(IntType (F.Reft (v, _))) (IntType (F.Reft (v', q'))) =
   return $ forallCstr l v rty (headCstr l (subst q' v' v))
 subType l (FunType params1 rtyOut1) (FunType params2 rtyOut2) = do
@@ -266,7 +266,7 @@ subType l (FunType params1 rtyOut1) (FunType params2 rtyOut2) = do
 
   return $ andCstr cstrIn cstrOut'
 subType l rty rty' =
-  throwCG
+  throwRefining
     [ UserError
         ( pack $
             "subtyping error; actual type is '"
@@ -279,7 +279,7 @@ subType l rty rty' =
     ]
 
 -- | Generated verification conditions
-genQuery :: Term -> CG Query
+genQuery :: Term -> Refining Query
 genQuery term =
   H.Query [] []
     <$> check emptyEnv term (IntType mempty)

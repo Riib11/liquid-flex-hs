@@ -26,16 +26,17 @@ source-repository head
 library
   exposed-modules:
       Example.Example1
+      Flex.Examples
       Flex.Flex
       Flex.Interpretation
       Flex.Lexing
       Flex.Parsing
       Flex.Refining
-      Flex.Refining.CG
       Flex.Refining.Check
       Flex.Refining.Constraint
       Flex.Refining.Embedding
       Flex.Refining.Query
+      Flex.Refining.Refining
       Flex.Refining.Syntax
       Flex.Refining.Translation
       Flex.Shallow
@@ -62,6 +63,8 @@ library
       DeriveGeneric
       FlexibleInstances
       ScopedTypeVariables
+      MultiParamTypeClasses
+      FunctionalDependencies
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-missing-export-lists -Wno-unused-imports
   build-depends:
       HUnit
@@ -98,6 +101,8 @@ executable liquid-flex-hs-exe
       DeriveGeneric
       FlexibleInstances
       ScopedTypeVariables
+      MultiParamTypeClasses
+      FunctionalDependencies
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
@@ -140,6 +145,8 @@ test-suite liquid-flex-hs-test
       DeriveGeneric
       FlexibleInstances
       ScopedTypeVariables
+      MultiParamTypeClasses
+      FunctionalDependencies
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit

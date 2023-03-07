@@ -5,7 +5,6 @@ module Flex.Refining.Translation
     initTransCtx,
     Translating,
     runTranslating,
-    withModuleCtx,
     transTerm,
     transType,
     transApp,
@@ -20,10 +19,10 @@ where
 
 import Control.Lens
 import Control.Monad.Error.Class (MonadError (throwError))
-import Control.Monad.Reader (MonadTrans (lift), ReaderT (runReaderT), asks)
-import Control.Monad.State (StateT, gets, modify')
+import Control.Monad.Reader (MonadTrans (lift), ReaderT (runReaderT), asks, foldM)
+import Control.Monad.State (MonadState (get), StateT, gets, modify')
 import qualified Data.Map as Map
-import Data.Text (Text, unpack)
+import Data.Text (Text, pack, unpack)
 import Flex.Flex
 import qualified Flex.Refining.Syntax as Reft
 import qualified Flex.Syntax as Base
@@ -41,22 +40,45 @@ data TransCtx = TransCtx
   { _idSymbols :: Map.Map Base.Id F.Symbol
   }
 
-initTransCtx :: TransCtx
-initTransCtx =
-  TransCtx
-    { _idSymbols = error "TODO: initTransCtx.idSymbols: add primitives, or handle in similar way to Typing where primitives are processed specially when gathered from ModuleCtx?"
-    }
-
 makeLenses ''TransCtx
 
 -- | Translating
 type Translating a = ReaderT TransCtx FlexT a
 
-withModuleCtx :: Base.ModuleCtx -> Translating a -> Translating a
-withModuleCtx = error "TODO: withModuleCtx"
-
 runTranslating :: Translating a -> FlexT a
-runTranslating m = runReaderT m initTransCtx
+runTranslating m = runReaderT m =<< initTransCtx
+
+initTransCtx :: FlexT TransCtx
+initTransCtx = do
+  env <- get
+  -- need to iterate over functions, constants, and constructors in the current
+  -- module context
+  idSyms <-
+    flip
+      ( foldM . flip $ \fun m -> do
+          s <- freshSymbol (unpack $ Base.functionName fun)
+          return $ Map.insert (Base.fromUnqualName (Base.functionName fun)) s m
+      )
+      (env ^. envModuleCtx . Base.ctxModuleFunctions)
+      =<< flip
+        ( foldM . flip $ \con m -> do
+            let n = Base.constantName con
+            s <- freshSymbol (unpack n)
+            return $ Map.insert (Base.fromUnqualName n) s m
+        )
+        (env ^. envModuleCtx . Base.ctxModuleConstants)
+      =<< flip
+        ( foldM . flip $ \cnstr m -> do
+            let n = Base.constructorName cnstr
+            s <- freshSymbol (unpack n)
+            return $ Map.insert (Base.fromUnqualName n) s m
+        )
+        (env ^. envModuleCtx . Base.ctxModuleConstructors)
+      =<< return Map.empty
+  return
+    TransCtx
+      { _idSymbols = idSyms
+      }
 
 -- | transTerm
 transTerm :: Base.Term -> Translating Reft.Term
@@ -107,7 +129,7 @@ transBlock (stmts, tm0) = go stmts []
           imp <- transTerm imp
           go stmtsBase' (Reft.StatementLet x imp : stmts)
         Base.PatternDiscard -> do
-          x <- freshSymbol "discard"
+          x <- lift $ freshSymbol "discard"
           imp <- transTerm imp
           go stmtsBase' (Reft.StatementLet x imp : stmts)
         Base.PatternLiteral lit -> error "TODO: how to translate pattern matching on a literal?"
@@ -115,17 +137,11 @@ transBlock (stmts, tm0) = go stmts []
         tm <- transTerm tm
         go stmtsBase' (Reft.StatementAssert tm : stmts)
 
-freshSymbol :: String -> Translating F.Symbol
-freshSymbol str = do
-  i <- gets (^. envFreshSymbolIndex)
-  modify' $ envFreshSymbolIndex %~ (1 +)
-  return $ Reft.parseSymbol ("$" <> str <> show i)
-
 transNameBind :: Text -> Translating F.Symbol
 transNameBind txt = do
   i <- gets (^. envFreshSymbolIndex)
   modify' $ envFreshSymbolIndex %~ (1 +)
-  return $ Reft.parseSymbol (unpack txt <> "#" <> show i)
+  return $ parseSymbol (unpack txt <> "#" <> show i)
 
 transNameRef :: Text -> Translating F.Symbol
 transNameRef = error "TODO: how exactly should this work?"
@@ -149,12 +165,12 @@ transType :: Base.Type -> Translating Reft.BaseType
 transType ty0 = case ty0 of
   -- IntSize bounds value
   Base.TypeInt (Base.IntSize s) -> do
-    x <- freshSymbol ("TypeInt" <> show s)
+    x <- lift $ freshSymbol ("TypeInt" <> show s)
     let n = 2 ^ (s - 1) :: Int
     -- -n < x < n
     return $ Reft.TypeAtomic (F.reft x (boundedIntExpr x (-n) n)) Reft.AtomicInt
   Base.TypeUInt (Base.UIntSize s) -> do
-    x <- freshSymbol ("TypeUInt" <> show s)
+    x <- lift $ freshSymbol ("TypeUInt" <> show s)
     let n = 2 ^ s :: Int
     -- 0 <= x < n
     return $ Reft.TypeAtomic (F.reft x (boundedIntExpr x 0 n)) Reft.AtomicInt

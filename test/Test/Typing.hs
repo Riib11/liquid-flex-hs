@@ -10,6 +10,7 @@ import Flex.Flex
 import Flex.Lexing (Parser)
 import qualified Flex.Lexing as Parsing
 import Flex.Parsing
+import Flex.Shallow (readTerm, readType)
 import Flex.Syntax
 import Flex.Typing
 import PrettyShow
@@ -128,8 +129,8 @@ makeTests_checkTerm passes fails =
 
 makeTest_checkTerm :: Bool -> String -> String -> Test
 makeTest_checkTerm pass tmStr tyStr = TestCase do
-  tm <- runParser "makeTest_checkTerm.term" parseTerm tmStr
-  ty <- runParser "makeTest_checkTerm.type" parseType tyStr
+  tm <- readTerm tmStr
+  ty <- readType tyStr
   ei_tm <- runFlexT topFlexEnv $ runTyping emptyCtx $ liftM2' checkTerm (inferTerm tm) (return ty)
 
   case ei_tm of
@@ -166,9 +167,3 @@ bullet str = case lines str of
   [] -> ""
   [x] -> "  • " <> x
   (x : xs) -> " • " <> x <> "\n" <> (unlines . fmap ("    " <>) $ xs)
-
-runParser :: String -> Parser a -> String -> IO a
-runParser label parser string = do
-  runParserT parser (Parsing.emptyEnv topModuleId) ("Test(" <> label <> ")") string >>= \case
-    Left err -> error $ "parse error: " <> show err
-    Right a -> return a

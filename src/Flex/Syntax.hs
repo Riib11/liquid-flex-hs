@@ -3,8 +3,10 @@
 
 module Flex.Syntax where
 
+import Control.Arrow
 import Control.Lens
-import Control.Monad.State (execState)
+import Control.Monad.State (execState, forM_)
+import Data.Function
 import qualified Data.List as List
 import qualified Data.Map as Map
 import Data.Text (Text, pack, unpack)
@@ -24,8 +26,8 @@ instance PrettyShow ModuleId where
 topModuleId :: ModuleId
 topModuleId = ModuleId []
 
-fromUnqualText :: Text -> Id
-fromUnqualText = Id Nothing
+fromUnqualName :: Text -> Id
+fromUnqualName = Id Nothing
 
 tryUnqualify :: Id -> Maybe Text
 tryUnqualify (Id mb_mdlId txt) = case mb_mdlId of
@@ -34,9 +36,13 @@ tryUnqualify (Id mb_mdlId txt) = case mb_mdlId of
 
 data Id = Id (Maybe ModuleId) Text deriving (Eq, Ord, Show)
 
+-- ** Name
+
+type Name = Text
+
 -- TODO: choose actual convention for this
 newtypeElementId :: Id
-newtypeElementId = fromUnqualText (pack "newtypeElementId")
+newtypeElementId = fromUnqualName (pack "newtypeElementId")
 
 instance PrettyShow Id where
   prettyShow (Id mb_mdlId txt) = maybe "" ((<> ".") . prettyShow) mb_mdlId <> unpack txt
@@ -62,7 +68,7 @@ instance PrettyShow Module where
 
 data Import
   = ImportOpened ModuleId
-  | ImportAliased ModuleId Text
+  | ImportAliased ModuleId Name
   | ImportQual ModuleId [QualImport]
   deriving (Eq, Show)
 
@@ -73,13 +79,13 @@ instance PrettyShow Import where
     ImportQual mdlId quals -> unwords ["import", prettyShow mdlId, "(", List.intercalate ", " (prettyShow <$> quals), ")"]
 
 data QualImport
-  = QualImportConstant Text
-  | QualImportFunction Text
-  | QualImportStructure Text
-  | QualImportEnumerated Text
-  | QualImportVariant Text
-  | QualImportAlias Text
-  | QualImportNewtype Text
+  = QualImportConstant Name
+  | QualImportFunction Name
+  | QualImportStructure Name
+  | QualImportEnumerated Name
+  | QualImportVariant Name
+  | QualImportAlias Name
+  | QualImportNewtype Name
   deriving (Eq, Show)
 
 instance PrettyShow QualImport where
@@ -130,14 +136,31 @@ instance PrettyShow DeclarationType where
     DeclarationTypeEnumerated a -> prettyShow a
     DeclarationTypeAlias a -> prettyShow a
 
+class ToDeclaration a where
+  toDeclaration :: a -> Declaration
+
+instance ToDeclaration Structure where toDeclaration = DeclarationStructure
+
+instance ToDeclaration Newtype where toDeclaration = DeclarationNewtype
+
+instance ToDeclaration Variant where toDeclaration = DeclarationVariant
+
+instance ToDeclaration Enumerated where toDeclaration = DeclarationEnumerated
+
+instance ToDeclaration Alias where toDeclaration = DeclarationAlias
+
+instance ToDeclaration Function where toDeclaration = DeclarationFunction
+
+instance ToDeclaration Constant where toDeclaration = DeclarationConstant
+
 -- ** structure
 
 data Structure = Structure
-  { structureName :: Text,
+  { structureName :: Name,
     structureModuleId :: ModuleId,
     structureIsMessage :: Bool,
     structureExtensionId :: Maybe Id,
-    structureFields :: Map.Map Text Type,
+    structureFields :: Map.Map Name Type,
     structureRefinement :: Refinement,
     structureAnnotations :: [Annotation]
   }
@@ -163,10 +186,10 @@ instance PrettyShow Structure where
 -- ** enumerated
 
 data Enumerated = Enumerated
-  { enumeratedName :: Text,
+  { enumeratedName :: Name,
     enumeratedModuleId :: ModuleId,
     enumeratedLiteralType :: Type,
-    enumeratedConstructors :: Map.Map Text Literal,
+    enumeratedConstructors :: Map.Map Name Literal,
     enumeratedAnnotations :: [Annotation]
   }
   deriving (Show)
@@ -187,9 +210,9 @@ instance PrettyShow Enumerated where
 -- ** variant
 
 data Variant = Variant
-  { variantName :: Text,
+  { variantName :: Name,
     variantModuleId :: ModuleId,
-    variantConstructors :: Map.Map Text Type,
+    variantConstructors :: Map.Map Name Type,
     variantnAnnotations :: [Annotation]
   }
   deriving (Show)
@@ -210,10 +233,10 @@ instance PrettyShow Variant where
 -- ** newtype
 
 data Newtype = Newtype
-  { newtypeName :: Text,
+  { newtypeName :: Name,
     newtypeModuleId :: ModuleId,
     newtypeIsMessage :: Bool,
-    newtypeFieldName :: Text,
+    newtypeFieldName :: Name,
     newtypeType :: Type,
     newtypeRefinement :: Refinement,
     newtypeAnnotations :: [Annotation]
@@ -239,7 +262,7 @@ instance PrettyShow Newtype where
 -- ** alias
 
 data Alias = Alias
-  { aliasName :: Text,
+  { aliasName :: Name,
     aliasModuleId :: ModuleId,
     aliasType :: Type,
     aliasAnnotations :: [Annotation]
@@ -262,7 +285,7 @@ instance PrettyShow Alias where
 -- ** function
 
 data Function = Function
-  { functionName :: Text,
+  { functionName :: Name,
     functionModuleId :: ModuleId,
     functionIsTransform :: Bool,
     functionType :: FunctionType,
@@ -279,7 +302,7 @@ instance PrettyShow Function where
   prettyShow fun =
     unwords . concat $
       [ ["fun"],
-        if functionIsTransform fun then ["transform"] else [],
+        ["transform" | functionIsTransform fun],
         [prettyShow $ functionName fun],
         [prettyShow $ functionType fun],
         [prettyShow $ functionBody fun]
@@ -288,7 +311,7 @@ instance PrettyShow Function where
 -- ** constant
 
 data Constant = Constant
-  { constantName :: Text,
+  { constantName :: Name,
     constantModuleId :: ModuleId,
     constantType :: Type,
     constantBody :: DefinitionBody,
@@ -314,7 +337,7 @@ instance PrettyShow Constant where
 -- *** Has_name
 
 class Has_name a where
-  get_name :: a -> Text
+  get_name :: a -> Name
 
 instance Has_name Structure where
   get_name = structureName
@@ -422,7 +445,7 @@ eqRefinement :: Term -> Term -> Refinement
 eqRefinement tm1 tm2 =
   Refinement . Just $
     Term
-      { _termPreterm = TermApplication (fromUnqualText $ nameOfPrimFun PrimFunEq) [tm1, tm2] Nothing,
+      { _termPreterm = TermApplication (fromUnqualName $ nameOfPrimFun PrimFunEq) [tm1, tm2] Nothing,
         _termMaybeType = Just TypeBit
       }
 
@@ -439,7 +462,7 @@ data Annotation
 
 data DefinitionBody
   = DefinitionBodyTerm Term
-  | DefinitionBodyExternal Text
+  | DefinitionBodyExternal Name
   | DefinitionBodyPrimFun PrimFun
   | DefinitionBodyPrimConst PrimConst
   | DefinitionBodyDerived (Maybe Term)
@@ -456,8 +479,8 @@ instance PrettyShow DefinitionBody where
 -- ** function type
 
 data FunctionType = FunctionType
-  { functionTypeParams :: [(Maybe Text, Type)],
-    functionTypeContextualParams :: Map.Map Text Type,
+  { functionTypeParams :: [(Maybe Name, Type)],
+    functionTypeContextualParams :: Map.Map Name Type,
     functionTypeOutput :: Type
   }
   deriving (Eq, Show)
@@ -560,8 +583,8 @@ data Preterm
   | TermTuple [Term]
   | TermArray [Term]
   | TermBlock Block
-  | TermStructure Id (Map.Map Text Term)
-  | TermMember Term Text
+  | TermStructure Id (Map.Map Name Term)
+  | TermMember Term Name
   | TermConstructor Id (Maybe Term)
   | TermApplication Id [Term] (Maybe (Either [Term] (Map.Map Type Term)))
   | TermIf Term Term Term
@@ -632,7 +655,7 @@ data Literal
   | LiteralFloat Double
   | LiteralBit Bool
   | LiteralChar Char
-  | LiteralString Text
+  | LiteralString Name
   deriving (Eq, Show)
 
 instance PrettyShow Literal where
@@ -652,7 +675,7 @@ data Pattern = Pattern {_patternPrepattern :: Prepattern, _patternType :: Maybe 
 
 data Prepattern
   = -- | case of Enumerated or reference to Constant
-    PatternNamed Text
+    PatternNamed Name
   | PatternDiscard
   | PatternLiteral Literal
   {- TODO: more features
@@ -660,7 +683,7 @@ data Prepattern
   \| PatternExtends Pattern Id
   \| PatternTuple [Pattern]
   \| PatternArray [Pattern]
-  \| PatternField Pattern Text
+  \| PatternField Pattern Name
   \| -- | constructor or Variant or constructor of Newtype
     PatternConstructor Id Pattern
   -}
@@ -708,7 +731,7 @@ arityPrimFun = \case
   PrimFunAnd -> 2
   PrimFunNot -> 1
 
-toPrimFun :: Text -> Maybe PrimFun
+toPrimFun :: Name -> Maybe PrimFun
 toPrimFun = \case
   "==" -> Just PrimFunEq
   "||" -> Just PrimFunOr
@@ -723,11 +746,11 @@ stringOfPrimFun = \case
   PrimFunAnd -> "&&"
   PrimFunNot -> "!"
 
-nameOfPrimFun :: PrimFun -> Text
+nameOfPrimFun :: PrimFun -> Name
 nameOfPrimFun = pack . stringOfPrimFun
 
 idOfPrimFun :: PrimFun -> Id
-idOfPrimFun = fromUnqualText . nameOfPrimFun
+idOfPrimFun = fromUnqualName . nameOfPrimFun
 
 typeOfPrimFun :: PrimFun -> FunctionType
 typeOfPrimFun = \case
@@ -746,7 +769,7 @@ data PrimConst
   = PrimConstPi
   deriving (Eq, Ord, Enum, Show)
 
-toPrimConst :: Text -> Maybe PrimConst
+toPrimConst :: Name -> Maybe PrimConst
 toPrimConst = \case
   "pi" -> Just PrimConstPi
   _ -> Nothing
@@ -755,11 +778,11 @@ stringOfPrimConst :: PrimConst -> String
 stringOfPrimConst = \case
   PrimConstPi -> "pi"
 
-nameOfPrimConst :: PrimConst -> Text
+nameOfPrimConst :: PrimConst -> Name
 nameOfPrimConst = pack . stringOfPrimConst
 
 idOfPrimConst :: PrimConst -> Id
-idOfPrimConst = fromUnqualText . nameOfPrimConst
+idOfPrimConst = fromUnqualName . nameOfPrimConst
 
 -- *** primitive constructors
 
@@ -787,9 +810,27 @@ data ModuleCtx = ModuleCtx
 
 data Constructor
   = ConstructorNewtype Newtype
-  | ConstructorVariant Variant Type
-  | ConstructorEnumerated Enumerated Literal
+  | ConstructorVariant Variant (Name, Type)
+  | ConstructorEnumerated Enumerated (Name, Literal)
   deriving (Eq, Show)
+
+class IsConstructor a b | a -> b where
+  toConstructor :: a -> b -> Constructor
+
+instance IsConstructor Newtype () where
+  toConstructor = ConstructorNewtype >>> const
+
+instance IsConstructor Variant (Name, Type) where
+  toConstructor = ConstructorVariant
+
+instance IsConstructor Enumerated (Name, Literal) where
+  toConstructor = ConstructorEnumerated
+
+constructorName :: Constructor -> Name
+constructorName = \case
+  ConstructorNewtype nt -> newtypeName nt
+  ConstructorVariant _ (n, _) -> n
+  ConstructorEnumerated _ (n, _) -> n
 
 makeLenses ''ModuleCtx
 
@@ -805,8 +846,8 @@ instance PrettyShow ModuleCtx where
 instance PrettyShow Constructor where
   prettyShow = \case
     ConstructorNewtype newty -> "constructor of newtype " <> prettyShow (newtypeName newty)
-    ConstructorVariant varnt ty -> "constructor of variant " <> prettyShow (variantName varnt) <> " with argument type " <> prettyShow ty
-    ConstructorEnumerated enm lit -> "constructor of enum " <> prettyShow (enumeratedName enm) <> " with value " <> prettyShow lit
+    ConstructorVariant varnt (n, ty) -> "constructor " <> prettyShow n <> " of variant " <> prettyShow (variantName varnt) <> " with argument type " <> prettyShow ty
+    ConstructorEnumerated enm (n, lit) -> "constructor " <> prettyShow n <> " of enum " <> prettyShow (enumeratedName enm) <> " with value " <> prettyShow lit
 
 topModuleCtx :: ModuleCtx
 topModuleCtx =
@@ -841,29 +882,29 @@ toOpenedModuleCtx mdl =
     ctxModuleId .= moduleId mdl
     flip mapM_ (moduleDeclarations mdl) \case
       DeclarationStructure d -> do
-        ctxModuleTypes %= Map.insert (fromUnqualText $ get_name d) (DeclarationTypeStructure d)
+        ctxModuleTypes %= Map.insert (fromUnqualName $ get_name d) (DeclarationTypeStructure d)
       DeclarationAlias d -> do
-        ctxModuleTypes %= Map.insert (fromUnqualText $ get_name d) (DeclarationTypeAlias d)
+        ctxModuleTypes %= Map.insert (fromUnqualName $ get_name d) (DeclarationTypeAlias d)
       DeclarationVariant d -> do
-        ctxModuleTypes %= Map.insert (fromUnqualText $ get_name d) (DeclarationTypeVariant d)
-        flip mapM_ (Map.toList $ variantConstructors d) \(txt, ty) ->
-          ctxModuleConstructors %= Map.insert (fromUnqualText txt) (ConstructorVariant d ty)
+        ctxModuleTypes %= Map.insert (fromUnqualName $ get_name d) (DeclarationTypeVariant d)
+        forM_ (Map.toList $ variantConstructors d) \(n, ty) ->
+          ctxModuleConstructors %= Map.insert (fromUnqualName n) (ConstructorVariant d (n, ty))
       DeclarationEnumerated d -> do
-        ctxModuleTypes %= Map.insert (fromUnqualText $ get_name d) (DeclarationTypeEnumerated d)
-        flip mapM_ (Map.toList $ enumeratedConstructors d) \(txt, lit) ->
-          ctxModuleConstructors %= Map.insert (fromUnqualText txt) (ConstructorEnumerated d lit)
+        ctxModuleTypes %= Map.insert (fromUnqualName $ get_name d) (DeclarationTypeEnumerated d)
+        forM_ (Map.toList $ enumeratedConstructors d) \(n, lit) ->
+          ctxModuleConstructors %= Map.insert (fromUnqualName n) (ConstructorEnumerated d (n, lit))
       DeclarationNewtype d -> do
-        ctxModuleTypes %= Map.insert (fromUnqualText $ get_name d) (DeclarationTypeNewtype d)
-        ctxModuleConstructors %= Map.insert (fromUnqualText $ newtypeFieldName d) (ConstructorNewtype d)
+        ctxModuleTypes %= Map.insert (fromUnqualName $ get_name d) (DeclarationTypeNewtype d)
+        ctxModuleConstructors %= Map.insert (fromUnqualName $ newtypeFieldName d) (ConstructorNewtype d)
       DeclarationFunction d -> do
-        ctxModuleFunctions %= Map.insert (fromUnqualText $ get_name d) d
+        ctxModuleFunctions %= Map.insert (fromUnqualName $ get_name d) d
       DeclarationConstant d -> do
-        ctxModuleConstants %= Map.insert (fromUnqualText $ get_name d) d
+        ctxModuleConstants %= Map.insert (fromUnqualName $ get_name d) d
 
 toQualifiedModuleCtx :: [Import] -> Module -> ModuleCtx
 toQualifiedModuleCtx = error "TODO: adds only imported ids"
 
-toAliasedModuleCtx :: Text -> Module -> ModuleCtx
+toAliasedModuleCtx :: Name -> Module -> ModuleCtx
 toAliasedModuleCtx = error "TODO: adds only aliased ids"
 
 subModuleCtx :: ModuleCtx -> ModuleCtx -> ModuleCtx

@@ -68,7 +68,7 @@ makeLenses ''Ctx
 
 -- ** processing
 
--- expects environmnt to already be loaded
+-- expects environment to already be loaded
 procModule :: Module -> Typing ()
 procModule mdl = do
   debug $ "procModule: " <> prettyShow (moduleId mdl)
@@ -122,20 +122,20 @@ procDeclaration decl = do
       structureRefinement <- procRefinement (structureRefinement struct)
       envModuleCtx
         . ctxModuleTypes
-        . at (fromUnqualText $ structureName struct)
+        . at (fromUnqualName $ structureName struct)
         .= Just (DeclarationTypeStructure struct {structureFields, structureRefinement})
     DeclarationNewtype newty -> do
       newtypeType <- normType $ newtypeType newty
       newtypeRefinement <- procRefinement $ newtypeRefinement newty
       envModuleCtx
         . ctxModuleTypes
-        . at (fromUnqualText $ newtypeName newty)
+        . at (fromUnqualName $ newtypeName newty)
         .= Just (DeclarationTypeNewtype newty {newtypeType, newtypeRefinement})
     DeclarationVariant varnt -> do
       variantConstructors <- normType `mapM` variantConstructors varnt
       envModuleCtx
         . ctxModuleTypes
-        . at (fromUnqualText $ variantName varnt)
+        . at (fromUnqualName $ variantName varnt)
         .= Just (DeclarationTypeVariant varnt {variantConstructors})
     DeclarationEnumerated enm -> do
       unless (isLiteralType (enumeratedLiteralType enm)) $
@@ -143,13 +143,13 @@ procDeclaration decl = do
           "the type of an enum must be a literal type, but instead it is: " <> prettyShow (enumeratedLiteralType enm)
       envModuleCtx
         . ctxModuleTypes
-        . at (fromUnqualText $ enumeratedName enm)
+        . at (fromUnqualName $ enumeratedName enm)
         .= Just (DeclarationTypeEnumerated enm)
     DeclarationAlias alias -> do
       aliasType <- normType $ aliasType alias
       envModuleCtx
         . ctxModuleTypes
-        . at (fromUnqualText $ aliasName alias)
+        . at (fromUnqualName $ aliasName alias)
         .= Just (DeclarationTypeAlias alias {aliasType})
     DeclarationFunction fun -> do
       let funTy = functionType fun
@@ -166,7 +166,7 @@ procDeclaration decl = do
           )
       envModuleCtx
         . ctxModuleFunctions
-        . at (fromUnqualText $ functionName fun)
+        . at (fromUnqualName $ functionName fun)
         .= Just (fun {functionType, functionBody})
     DeclarationConstant con -> do
       constantType <- normType $ constantType con
@@ -175,7 +175,7 @@ procDeclaration decl = do
       debug $ "procDeclaration: " <> prettyShow (get_name decl) <> " ==> " <> prettyShow con'
       envModuleCtx
         . ctxModuleConstants
-        . at (fromUnqualText $ constantName con)
+        . at (fromUnqualName $ constantName con)
         .= Just con'
 
 normFunctionType :: FunctionType -> Typing FunctionType
@@ -309,7 +309,7 @@ inferTerm tm = do
               tm <- inferTerm tm
               tm <- checkTerm tm (newtypeType newty)
               return $ setPretermAndType (TermConstructor x (Just tm)) (TypeNewtype newty)
-        ConstructorVariant varnt ty ->
+        ConstructorVariant varnt (_, ty) ->
           case mb_tm of
             Nothing -> throwError . TypingError $ "a variant constructor must have an argument"
             Just tm -> do
@@ -324,6 +324,23 @@ inferTerm tm = do
           DefinitionBodyPrimFun _pf -> freshenFunctionTypeUnifIds $ functionType fun
           _ -> return $ functionType fun
       debug $ "funTy = " <> prettyShow funTy
+
+      -- check arguments length
+      let n_args_expected = length (functionTypeParams funTy)
+      let n_args_actual = length args
+      when (n_args_actual /= n_args_expected) do
+        throwError . TypingError $
+          "the function `"
+            <> prettyShow x
+            <> "` was given too "
+            <> ( if n_args_actual < n_args_expected
+                   then "few"
+                   else "many"
+               )
+            <> " arguments; expected "
+            <> show n_args_expected
+            <> " but actually got "
+            <> show n_args_actual
 
       -- check arguments
       args <-
@@ -342,7 +359,7 @@ inferTerm tm = do
                         (Map.toList locs)
                         >>= \case
                           Nothing -> throwError . TypingError $ "could not infer value Gof contextual parameter: " <> prettyShow txt
-                          Just (txt, ty) -> return (ty, makeTerm (TermNamed (fromUnqualText txt)) ty)
+                          Just (txt, ty) -> return (ty, makeTerm (TermNamed (fromUnqualName txt)) ty)
                   )
                     `traverse` Map.toList (functionTypeContextualParams funTy)
                 )

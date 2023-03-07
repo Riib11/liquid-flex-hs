@@ -8,9 +8,9 @@ import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.CG
 import Flex.Refining.Constraint
 import Flex.Refining.Embedding
+import Flex.Refining.Refining
 import Flex.Refining.Syntax
 import Flex.Syntax (Id, Literal, ModuleId)
 import qualified Flex.Syntax as Syn
@@ -30,13 +30,13 @@ import Text.Printf (printf)
 import Utility
 
 -- | Checking (check)
-check :: Env -> Term -> BaseType -> CG Cstr
+check :: Env -> Term -> BaseType -> Refining Cstr
 check env tm tyExp = do
   (cstr, tyInf) <- synth env tm
   cstr' <- checkSubtype tyInf tyExp
   return $ andCstrs [cstr, cstr']
 
-checkBlock :: Env -> Block -> BaseType -> CG Cstr
+checkBlock :: Env -> Block -> BaseType -> Refining Cstr
 checkBlock env ([], tm) tyExp = check env tm tyExp
 checkBlock env (stmt : stmts, tm) tyExp = case stmt of
   StatementLet x imp -> do
@@ -53,11 +53,11 @@ checkBlock env (stmt : stmts, tm) tyExp = case stmt of
       (checkBlock env (stmts, tm) tyExp)
 
 -- | Synthesizing (synth)
-synth :: Env -> Term -> CG (Cstr, BaseType)
+synth :: Env -> Term -> Refining (Cstr, BaseType)
 synth env (Term ptm ty) = case ptm of
   TermLiteral lit -> (trivialCstr,) <$> synthLiteral lit ty
   TermVar x -> (trivialCstr,) <$> synthCon env x
-  TermBlock _ -> throwCG [RefineError "should never synthesize a TermBlock; should only ever check"]
+  TermBlock _ -> throwRefining [RefineError "should never synthesize a TermBlock; should only ever check"]
   TermApp (AppPrimFun pf) args -> synthAppPrimFun env pf args
   TermApp (AppVar x) args -> do
     -- synth the arg types
@@ -72,13 +72,13 @@ synth env (Term ptm ty) = case ptm of
     -- for their argument values in the output type
     return (cstr, tyOut)
 
-reftTerm :: Term -> CG F.Reft
+reftTerm :: Term -> Refining F.Reft
 reftTerm tm = F.exprReft <$> embedTerm tm
 
-reftPreterm :: Preterm -> CG F.Reft
+reftPreterm :: Preterm -> Refining F.Reft
 reftPreterm tm = F.exprReft <$> embedPreterm tm
 
-synthAppPrimFun :: Env -> Syn.PrimFun -> [Term] -> CG (Cstr, BaseType)
+synthAppPrimFun :: Env -> Syn.PrimFun -> [Term] -> Refining (Cstr, BaseType)
 synthAppPrimFun env Syn.PrimFunEq [tm1, tm2] = do
   -- synth type of first arg
   (cstr, ty1) <- synth env tm1
@@ -99,7 +99,7 @@ synthAppPrimFun env Syn.PrimFunNot [tm] = do
   r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunNot) [tm]
   return (cstr, TypeAtomic r AtomicBit)
 synthAppPrimFun _env pf args =
-  throwCG
+  throwRefining
     [ RefineError $
         concat
           [ "primitive function",
@@ -115,7 +115,7 @@ unrefineBaseType = \case
   TypeAtomic _ atomic -> TypeAtomic mempty atomic
 
 -- TODO: take `ty` into account
-synthLiteral :: Literal -> BaseType -> CG BaseType
+synthLiteral :: Literal -> BaseType -> Refining BaseType
 synthLiteral lit ty = do
   TypeAtomic <$> r <*> return atomic
   where
@@ -127,13 +127,13 @@ synthLiteral lit ty = do
       Syn.LiteralString _ -> AtomicString
     r = reftPreterm $ TermLiteral lit
 
-synthCon :: Env -> F.Symbol -> CG BaseType
+synthCon :: Env -> F.Symbol -> Refining BaseType
 synthCon env x =
   lookupEnv x env
     >>= ( \case
             TypeBaseType ty -> return ty
             TypeFunType funTy ->
-              throwCG
+              throwRefining
                 [ RefineError . concat $
                     [ "type synthesis error;",
                       "expected the variable",
@@ -147,18 +147,18 @@ synthCon env x =
 -- | synthFun
 --
 -- We need to know about `args` since some primitive functions are polymorphic.
-synthFun :: Env -> F.Symbol -> [BaseType] -> CG FunType
+synthFun :: Env -> F.Symbol -> [BaseType] -> Refining FunType
 -- types should be structurally the same (ignore refinement)
 synthFun env x _args = case F.lookupSEnv x env of
   Just (TypeFunType funTy) -> return funTy
-  Just _ -> throwCG [RefineError $ "expected to be a function id: " <> show x]
-  Nothing -> throwCG [RefineError $ "unknown function id: " <> show x]
+  Just _ -> throwRefining [RefineError $ "expected to be a function id: " <> show x]
+  Nothing -> throwRefining [RefineError $ "unknown function id: " <> show x]
 
 -- | Subtype checking (checkSubtype)
 --
 -- Check that one type is a subtype of another type (taking refinements into
 -- account).
-checkSubtype :: BaseType -> BaseType -> CG Cstr
+checkSubtype :: BaseType -> BaseType -> Refining Cstr
 --    forall x : T, p x ==> (p' x')[x' := x]
 --  ----------------------------------------------
 --    {x : T | p x} <: {x' : T | p' y'}
@@ -175,7 +175,7 @@ checkSubtype ty1@(TypeAtomic r1 atom1) (TypeAtomic r2 atom2)
                 (reftSymbol r1)
           )
 checkSubtype ty1 ty2 =
-  throwCG
+  throwRefining
     [ RefineError $
         "subtyping error; the type"
           <> (" '" <> show ty1 <> "' ")

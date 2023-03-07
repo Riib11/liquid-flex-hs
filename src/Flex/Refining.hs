@@ -1,5 +1,5 @@
 module Flex.Refining
-  ( module Flex.Refining.CG,
+  ( module Flex.Refining.Refining,
     module Flex.Refining.Check,
     module Flex.Refining.Query,
     module Flex.Refining.Syntax,
@@ -16,9 +16,9 @@ import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.CG (messageOfRefineError, unsafeCG)
 import Flex.Refining.Check (reftPreterm, reftTerm)
 import Flex.Refining.Query (checkValid, genCheckQuery, resultExitCode)
+import Flex.Refining.Refining (messageOfRefineError, unsafeRefining)
 import Flex.Refining.Syntax
 import Flex.Refining.Translation
 import Flex.Syntax (Id, Literal, ModuleId)
@@ -92,7 +92,7 @@ main = do
                       (AppVar "g")
                       -- [Term (TermLit (Syn.LiteralBit True)) ()]
                       [ let r =
-                              unsafeCG $
+                              unsafeRefining $
                                 reftTerm $
                                   Term
                                     (TermLiteral (Syn.LiteralBit False))
@@ -116,7 +116,7 @@ main = do
           [ ( -- f : bit{ b | b == true} -> bit
               "f",
               let r =
-                    unsafeCG $
+                    unsafeRefining $
                       reftTerm
                         ( Term
                             (TermLiteral (Syn.LiteralBit True))
@@ -130,14 +130,14 @@ main = do
             ( -- g : bit{ b : b == false } -> bit{ b : b == true }
               "g",
               let r1 =
-                    unsafeCG $
+                    unsafeRefining $
                       reftTerm
                         ( Term
                             (TermLiteral (Syn.LiteralBit False))
                             (TypeAtomic mempty AtomicBit)
                         )
                   r2 =
-                    unsafeCG $
+                    unsafeRefining $
                       reftTerm
                         ( Term
                             (TermLiteral (Syn.LiteralBit True))
@@ -152,6 +152,6 @@ main = do
 
   putStrLn $ "tm = " <> prettyShow tm
   putStrLn $ "ty = " <> prettyShow ty
-  let query = unsafeCG $ genCheckQuery env tm ty
+  let query = unsafeRefining $ genCheckQuery env tm ty
   result <- checkValid fp query
   exitWith =<< resultExitCode result

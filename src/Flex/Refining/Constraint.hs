@@ -8,7 +8,7 @@ import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.CG
+import Flex.Refining.Refining
 import Flex.Refining.Syntax
 import Flex.Syntax (Id, Literal, ModuleId)
 import qualified Flex.Syntax as Syn

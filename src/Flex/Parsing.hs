@@ -14,6 +14,12 @@ import Text.Parsec as Parsec
 import Text.Parsec.Expr as ParsecExpr
 import Utility
 
+runParser :: String -> Parser a -> String -> IO a
+runParser label parser string = do
+  runParserT parser (emptyEnv topModuleId) (label <> "(" <> string <> ")") string >>= \case
+    Left err -> error $ "parse error: " <> show err
+    Right a -> return a
+
 parseModuleId :: Parser ModuleId
 parseModuleId = ModuleId <$> qualCapIdentifierTexts
 

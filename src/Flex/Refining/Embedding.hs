@@ -9,7 +9,7 @@ import Data.Bifunctor (second)
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Refining.CG
+import Flex.Refining.Refining
 import Flex.Refining.Syntax
 import Flex.Syntax (Id, Literal, ModuleId)
 import qualified Flex.Syntax as Base
@@ -35,10 +35,10 @@ import Utility
 --  - no shadowing
 
 -- Embed a term as a LF expression
-embedTerm :: Term -> CG F.Expr
+embedTerm :: Term -> Refining F.Expr
 embedTerm tm = embedPreterm (termPreterm tm)
 
-embedPreterm :: Preterm -> CG F.Expr
+embedPreterm :: Preterm -> Refining F.Expr
 embedPreterm = \case
   TermLiteral lit -> return $ embedLiteral lit
   TermVar x -> return $ embedVar x
@@ -47,7 +47,7 @@ embedPreterm = \case
   -- TODO: folds in the right direction??
   TermApp (AppVar x) args -> foldM (\e tm -> F.EApp e <$> embedTerm tm) (embedVar x) args
 
-embedAppPrimFun :: Base.PrimFun -> [Term] -> CG F.Expr
+embedAppPrimFun :: Base.PrimFun -> [Term] -> Refining F.Expr
 embedAppPrimFun pf args = case (pf, args) of
   (Base.PrimFunEq, [tm1, tm2]) ->
     F.PAtom F.Eq <$> embedTerm tm1 <*> embedTerm tm2
@@ -57,7 +57,7 @@ embedAppPrimFun pf args = case (pf, args) of
     F.POr <$> traverse embedTerm [tm1, tm2]
   (Base.PrimFunNot, [tm]) ->
     F.PNot <$> embedTerm tm
-  (pf, args) -> throwCG [RefineError $ "invalid primitive function application: " <> show (TermApp (AppPrimFun pf) args)]
+  (pf, args) -> throwRefining [RefineError $ "invalid primitive function application: " <> show (TermApp (AppPrimFun pf) args)]
 
 embedVar :: F.Symbol -> F.Expr
 embedVar = F.expr

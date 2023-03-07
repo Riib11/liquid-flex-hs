@@ -1,4 +1,4 @@
-module Flex.Refining.CG where
+module Flex.Refining.Refining where
 
 import Control.Applicative (Applicative (liftA2))
 import Control.DeepSeq
@@ -29,14 +29,14 @@ import Text.Printf (printf)
 import Utility
 
 -- | Constraint Generation monad
-type CG a = Either [RefineError] a
+type Refining a = Either [RefineError] a
 
-throwCG :: [RefineError] -> CG a
-throwCG = Left
+throwRefining :: [RefineError] -> Refining a
+throwRefining = Left
 
-unsafeCG :: CG a -> a
-unsafeCG cg = case cg of
-  Left errs -> error $ "unsafeCG: \n" <> List.intercalate "\n" (show <$> errs)
+unsafeRefining :: Refining a -> a
+unsafeRefining cg = case cg of
+  Left errs -> error $ "unsafeRefining: \n" <> List.intercalate "\n" (show <$> errs)
   Right a -> a
 
 -- | RefineError

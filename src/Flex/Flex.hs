@@ -7,8 +7,11 @@ import Control.Monad.Except
 import Control.Monad.State
 import qualified Data.Map as Map
 import Data.Text (Text)
+import qualified Flex.Refining.Syntax as Reft
 import Flex.Syntax
 import qualified Flex.Unif as Unif
+import qualified Language.Fixpoint.Parse as FP
+import qualified Language.Fixpoint.Types as F
 import PrettyShow
 import Utility
 
@@ -150,6 +153,21 @@ loadImport :: Import -> FlexT ()
 loadImport _imp =
   -- error "TODO"
   return ()
+
+-- ** symbols
+
+freshSymbol :: String -> FlexT F.Symbol
+freshSymbol str = do
+  i <- gets (^. envFreshSymbolIndex)
+  modify' $ envFreshSymbolIndex %~ (1 +)
+  return $ parseSymbol (str <> "#" <> show i)
+
+-- | parsing
+parseSymbol :: String -> F.Symbol
+parseSymbol = FP.doParse' FP.lowerIdP "parseSymbol"
+
+parsePred :: String -> F.Pred
+parsePred = FP.doParse' FP.predP "parsePred"
 
 -- ** debugging
 
