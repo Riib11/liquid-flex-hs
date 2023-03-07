@@ -117,36 +117,16 @@ transIdRef x =
 transType :: Monad m => Base.Type -> T m Reft.BaseType
 transType ty0 = case ty0 of
   -- IntSize bounds value
-  Base.TypeInt (Base.IntSize is) -> do
-    x <- freshSymbol (show is)
-    let n = 2 ^ (is - 1) :: Int
+  Base.TypeInt (Base.IntSize s) -> do
+    x <- freshSymbol (show s)
+    let n = 2 ^ (s - 1) :: Int
     -- -n < x < n
-    return $
-      Reft.TypeAtomic
-        ( F.reft
-            x
-            ( F.PAnd
-                [ F.PAtom F.Lt (F.expr (-n)) (F.expr x),
-                  F.PAtom F.Lt (F.expr x) (F.expr n)
-                ]
-            )
-        )
-        Reft.AtomicInt
-  Base.TypeUInt (Base.UIntSize uis) -> do
-    x <- freshSymbol (show uis)
-    let n = 2 ^ uis :: Int
+    return $ Reft.TypeAtomic (F.reft x (boundedIntExpr x (-n) n)) Reft.AtomicInt
+  Base.TypeUInt (Base.UIntSize s) -> do
+    x <- freshSymbol (show s)
+    let n = 2 ^ s :: Int
     -- 0 <= x < n
-    return $
-      Reft.TypeAtomic
-        ( F.reft
-            x
-            ( F.PAnd
-                [ F.PAtom F.Le (F.expr (0 :: Int)) (F.expr x),
-                  F.PAtom F.Lt (F.expr x) (F.expr n)
-                ]
-            )
-        )
-        Reft.AtomicInt
+    return $ Reft.TypeAtomic (F.reft x (boundedIntExpr x 0 n)) Reft.AtomicInt
   Base.TypeFloat _fs -> error "TODO: transType TypeFloat"
   Base.TypeBit -> return $ Reft.TypeAtomic mempty Reft.AtomicBit
   Base.TypeChar -> return $ Reft.TypeAtomic mempty Reft.AtomicChar
@@ -160,6 +140,13 @@ transType ty0 = case ty0 of
   Base.TypeEnumerated _enu -> error "TODO: transType TypeEnumerated"
   Base.TypeVariant _vari -> error "TODO: transType Variant"
   Base.TypeNewtype _new -> error "TODO: transType Newtype"
+  where
+    boundedIntExpr :: F.Symbol -> Int -> Int -> F.Expr
+    boundedIntExpr x nMin nMax =
+      F.PAnd
+        [ F.PAtom F.Le (F.expr nMin) (F.expr x),
+          F.PAtom F.Lt (F.expr x) (F.expr nMax)
+        ]
 
 transLiteral :: Monad m => Base.Literal -> Reft.BaseType -> T m Reft.Term
 transLiteral lit ty = pure $ Reft.Term (Reft.TermLiteral lit) ty
