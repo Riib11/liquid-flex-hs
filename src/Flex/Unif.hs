@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Flex.Unif where
 
 import PrettyShow
@@ -19,6 +17,7 @@ data Env = Env {i :: Integer}
 nullId :: Id
 nullId = Id ("null", -1)
 
+-- infinite stream of placeholder ids
 ids :: [Id]
 ids = go (-1) where go n = Id ("#" <> show (abs n), n) : go (n - 1)
 
