@@ -784,12 +784,12 @@ typeOfPrimFun :: PrimFun -> FunctionType
 typeOfPrimFun = \case
   PrimFunEq ->
     let (ufId : _) = Unif.ids
-     in help [(Just "== arg1", TypeUnif ufId), (Just "== arg2", TypeUnif ufId)] TypeBit
-  PrimFunAnd -> help [(Just "&& arg1", TypeBit), (Just "&& arg2", TypeBit)] TypeBit
-  PrimFunOr -> help [(Just "|| arg2", TypeBit), (Just "|| arg2", TypeBit)] TypeBit
-  PrimFunNot -> help [(Just "! arg1", TypeBit)] TypeBit
+     in go [(Just "== arg1", TypeUnif ufId), (Just "== arg2", TypeUnif ufId)] TypeBit
+  PrimFunAnd -> go [(Just "&& arg1", TypeBit), (Just "&& arg2", TypeBit)] TypeBit
+  PrimFunOr -> go [(Just "|| arg2", TypeBit), (Just "|| arg2", TypeBit)] TypeBit
+  PrimFunNot -> go [(Just "! arg1", TypeBit)] TypeBit
   where
-    help functionTypeParams functionTypeOutput = FunctionType {functionTypeParams, functionTypeContextualParams = Map.empty, functionTypeOutput}
+    go functionTypeParams functionTypeOutput = FunctionType {functionTypeParams, functionTypeContextualParams = Map.empty, functionTypeOutput}
 
 -- *** primitive constants
 
