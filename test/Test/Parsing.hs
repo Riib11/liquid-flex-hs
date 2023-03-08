@@ -7,7 +7,7 @@ import Flex.Syntax
 import PrettyShow
 import Test.HUnit
 import Test.Utility
-import Text.Parsec (runParserT)
+import Text.Parsec (eof, runParserT)
 
 test :: Test
 test =
@@ -365,7 +365,7 @@ parses_newtypes =
 -- makeTest :: (Eq a, Show a) => Parser a -> String -> Maybe (IO a) -> Test
 makeTest :: (Eq a, PrettyShow a) => Parser a -> String -> Maybe (IO a) -> Test
 makeTest parser string result = TestCase do
-  result' <- runParserT parser (emptyEnv topModuleId) ("Test(" <> string <> ")") string
+  result' <- runParserT (parser <* eof) (emptyEnv topModuleId) ("Test(" <> string <> ")") string
   case (result', result) of
     (Right a, Just io_a') -> assertEqualPretty a =<< io_a'
     -- (Right a, Just io_a') -> assertEqual ("Test(" <> string <> ")") a =<< io_a'

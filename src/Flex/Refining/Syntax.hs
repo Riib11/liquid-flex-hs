@@ -11,7 +11,6 @@ import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
 import Flex.Flex (FlexError (RefineError), RefineError (MakeRefineError))
-import Flex.Refining.Common
 import qualified Flex.Syntax as Base
 import GHC.Generics
 import GHC.IO.Exception (ExitCode)
@@ -56,6 +55,11 @@ data Type_ r
   | TypeFunType (FunType_ r)
   deriving (Eq, Show)
 
+instance PrettyShow (Type_ F.Reft) where
+  prettyShow = \case
+    TypeBaseType ty -> prettyShow ty
+    TypeFunType ty -> show ty -- TODO: prettyShow ty
+
 -- | BaseType
 type BaseType = BaseType_ F.Reft
 
@@ -85,14 +89,14 @@ data Atomic
   | AtomicString
   deriving (Eq, Show)
 
-instance Show r => PrettyShow (BaseType_ r) where
+instance PrettyShow (BaseType_ F.Reft) where
   prettyShow = \case
     TypeAtomic r at -> case at of
-      AtomicInt -> "int{" <> show r <> "}"
-      AtomicFloat -> "float{" <> show r <> "}"
-      AtomicBit -> "bit{" <> show r <> "}"
-      AtomicChar -> "char{" <> show r <> "}"
-      AtomicString -> "string{" <> show r <> "}"
+      AtomicInt -> "int{" <> show (F.reftBind r) <> " | " <> show (F.reftPred r) <> "}"
+      AtomicFloat -> "float{" <> show (F.reftBind r) <> " | " <> show (F.reftPred r) <> "}"
+      AtomicBit -> "bit{" <> show (F.reftBind r) <> " | " <> show (F.reftPred r) <> "}"
+      AtomicChar -> "char{" <> show (F.reftBind r) <> " | " <> show (F.reftPred r) <> "}"
+      AtomicString -> "string{" <> show (F.reftBind r) <> " | " <> show (F.reftPred r) <> "}"
 
 trueBaseType :: BaseType
 trueBaseType = bitBaseType F.trueReft
@@ -219,23 +223,6 @@ instance PrettyShow Statement where
 
 instance Base.HasLabel Term where
   getLabel _ = F.dummySpan
-
--- | Env
-type Env = F.SEnv Type
-
-emptyEnv :: Env
-emptyEnv = F.emptySEnv
-
-extendEnv :: F.Symbol -> Type -> Env -> Env
-extendEnv = F.insertSEnv
-
-lookupEnv :: F.Symbol -> Env -> Refining Type
-lookupEnv x env = case F.lookupSEnv x env of
-  Nothing ->
-    throwError . RefineError . MakeRefineError $
-      "Can't find variable's refinement type in environment: "
-        <> show x
-  Just ty -> return ty
 
 -- | Substitution
 --

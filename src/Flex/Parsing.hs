@@ -241,7 +241,9 @@ parseTerm = buildExpressionParser table term0 <?> "term"
     parseTermTuple = TermTuple <$> parens (parseTerm `sepBy` symbol ",")
 
     table =
-      [ [prefixPrimFun PrimFunNot],
+      [ [binaryPrimFun PrimFunPlus AssocLeft],
+        [binaryPrimFun PrimFunDiv AssocLeft],
+        [prefixPrimFun PrimFunNot],
         [binaryPrimFun PrimFunAnd AssocLeft, binaryPrimFun PrimFunOr AssocLeft],
         [binaryPrimFun PrimFunEq AssocNone]
       ]

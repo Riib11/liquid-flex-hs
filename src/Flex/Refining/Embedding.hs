@@ -51,14 +51,12 @@ embedPreterm = \case
 
 embedAppPrimFun :: Base.PrimFun -> [Term] -> Refining F.Expr
 embedAppPrimFun pf args = case (pf, args) of
-  (Base.PrimFunEq, [tm1, tm2]) ->
-    F.PAtom F.Eq <$> embedTerm tm1 <*> embedTerm tm2
-  (Base.PrimFunAnd, [tm1, tm2]) ->
-    F.PAnd <$> traverse embedTerm [tm1, tm2]
-  (Base.PrimFunOr, [tm1, tm2]) ->
-    F.POr <$> traverse embedTerm [tm1, tm2]
-  (Base.PrimFunNot, [tm]) ->
-    F.PNot <$> embedTerm tm
+  (Base.PrimFunEq, [tm1, tm2]) -> F.PAtom F.Eq <$> embedTerm tm1 <*> embedTerm tm2
+  (Base.PrimFunAnd, [tm1, tm2]) -> F.PAnd <$> traverse embedTerm [tm1, tm2]
+  (Base.PrimFunOr, [tm1, tm2]) -> F.POr <$> traverse embedTerm [tm1, tm2]
+  (Base.PrimFunNot, [tm]) -> F.PNot <$> embedTerm tm
+  (Base.PrimFunPlus, [tm1, tm2]) -> F.EBin F.Plus <$> embedTerm tm1 <*> embedTerm tm2
+  (Base.PrimFunDiv, [tm1, tm2]) -> F.EBin F.Div <$> embedTerm tm1 <*> embedTerm tm2
   (pf, args) -> throwError . refineError $ "invalid primitive function application: " <> show (TermApp (AppPrimFun pf) args)
 
 embedVar :: F.Symbol -> F.Expr

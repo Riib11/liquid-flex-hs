@@ -1,3 +1,4 @@
+{-# HLINT ignore "Redundant return" #-}
 module Flex.Refining.Check where
 
 import Control.Applicative (Applicative (liftA2))
@@ -6,10 +7,11 @@ import Control.Exception
 import Control.Monad (foldM, void, when, zipWithM)
 import Control.Monad.Error.Class (MonadError (throwError))
 import Data.Bifunctor (second)
+import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
-import Flex.Flex (refineError)
+import Flex.Flex (debug, refineError)
 import Flex.Refining.Common
 import Flex.Refining.Constraint
 import Flex.Refining.Embedding
@@ -26,6 +28,7 @@ import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Utils.Files as Files
+import PrettyShow (PrettyShow (prettyShow))
 import System.Exit (exitWith)
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.Printf (printf)
@@ -36,44 +39,51 @@ import Utility
 -- The type needs to be re-synthesized even though the term is already annotated
 -- because it could result in constraints and aslo the annotated type is
 -- unrefined.
-checkTerm :: Env -> Term -> BaseType -> Refining Cstr
-checkTerm env tm tyExp = do
-  (cstr, tyInf) <- synth env tm
-  cstr' <- checkSubtype tyInf tyExp
-  return $ andCstrs [cstr, cstr']
+checkTerm :: Term -> BaseType -> Refining Cstr
+checkTerm tm tyExp = do
+  (cstr, tyInf) <- synthTerm tm
+  debug $ "checkTerm: tyExp = " <> prettyShow tyExp
+  debug $ "checkTerm: tyInf = " <> prettyShow tyInf
+  -- TODO: do i actually need to check that the expected type is satisfialbe?
+  -- No, right? since that will just be propogated upwards and ultimately result
+  -- in a refinement failure.
+  --
+  -- cstr <- checkSubtype tyExp (const F.trueReft <$> tyExp) <&> andCstr cstr
+  cstr <- checkSubtype tyInf tyExp <&> andCstr cstr
+  return cstr
 
-checkBlock :: Env -> Block -> BaseType -> Refining Cstr
-checkBlock env ([], tm) tyExp = checkTerm env tm tyExp
-checkBlock env (stmt : stmts, tm) tyExp = case stmt of
+checkBlock :: Block -> BaseType -> Refining Cstr
+checkBlock ([], tm) tyExp = checkTerm tm tyExp
+checkBlock (stmt : stmts, tm) tyExp = case stmt of
   StatementLet x imp -> do
-    (cstr, sig) <- synth env imp
+    (cstr, sig) <- synthTerm imp
     -- universally quantify over the introduced value with the appropriate
     -- signature
     andCstr cstr . forallCstr x sig
-      <$> checkBlock (extendEnv x (TypeBaseType sig) env) (stmts, tm) tyExp
+      <$> extendEnv x (TypeBaseType sig) (checkBlock (stmts, tm) tyExp)
   StatementAssert tm' ->
     liftA2
       andCstr
       -- checkTerm that the term has the `true` refinement type
-      (checkTerm env tm' trueBaseType)
-      (checkBlock env (stmts, tm) tyExp)
+      (checkTerm tm' trueBaseType)
+      (checkBlock (stmts, tm) tyExp)
 
 -- | Synthesizing (synth)
-synth :: Env -> Term -> Refining (Cstr, BaseType)
-synth env (Term ptm ty) = case ptm of
+synthTerm :: Term -> Refining (Cstr, BaseType)
+synthTerm (Term ptm ty) = case ptm of
   TermLiteral lit -> (trivialCstr,) <$> synthLiteral lit ty
-  TermVar x -> (trivialCstr,) <$> synthCon env x
+  TermVar x -> (trivialCstr,) <$> synthCon x
   TermBlock _ -> throwError . refineError $ "should never synthesize a TermBlock; should only ever check"
-  TermApp (AppPrimFun pf) args -> synthAppPrimFun env ty pf args
+  TermApp (AppPrimFun pf) args -> synthAppPrimFun ty pf args
   TermApp (AppVar x) args -> do
-    -- synth the arg types
-    tyArgs <- (snd <$>) <$> (synth env `traverse` args)
-    -- synth the fun type
-    FunType params tyOut <- synthFun env x tyArgs
+    -- synthTerm the arg types
+    tyArgs <- (snd <$>) <$> (synthTerm `traverse` args)
+    -- synthTerm the fun type
+    FunType params tyOut <- synthFun x tyArgs
     -- checkTerm the args with their corresponding param types; note that since
     -- function types are _simple_, don't need to update environment with values
     -- of arguments
-    cstr <- andCstrs <$> zipWithM (checkTerm env) args params
+    cstr <- andCstrs <$> zipWithM checkTerm args params
     -- since function types are _simple_, don't need to substitute parameters
     -- for their argument values in the output type
     return (cstr, tyOut)
@@ -84,24 +94,24 @@ reftTerm tm = F.exprReft <$> embedTerm tm
 reftPreterm :: Preterm -> Refining F.Reft
 reftPreterm tm = F.exprReft <$> embedPreterm tm
 
-synthAppPrimFun :: Env -> BaseType -> Syn.PrimFun -> [Term] -> Refining (Cstr, BaseType)
-synthAppPrimFun env ty Syn.PrimFunEq [tm1, tm2] = do
-  -- synth type of first arg
-  (cstr, ty1) <- synth env tm1
+synthAppPrimFun :: BaseType -> Syn.PrimFun -> [Term] -> Refining (Cstr, BaseType)
+synthAppPrimFun ty Syn.PrimFunEq [tm1, tm2] = do
+  -- synthTerm type of first arg
+  (cstr, ty1) <- synthTerm tm1
   -- check that second arg has same (unrefined) type
-  cstr <- andCstr cstr <$> checkTerm env tm2 (unrefineBaseType ty1)
+  cstr <- andCstr cstr <$> checkTerm tm2 (unrefineBaseType ty1)
   r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunEq) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
-synthAppPrimFun env ty Syn.PrimFunAnd [tm1, tm2] = do
-  cstr <- andCstrs <$> traverse (\tm -> checkTerm env tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
+synthAppPrimFun ty Syn.PrimFunAnd [tm1, tm2] = do
+  cstr <- andCstrs <$> traverse (\tm -> checkTerm tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
   r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunAnd) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
-synthAppPrimFun env ty Syn.PrimFunOr [tm1, tm2] = do
-  cstr <- andCstrs <$> traverse (\tm -> checkTerm env tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
+synthAppPrimFun ty Syn.PrimFunOr [tm1, tm2] = do
+  cstr <- andCstrs <$> traverse (\tm -> checkTerm tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
   r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunOr) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
-synthAppPrimFun env ty Syn.PrimFunNot [tm] = do
-  cstr <- checkTerm env tm (TypeAtomic F.trueReft AtomicBit)
+synthAppPrimFun ty Syn.PrimFunNot [tm] = do
+  cstr <- checkTerm tm (TypeAtomic F.trueReft AtomicBit)
   r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunNot) [tm]
   return (cstr, TypeAtomic r AtomicBit)
 -- TODO: may need to extract the numeric types into `TypeNumber :: NumberSize ->
@@ -110,36 +120,50 @@ synthAppPrimFun env ty Syn.PrimFunNot [tm] = do
 -- numeric size, but currently I don't actually have that info statically
 -- because I only store it in the refinement; so i probably want AtomicInt to
 -- have a NumericSize field
-synthAppPrimFun env ty Syn.PrimFunAdd [tm1, tm2] = do
+synthAppPrimFun ty Syn.PrimFunPlus [tm1, tm2] = do
   let r = baseTypeReft ty
-  cstr <- andCstrs <$> traverse (\tm -> checkTerm env tm (TypeAtomic r AtomicInt)) [tm1, tm2]
-  r' <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunAdd) [tm1, tm2]
+  cstr <- andCstrs <$> traverse (\tm -> checkTerm tm (TypeAtomic r AtomicInt)) [tm1, tm2]
+  r' <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunPlus) [tm1, tm2]
   return (cstr, TypeAtomic r' AtomicInt)
-synthAppPrimFun env ty Syn.PrimFunDiv [tm1, tm2] = do
+synthAppPrimFun ty Syn.PrimFunDiv [tm1, tm2] = do
   let r = baseTypeReft ty
-  cstr <- checkTerm env tm1 (TypeAtomic r AtomicInt)
+  cstr <- checkTerm tm1 (TypeAtomic r AtomicInt)
   -- the refinement {tm2 /= 0}
-  r_nonzero_tm2 <-
-    reftPreterm $
-      TermApp
-        (AppPrimFun Syn.PrimFunEq)
-        [ tm2,
-          Term (TermLiteral (Syn.LiteralInteger 0)) (bitBaseType mempty)
-        ]
+  pred_nonzero_tm2 <-
+    embedPreterm $
+      TermApp (AppPrimFun Syn.PrimFunNot) . List.singleton $
+        Term
+          ( TermApp
+              (AppPrimFun Syn.PrimFunEq)
+              [ tm2,
+                Term (TermLiteral (Syn.LiteralInteger 0)) (bitBaseType mempty)
+              ]
+          )
+          (bitBaseType mempty)
   -- in addition to checking that tm2 satisfies the numeric type bounds, also
   -- check that it's nonzero
-  cstr <- checkTerm env tm2 (TypeAtomic (r_nonzero_tm2 <> r) AtomicInt) <&> andCstr cstr
+  cstr <-
+    checkTerm
+      tm2
+      ( TypeAtomic
+          ( F.reft
+              (F.reftBind r)
+              (F.reftPred r F.&.& pred_nonzero_tm2)
+          )
+          AtomicInt
+      )
+      <&> andCstr cstr
   r' <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunDiv) [tm1, tm2]
   -- TODO: do i need to include the result that `a/b != 0`? or will z3 be smart
   -- enough to figure that out on its own
   return (cstr, TypeAtomic r' AtomicInt)
-synthAppPrimFun _env _ty pf args =
+synthAppPrimFun _ty pf args =
   throwError . refineError $
     concat
       [ "primitive function",
         " '" <> show pf <> "' ",
         "applied to wrong number of arguments",
-        " '" <> show args <> "'"
+        " '" <> prettyShow args <> "'"
       ]
 
 -- clears refinement from type
@@ -160,9 +184,9 @@ synthLiteral lit ty = do
       Syn.LiteralString _ -> AtomicString
     r = reftPreterm $ TermLiteral lit
 
-synthCon :: Env -> F.Symbol -> Refining BaseType
-synthCon env x =
-  lookupEnv x env
+synthCon :: F.Symbol -> Refining BaseType
+synthCon x =
+  lookupEnv x
     >>= ( \case
             TypeBaseType ty -> return ty
             TypeFunType funTy ->
@@ -178,12 +202,12 @@ synthCon env x =
 -- | synthFun
 --
 -- We need to know about `args` since some primitive functions are polymorphic.
-synthFun :: Env -> F.Symbol -> [BaseType] -> Refining FunType
+synthFun :: F.Symbol -> [BaseType] -> Refining FunType
 -- types should be structurally the same (ignore refinement)
-synthFun env x _args = case F.lookupSEnv x env of
-  Just (TypeFunType funTy) -> return funTy
-  Just _ -> throwError . refineError $ "expected to be a function id: " <> show x
-  Nothing -> throwError . refineError $ "unknown function id: " <> show x
+synthFun x _args =
+  lookupEnv x >>= \case
+    (TypeFunType funTy) -> return funTy
+    _ -> throwError . refineError $ "expected to be a function id: " <> show x
 
 -- | Subtype checking (checkSubtype)
 --
@@ -193,8 +217,12 @@ checkSubtype :: BaseType -> BaseType -> Refining Cstr
 --    forall x : T, p x ==> (p' x')[x' := x]
 --  ----------------------------------------------
 --    {x : T | p x} <: {x' : T | p' y'}
-checkSubtype ty1@(TypeAtomic r1 atom1) (TypeAtomic r2 atom2)
-  | atom1 == atom2 =
+checkSubtype ty1@(TypeAtomic r1 atom1) ty2@(TypeAtomic r2 atom2)
+  | atom1 == atom2 = do
+      debug $ "checkSubtype"
+      debug $ "  " <> prettyShow ty1
+      debug $ "  <: "
+      debug $ "  " <> prettyShow ty2
       return $
         forallCstr
           (reftSymbol r1)
@@ -208,6 +236,6 @@ checkSubtype ty1@(TypeAtomic r1 atom1) (TypeAtomic r2 atom2)
 checkSubtype ty1 ty2 =
   throwError . refineError $
     "subtyping error; the type"
-      <> (" '" <> show ty1 <> "' ")
+      <> (" '" <> prettyShow ty1 <> "' ")
       <> "cannot be checked to be a subtype of the type"
-      <> (" '" <> show ty2 <> "' ")
+      <> (" '" <> prettyShow ty2 <> "' ")

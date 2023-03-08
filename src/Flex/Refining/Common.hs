@@ -4,11 +4,13 @@ module Flex.Refining.Common where
 
 import Control.Lens
 import Control.Lens (makeLenses)
-import Control.Monad.Reader (ReaderT (runReaderT), foldM)
+import Control.Monad.Error.Class (MonadError (throwError))
+import Control.Monad.Reader (MonadTrans (lift), ReaderT (runReaderT), asks, foldM)
 import Control.Monad.State.Class (MonadState (get))
 import qualified Data.Map as Map
 import Data.Text (unpack)
 import Flex.Flex
+import Flex.Refining.Syntax
 import qualified Flex.Syntax as Base
 import qualified Language.Fixpoint.Types as F
 
@@ -21,9 +23,16 @@ runRefining m = runReaderT m =<< initCtx
 runRefiningWith :: Ctx -> Refining a -> FlexM a
 runRefiningWith ctx m = runReaderT m ctx
 
+throwRefiningError :: String -> Refining a
+throwRefiningError = throwError . RefineError . MakeRefineError
+
+throwRefiningBug :: String -> Refining a
+throwRefiningBug msg = lift $ throwBug ("refining", msg)
+
 -- | Ctx
 data Ctx = Ctx
-  { _idSymbols :: Map.Map Base.Id F.Symbol
+  { _idSymbols :: Map.Map Base.Id F.Symbol,
+    _senv :: F.SEnv Type
   }
 
 initCtx :: FlexM Ctx
@@ -55,7 +64,23 @@ initCtx = do
       =<< return Map.empty
   return
     Ctx
-      { _idSymbols = idSyms
+      { _idSymbols = idSyms,
+        _senv = F.emptySEnv
       }
 
 makeLenses ''Ctx
+
+-- | Env
+type Env = F.SEnv Type
+
+extendEnv :: F.Symbol -> Type -> Refining a -> Refining a
+extendEnv x ty = locally senv (F.insertSEnv x ty)
+
+lookupEnv :: F.Symbol -> Refining Type
+lookupEnv x =
+  asks (^. senv . to (F.lookupSEnv x)) >>= \case
+    Nothing ->
+      throwRefiningError $
+        "Can't find variable's refinement type in environment: "
+          <> show x
+    Just ty -> return ty

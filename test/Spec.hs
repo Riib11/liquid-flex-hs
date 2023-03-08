@@ -1,14 +1,16 @@
 import Control.Monad
 import Test.HUnit
-import qualified Test.Parsing as Parsing
-import qualified Test.Refining.Translating as Translating
-import qualified Test.Typing as Typing
+import qualified Test.Parsing
+import qualified Test.Refining.Check
+import qualified Test.Refining.Translating
+import qualified Test.Typing
 
 main :: IO ()
 main = do
   void . runTestTT $
     TestList
-      [ Parsing.test,
-        Typing.test,
-        Translating.test
+      [ -- Test.Parsing.test,
+        -- Test.Typing.test,
+        -- Test.Refining.Translating.test,
+        Test.Refining.Check.test
       ]

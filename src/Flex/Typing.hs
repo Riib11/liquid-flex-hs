@@ -12,6 +12,7 @@ import Control.Monad.State.Class
 import Control.Monad.Trans
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
 import Data.Bifunctor
+import qualified Data.List as List
 import qualified Data.Map as Map
 import Data.Maybe (Maybe (..), isJust)
 import Data.Text (Text)
@@ -70,6 +71,12 @@ data TypingStackItem
       -- ^ expected type
   deriving (Show)
 
+instance PrettyShow TypingStackItem where
+  prettyShow = \case
+    TypingStackCheck syn -> "check " <> prettyShow syn
+    TypingStackInfer syn -> "infer " <> prettyShow syn
+    TypingStackUnify ty ty' -> prettyShow ty <> "  ~?  " <> prettyShow ty'
+
 emptyCtx :: Ctx
 emptyCtx =
   Ctx
@@ -100,7 +107,15 @@ throwTypingError = throwError . TypingError
 
 -- bug in typing algorithm
 throwTypingBug :: String -> Typing a
-throwTypingBug msg = lift $ throwBug ("typing", msg)
+throwTypingBug msg = do
+  tyStack <- asks (^. typingStack)
+  lift $
+    throwBug
+      ( "typing",
+        msg
+          <> "\n\ntyping stack:\n"
+          <> List.intercalate "\n" ((" > " <>) . prettyShow <$> tyStack)
+      )
 
 -- ** processing
 
@@ -297,7 +312,7 @@ inferTerm tm = enterInfer tm do
       locs <- asks (^. ctxLocals)
       (setType <$>) $
         (normType =<<) $
-          lookupTerm throwTypingError locs x termType
+          lookupTerm throwTypingError locs x getInferredType
     TermCast tm -> do
       tm <- inferTerm tm
       ty <- getInferredType tm
@@ -495,7 +510,7 @@ checkTerm tm ty = enterCheck tm do
 
 getInferredType :: Term -> Typing Type
 getInferredType tm = case tm ^. termMaybeType of
-  Nothing -> error $ "tried to get inferred type of a term before before inference: " <> prettyShow tm
+  Nothing -> throwTypingBug $ "tried to get inferred type of a term before before inference: " <> prettyShow tm
   Just ty -> normType ty
 
 inferLiteral :: Literal -> Typing Type
@@ -612,14 +627,14 @@ inferAppPrimFun pf args cxargs = case (pf, args, cxargs) of
     -- infer type of tm1
     tm1 <- inferTerm tm1
     -- check that tm2 has tm1's type
-    tm2 <- checkInferTerm tm2 =<< termType tm1
+    tm2 <- checkInferTerm tm2 =<< getInferredType tm1
     return_ [tm1, tm2] cxargs TypeBit
   (PrimFunAnd, [tm1, tm2], Nothing) -> booleanBinop tm1 tm2
   (PrimFunOr, [tm1, tm2], Nothing) -> booleanBinop tm1 tm2
   (PrimFunNot, [tm], Nothing) -> do
     tm <- checkInferTerm tm TypeBit
     return_ [tm] cxargs TypeBit
-  (PrimFunAdd, [tm1, tm2], Nothing) -> numericBinop tm1 tm2
+  (PrimFunPlus, [tm1, tm2], Nothing) -> numericBinop tm1 tm2
   (PrimFunDiv, [tm1, tm2], Nothing) -> numericBinop tm1 tm2
   _ -> throwTypingError $ "invalid primitive function application: " <> prettyShow (TermApplication (AppPrimFun pf) args cxargs)
   where
@@ -629,14 +644,25 @@ inferAppPrimFun pf args cxargs = case (pf, args, cxargs) of
       return_ [tm1, tm2] cxargs TypeBit
 
     numericBinop tm1 tm2 = do
-      -- infer type of tm1
-      tm1 <- inferTerm tm1
-      ty1 <- termType tm1
-      -- check that ty1 is a numeric type
-      unless (isNumericType ty1) . throwTypingError $ "the primitive function application " <> prettyShow (TermApplication (AppPrimFun pf) args cxargs) <> " expects its argument " <> prettyShow tm1 <> " to have a numeric type"
-      -- check that tm2 has type ty1
-      tm2 <- checkInferTerm tm2 ty1
-      return_ [tm1, tm2] cxargs ty1
+      -- TODO: handle this for more than just int32, need to do something
+      -- slightly complicated with casting, because the result type of `a + b`
+      -- needs to be the same numeric type as `a` and `b` each have, which could
+      -- be casts, which means that the result of the whole `a + b` should have
+      -- the casted numeric type also, but when that cast is
+      -- instantiated/defaulted, should affect the casts on the types of the
+      -- internal terms as well
+
+      -- -- infer type of tm1
+      -- tm1 <- inferTerm tm1
+      -- ty1 <- getInferredType tm1
+      -- -- check that ty1 is a numeric type
+      -- unless (isNumericType ty1) . throwTypingError $ "the primitive function application " <> prettyShow (TermApplication (AppPrimFun pf) args cxargs) <> " expects its argument " <> prettyShow tm1 <> " to have a numeric type, instead of " <> prettyShow ty1
+      -- -- check that tm2 has type ty1
+      -- tm2 <- checkInferTerm tm2 ty1
+      -- return_ [tm1, tm2] cxargs ty1
+      tm1 <- checkInferTerm tm1 (TypeInt (IntSize 32))
+      tm2 <- checkInferTerm tm2 (TypeInt (IntSize 32))
+      return_ [tm1, tm2] cxargs (TypeInt (IntSize 32))
 
     return_ args cxargs ty =
       return
@@ -663,12 +689,10 @@ defaultType = \case
   TypeCast ty -> ty
   ty -> ty
 
--- ** utilities
+defaultTerm :: Term -> Term
+defaultTerm tm = tm & termMaybeType %~ fmap defaultType
 
-termType :: Term -> Typing Type
-termType =
-  (^. termMaybeType)
-    >>> lift . fromJust ("typing", "expected term to be type-inferred at this point")
+-- ** utilities
 
 freshUnifId :: String -> Typing Unif.Id
 freshUnifId str = do

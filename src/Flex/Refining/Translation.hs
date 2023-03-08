@@ -113,12 +113,12 @@ transType :: Base.Type -> Refining Reft.BaseType
 transType ty0 = case ty0 of
   -- IntSize bounds value
   Base.TypeInt (Base.IntSize s) -> do
-    x <- lift $ freshSymbol ("TypeInt" <> show s)
+    x <- lift $ freshSymbol ("xTypeInt" <> show s)
     let n = 2 ^ (s - 1) :: Int
     -- -n < x < n
     return $ Reft.TypeAtomic (F.reft x (boundedIntExpr x (-n) n)) Reft.AtomicInt
   Base.TypeUInt (Base.UIntSize s) -> do
-    x <- lift $ freshSymbol ("TypeUInt" <> show s)
+    x <- lift $ freshSymbol ("xTypeUInt" <> show s)
     let n = 2 ^ s :: Int
     -- 0 <= x < n
     return $ Reft.TypeAtomic (F.reft x (boundedIntExpr x 0 n)) Reft.AtomicInt

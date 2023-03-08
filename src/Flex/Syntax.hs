@@ -576,6 +576,7 @@ isNumericType = \case
   TypeInt _ -> True
   TypeUInt _ -> True
   TypeFloat _ -> True
+  TypeCast ty -> isNumericType ty
   _ -> False
 
 -- *** numeric sizes
@@ -767,7 +768,7 @@ data PrimFun
   | PrimFunOr
   | PrimFunAnd
   | PrimFunNot
-  | PrimFunAdd
+  | PrimFunPlus
   | PrimFunDiv
   deriving (Eq, Ord, Enum, Bounded, Show)
 
@@ -777,7 +778,7 @@ arityPrimFun = \case
   PrimFunOr -> 2
   PrimFunAnd -> 2
   PrimFunNot -> 1
-  PrimFunAdd -> 2
+  PrimFunPlus -> 2
   PrimFunDiv -> 2
 
 toPrimFun :: Name -> Maybe PrimFun
@@ -786,7 +787,7 @@ toPrimFun = \case
   "||" -> Just PrimFunOr
   "&&" -> Just PrimFunAnd
   "!" -> Just PrimFunNot
-  "+" -> Just PrimFunAdd
+  "+" -> Just PrimFunPlus
   "/" -> Just PrimFunDiv
   _ -> Nothing
 
@@ -796,7 +797,7 @@ stringOfPrimFun = \case
   PrimFunOr -> "||"
   PrimFunAnd -> "&&"
   PrimFunNot -> "!"
-  PrimFunAdd -> "+"
+  PrimFunPlus -> "+"
   PrimFunDiv -> "/"
 
 -- nameOfPrimFun :: PrimFun -> Name
@@ -810,7 +811,7 @@ stringOfPrimFun = \case
 --   PrimFunAnd -> go [(Just "&&_arg1", TypeBit), (Just "&&_arg2", TypeBit)] TypeBit
 --   PrimFunOr -> go [(Just "||_arg2", TypeBit), (Just "||_arg2", TypeBit)] TypeBit
 --   PrimFunNot -> go [(Just "!_arg1", TypeBit)] TypeBit
---   PrimFunAdd -> error "typeOfPrimFun PrimFunAdd"
+--   PrimFunPlus -> error "typeOfPrimFun PrimFunPlus"
 --   PrimFunDiv -> error "typeOfPrimFun PrimFunDiv"
 --   where
 --     go functionTypeParams functionTypeOutput = FunctionType {functionTypeParams, functionTypeContextualParams = Map.empty, functionTypeOutput}

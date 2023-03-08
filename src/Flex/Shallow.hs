@@ -8,23 +8,24 @@ import Data.Text (Text, pack)
 import Flex.Lexing
 import Flex.Parsing
 import Flex.Syntax
+import Text.Parsec (eof)
 import Utility
 
 -- | Ids
 readModuleId :: String -> IO ModuleId
-readModuleId = runParser "readModuleId" parseModuleId
+readModuleId = runParser "readModuleId" (parseModuleId <* eof)
 
 readCapName :: String -> IO Text
-readCapName = runParser "readCapName" parseCapName
+readCapName = runParser "readCapName" (parseCapName <* eof)
 
 readQualCapId :: String -> IO Id
-readQualCapId = runParser "readQualCapId" parseQualCapId
+readQualCapId = runParser "readQualCapId" (parseQualCapId <* eof)
 
 readName :: String -> IO Text
-readName = runParser "readName" parseName
+readName = runParser "readName" (parseName <* eof)
 
 readQualId :: String -> IO Id
-readQualId = runParser "readQualId" parseQualId
+readQualId = runParser "readQualId" (parseQualId <* eof)
 
 -- Module
 
@@ -105,7 +106,7 @@ constant str_x io_ty io_tm = do
   return Constant {constantName, constantModuleId = topModuleId, constantType, constantBody, constantAnnotations = []}
 
 readDeclaration :: String -> IO Declaration
-readDeclaration = runParser "readDeclaration" parseDeclaration
+readDeclaration = runParser "readDeclaration" (parseDeclaration <* eof)
 
 -- Refinement
 
@@ -159,7 +160,7 @@ tyCast :: IO Type -> IO Type
 tyCast = (TypeCast <$>)
 
 readType :: String -> IO Type
-readType = runParser "readType" parseType
+readType = runParser "readType" (parseType <* eof)
 
 -- Term
 
@@ -230,7 +231,7 @@ tmAsc :: IO Term -> IO Type -> IO Term
 tmAsc io_tm io_ty = fromPreterm `comp2` TermAscribe <$> io_tm <*> io_ty
 
 readTerm :: String -> IO Term
-readTerm = runParser "readTerm" parseTerm
+readTerm = runParser "readTerm" (parseTerm <* eof)
 
 -- Pattern
 

@@ -66,7 +66,7 @@ library
       ScopedTypeVariables
       MultiParamTypeClasses
       FunctionalDependencies
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-missing-export-lists -Wno-unused-imports
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-missing-export-lists -Wno-unused-imports
   build-depends:
       HUnit
     , base >=4.7 && <5
@@ -104,7 +104,7 @@ executable liquid-flex-hs-exe
       ScopedTypeVariables
       MultiParamTypeClasses
       FunctionalDependencies
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
     , base >=4.7 && <5
@@ -127,6 +127,7 @@ test-suite liquid-flex-hs-test
   main-is: Spec.hs
   other-modules:
       Test.Parsing
+      Test.Refining.Check
       Test.Refining.Translating
       Test.Typing
       Test.Utility
@@ -148,7 +149,7 @@ test-suite liquid-flex-hs-test
       ScopedTypeVariables
       MultiParamTypeClasses
       FunctionalDependencies
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
     , base >=4.7 && <5

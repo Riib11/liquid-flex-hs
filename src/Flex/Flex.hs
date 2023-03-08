@@ -126,7 +126,8 @@ renderRefineErrors errs = do
 
 -- | FlexEnv
 data FlexEnv = FlexEnv
-  { _envModuleCtx :: ModuleCtx,
+  { _envFilePath :: FilePath,
+    _envModuleCtx :: ModuleCtx,
     -- | type variable substitution
     _envUnifSubst :: Map.Map Unif.Id Type,
     -- | unification id environment
@@ -139,7 +140,8 @@ data FlexEnv = FlexEnv
 topFlexEnv :: FlexEnv
 topFlexEnv =
   FlexEnv
-    { _envModuleCtx = topModuleCtx,
+    { _envFilePath = "<placeholder>.flex",
+      _envModuleCtx = topModuleCtx,
       _envUnifSubst = Map.empty,
       _envUnif = Unif.emptyEnv,
       _envFreshSymbolIndex = 0
@@ -237,7 +239,7 @@ freshSymbol str = do
 
 -- | parsing
 parseSymbol :: String -> F.Symbol
-parseSymbol = FP.doParse' FP.lowerIdP "parseSymbol"
+parseSymbol str = FP.doParse' FP.lowerIdP ("parseSymbol: " <> str) str
 
 parsePred :: String -> F.Pred
 parsePred = FP.doParse' FP.predP "parsePred"
