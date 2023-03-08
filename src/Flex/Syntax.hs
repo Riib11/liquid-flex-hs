@@ -473,7 +473,7 @@ eqRefinement :: Term -> Term -> Refinement
 eqRefinement tm1 tm2 =
   Refinement . Just $
     Term
-      { _termPreterm = TermApplication (fromUnqualName $ nameOfPrimFun PrimFunEq) [tm1, tm2] Nothing,
+      { _termPreterm = TermApplication (AppPrimFun PrimFunEq) [tm1, tm2] Nothing,
         _termMaybeType = Just TypeBit
       }
 
@@ -491,8 +491,6 @@ data Annotation
 data DefinitionBody
   = DefinitionBodyTerm Term
   | DefinitionBodyExternal Name
-  | DefinitionBodyPrimFun PrimFun
-  | DefinitionBodyPrimConst PrimConst
   | DefinitionBodyDerived (Maybe Term)
   deriving (Eq, Show)
 
@@ -500,8 +498,6 @@ instance PrettyShow DefinitionBody where
   prettyShow = \case
     DefinitionBodyTerm tm -> prettyShow tm
     DefinitionBodyExternal txt -> "external " <> prettyShow txt
-    DefinitionBodyPrimFun pf -> "primitive function " <> stringOfPrimFun pf
-    DefinitionBodyPrimConst pc -> "primitive constant " <> stringOfPrimConst pc
     DefinitionBodyDerived mb_tm -> maybe "derived" prettyShow mb_tm
 
 -- ** function type
@@ -548,15 +544,6 @@ data Type
   | TypeNewtype Newtype
   deriving (Eq, Ord, Show)
 
-isLiteralType :: Type -> Bool
-isLiteralType = \case
-  TypeInt _ -> True
-  TypeUInt _ -> True
-  TypeFloat _ -> True
-  TypeChar -> True
-  TypeArray TypeChar -> True
-  _ -> False
-
 instance PrettyShow Type where
   prettyShow = \case
     TypeInt s -> "int" <> prettyShow s
@@ -574,6 +561,22 @@ instance PrettyShow Type where
     TypeVariant varnt -> prettyShow $ variantName varnt
     TypeNewtype newty -> prettyShow $ newtypeName newty
     TypeUnif u -> prettyShow u
+
+isLiteralType :: Type -> Bool
+isLiteralType = \case
+  TypeInt _ -> True
+  TypeUInt _ -> True
+  TypeFloat _ -> True
+  TypeChar -> True
+  TypeArray TypeChar -> True
+  _ -> False
+
+isNumericType :: Type -> Bool
+isNumericType = \case
+  TypeInt _ -> True
+  TypeUInt _ -> True
+  TypeFloat _ -> True
+  _ -> False
 
 -- *** numeric sizes
 
@@ -614,10 +617,13 @@ data Preterm
   | TermStructure Id (Map.Map Name Term)
   | TermMember Term Name
   | TermConstructor Id (Maybe Term)
-  | TermApplication Id [Term] (Maybe (Either [Term] (Map.Map Type Term)))
+  | TermApplication App [Term] (Maybe (Either [Term] (Map.Map Type Term)))
   | TermIf Term Term Term
   | TermAscribe Term Type
   | TermMatch Term [(Pattern, Term)]
+  deriving (Eq, Show)
+
+data App = AppPrimFun PrimFun | AppId Id
   deriving (Eq, Show)
 
 type Block = ([Statement], Term)
@@ -635,10 +641,16 @@ mapTermMaybeType :: (Maybe Type -> Maybe Type) -> Term -> Term
 mapTermMaybeType f tm = tm {_termMaybeType = f (_termMaybeType tm)}
 
 termApp1 :: Id -> Term -> Preterm
-termApp1 x tm = TermApplication x [tm] Nothing
+termApp1 x tm = TermApplication (AppId x) [tm] Nothing
 
 termApp2 :: Id -> Term -> Term -> Preterm
-termApp2 x tm1 tm2 = TermApplication x [tm1, tm2] Nothing
+termApp2 x tm1 tm2 = TermApplication (AppId x) [tm1, tm2] Nothing
+
+termAppPrimFun1 :: PrimFun -> Term -> Preterm
+termAppPrimFun1 pf tm = TermApplication (AppPrimFun pf) [tm] Nothing
+
+termAppPrimFun2 :: PrimFun -> Term -> Term -> Preterm
+termAppPrimFun2 pf tm1 tm2 = TermApplication (AppPrimFun pf) [tm1, tm2] Nothing
 
 fromPreterm :: Preterm -> Term
 fromPreterm _termPreterm = Term {_termPreterm, _termMaybeType = Nothing}
@@ -675,6 +687,11 @@ instance PrettyShow Preterm where
     TermIf tmIf tmThen tmElse -> "if " <> prettyShow tmIf <> " then " <> prettyShow tmThen <> " else " <> prettyShow tmElse
     TermAscribe tm ty -> prettyShow tm <> " : " <> prettyShow ty
     TermMatch tm _branches -> "match " <> prettyShow tm <> " with " <> error "TODO: prettyShow match"
+
+instance PrettyShow App where
+  prettyShow = \case
+    AppPrimFun pf -> stringOfPrimFun pf
+    AppId x -> prettyShow x
 
 -- ** literal
 
@@ -750,6 +767,8 @@ data PrimFun
   | PrimFunOr
   | PrimFunAnd
   | PrimFunNot
+  | PrimFunAdd
+  | PrimFunDiv
   deriving (Eq, Ord, Enum, Bounded, Show)
 
 arityPrimFun :: PrimFun -> Int
@@ -758,6 +777,8 @@ arityPrimFun = \case
   PrimFunOr -> 2
   PrimFunAnd -> 2
   PrimFunNot -> 1
+  PrimFunAdd -> 2
+  PrimFunDiv -> 2
 
 toPrimFun :: Name -> Maybe PrimFun
 toPrimFun = \case
@@ -765,6 +786,8 @@ toPrimFun = \case
   "||" -> Just PrimFunOr
   "&&" -> Just PrimFunAnd
   "!" -> Just PrimFunNot
+  "+" -> Just PrimFunAdd
+  "/" -> Just PrimFunDiv
   _ -> Nothing
 
 stringOfPrimFun :: PrimFun -> String
@@ -773,23 +796,24 @@ stringOfPrimFun = \case
   PrimFunOr -> "||"
   PrimFunAnd -> "&&"
   PrimFunNot -> "!"
+  PrimFunAdd -> "+"
+  PrimFunDiv -> "/"
 
-nameOfPrimFun :: PrimFun -> Name
-nameOfPrimFun = pack . stringOfPrimFun
+-- nameOfPrimFun :: PrimFun -> Name
+-- nameOfPrimFun = pack . stringOfPrimFun
 
-idOfPrimFun :: PrimFun -> Id
-idOfPrimFun = fromUnqualName . nameOfPrimFun
-
-typeOfPrimFun :: PrimFun -> FunctionType
-typeOfPrimFun = \case
-  PrimFunEq ->
-    let (ufId : _) = Unif.ids
-     in go [(Just "== arg1", TypeUnif ufId), (Just "== arg2", TypeUnif ufId)] TypeBit
-  PrimFunAnd -> go [(Just "&& arg1", TypeBit), (Just "&& arg2", TypeBit)] TypeBit
-  PrimFunOr -> go [(Just "|| arg2", TypeBit), (Just "|| arg2", TypeBit)] TypeBit
-  PrimFunNot -> go [(Just "! arg1", TypeBit)] TypeBit
-  where
-    go functionTypeParams functionTypeOutput = FunctionType {functionTypeParams, functionTypeContextualParams = Map.empty, functionTypeOutput}
+-- typeOfPrimFun :: PrimFun -> FunctionType
+-- typeOfPrimFun = \case
+--   PrimFunEq ->
+--     let (ufId : _) = Unif.ids
+--      in go [(Just "==_arg1", TypeUnif ufId), (Just "==_arg2", TypeUnif ufId)] TypeBit
+--   PrimFunAnd -> go [(Just "&&_arg1", TypeBit), (Just "&&_arg2", TypeBit)] TypeBit
+--   PrimFunOr -> go [(Just "||_arg2", TypeBit), (Just "||_arg2", TypeBit)] TypeBit
+--   PrimFunNot -> go [(Just "!_arg1", TypeBit)] TypeBit
+--   PrimFunAdd -> error "typeOfPrimFun PrimFunAdd"
+--   PrimFunDiv -> error "typeOfPrimFun PrimFunDiv"
+--   where
+--     go functionTypeParams functionTypeOutput = FunctionType {functionTypeParams, functionTypeContextualParams = Map.empty, functionTypeOutput}
 
 -- *** primitive constants
 
@@ -883,21 +907,22 @@ topModuleCtx =
     { _ctxModuleId = topModuleId,
       _ctxModuleTypes = mempty,
       _ctxModuleFunctions =
-        Map.fromList
-          . fmap
-            ( \pf ->
-                ( idOfPrimFun pf,
-                  Function
-                    { functionName = nameOfPrimFun pf,
-                      functionIsTransform = False,
-                      functionModuleId = topModuleId,
-                      functionType = typeOfPrimFun pf,
-                      functionBody = DefinitionBodyPrimFun pf,
-                      functionAnnotations = []
-                    }
-                )
-            )
-          $ (enumFromTo minBound maxBound),
+        -- Map.fromList
+        --   . fmap
+        --     ( \pf ->
+        --         ( idOfPrimFun pf,
+        --           Function
+        --             { functionName = nameOfPrimFun pf,
+        --               functionIsTransform = False,
+        --               functionModuleId = topModuleId,
+        --               functionType = typeOfPrimFun pf,
+        --               functionBody = DefinitionBodyPrimFun pf,
+        --               functionAnnotations = []
+        --             }
+        --         )
+        --     )
+        --   $ (enumFromTo minBound maxBound),
+        Map.empty,
       -- TODO: primitive constants
       _ctxModuleConstants = mempty,
       -- TODO: primitive constructors

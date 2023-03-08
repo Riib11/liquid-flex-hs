@@ -225,7 +225,7 @@ parseTerm = buildExpressionParser table term0 <?> "term"
                 try (TermConstructor <$> parseQualCapId <*> optionMaybe (fromPreterm <$> parseTermTuple)),
                 try
                   ( TermApplication
-                      <$> parseQualId
+                      <$> (AppId <$> parseQualId)
                       <*> parens (parseTerm `sepBy` symbol ",")
                       <*> choice
                         [ Just . Left <$> (symbol "given" *> parens (parseTerm `sepBy` symbol ",")),
@@ -248,11 +248,11 @@ parseTerm = buildExpressionParser table term0 <?> "term"
 
     prefixPrimFun pf = Prefix do
       void $ symbol (stringOfPrimFun pf)
-      return (fromPreterm . termApp1 (idOfPrimFun pf))
+      return (fromPreterm . termAppPrimFun1 pf)
 
     binaryPrimFun pf assoc = flip Infix assoc do
       void $ symbol (stringOfPrimFun pf)
-      return (\a b -> fromPreterm $ termApp2 (idOfPrimFun pf) a b)
+      return (\a b -> fromPreterm $ termAppPrimFun2 pf a b)
 
 {-
 -- parses that can immediately begin with a parse of index > 0

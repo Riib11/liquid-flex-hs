@@ -192,11 +192,7 @@ data App
 
 instance PrettyShow App where
   prettyShow = \case
-    AppPrimFun pf -> case pf of
-      Base.PrimFunEq -> "=="
-      Base.PrimFunOr -> "||"
-      Base.PrimFunAnd -> "&&"
-      Base.PrimFunNot -> "!"
+    AppPrimFun pf -> Base.stringOfPrimFun pf
     AppVar x -> show x
 
 type Block = ([Statement], Term)

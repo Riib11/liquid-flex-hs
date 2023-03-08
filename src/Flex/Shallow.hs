@@ -214,13 +214,13 @@ tmCnstr str_x mb_io_tm =
 tmApp :: String -> [IO Term] -> Maybe [IO Term] -> IO Term
 tmApp str_x ls_io_tms mb_io_tms =
   fromPreterm `comp3` TermApplication
-    <$> readQualId str_x
+    <$> (AppId <$> readQualId str_x)
     <*> sequence ls_io_tms
     <*> maybe (return Nothing) ((Just . Left <$>) . sequence) mb_io_tms
 
 tmAppPrimFun :: PrimFun -> [IO Term] -> IO Term
 tmAppPrimFun pf ls_io_tms =
-  ((fromPreterm `comp3` TermApplication) (idOfPrimFun pf) <$> sequence ls_io_tms)
+  ((fromPreterm `comp3` TermApplication) (AppPrimFun pf) <$> sequence ls_io_tms)
     <*> return Nothing
 
 tmIf :: IO Term -> IO Term -> IO Term -> IO Term

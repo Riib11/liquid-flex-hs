@@ -77,8 +77,6 @@ procDeclaration = \case
 evalDefinitionBody :: DefinitionBody -> Interp DefinitionBody
 evalDefinitionBody = \case
   DefinitionBodyTerm tm -> DefinitionBodyTerm <$> evalTerm tm
-  DefinitionBodyPrimFun pf -> return $ DefinitionBodyPrimFun pf
-  DefinitionBodyPrimConst pc -> return $ DefinitionBodyPrimConst pc
   DefinitionBodyExternal txt -> return $ DefinitionBodyExternal txt
   DefinitionBodyDerived _mb_tm -> unimplemented "derivations"
 
@@ -108,7 +106,8 @@ evalTerm tm = do
                 Just tm'' -> return tm''
             _ -> throwInterpError "type error: TermMember of non-Structure"
         TermConstructor x mb_tm -> setPreterm $ TermConstructor x <$> (evalTerm `traverse` mb_tm)
-        TermApplication x args mb_cxargs -> do
+        TermApplication (AppPrimFun pf) args mb_cxargs -> error "TODO: interp AppPrimFun"
+        TermApplication (AppId x) args mb_cxargs -> do
           fun <- lookupFunction throwInterpBug x
 
           -- evaluate args
@@ -157,9 +156,6 @@ evalTerm tm = do
             (\(txt, tmArg) m -> bindTermId txt tmArg m)
             ( evalDefinitionBody (functionBody fun) >>= \case
                 DefinitionBodyTerm tm -> evalTerm tm
-                DefinitionBodyPrimConst pc -> evalPrimConst pc
-                DefinitionBodyPrimFun pf -> do
-                  evalPrimFun pf (snd <$> argsList)
                 _ -> error "TODO: eval other kinds of DefinitionBody"
             )
         TermIf tmIf tmThen tmElse ->
@@ -199,7 +195,7 @@ evalPrimFun pf args = case (pf, args) of
         return $ makeTerm (TermLiteral (LiteralBit (not a))) TypeBit
   _ -> invalid
   where
-    invalid = throwInterpError $ "primitive function application was given invalid arguments: " <> prettyShow (TermApplication (idOfPrimFun pf) args Nothing)
+    invalid = throwInterpError $ "primitive function application was given invalid arguments: " <> prettyShow (TermApplication (AppPrimFun pf) args Nothing)
 
 evalPrimConst :: PrimConst -> Interp Term
 evalPrimConst = error "TODO: evalPrimConst"

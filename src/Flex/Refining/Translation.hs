@@ -192,9 +192,9 @@ transType ty0 = case ty0 of
 transLiteral :: Base.Literal -> Reft.BaseType -> Refining Reft.Term
 transLiteral lit ty = pure $ Reft.Term (Reft.TermLiteral lit) ty
 
-transApp :: Base.Id -> Refining Reft.App
-transApp (Base.Id Nothing n) | Just pf <- Base.toPrimFun n = return $ Reft.AppPrimFun pf
-transApp x = Reft.AppVar <$> transIdRef x
+transApp :: Base.App -> Refining Reft.App
+transApp (Base.AppPrimFun pf) = return $ Reft.AppPrimFun pf
+transApp (Base.AppId x) = Reft.AppVar <$> transIdRef x
 
 -- TODO: handle primitive constants differently? what if there is an "error" constant??
 transVar :: Base.Id -> Reft.BaseType -> Refining Reft.Term

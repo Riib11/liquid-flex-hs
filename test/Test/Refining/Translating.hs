@@ -80,7 +80,7 @@ test_transApp =
       [ makeTest_transTerm
           defaultOptions {mb_module = Just mdl}
           "f0()"
-          (Just $ Term (TermApp (AppVar "f0#4") []) (bitBaseType mempty)),
+          (Just $ Term (TermApp (AppVar "f0#1") []) (bitBaseType mempty)),
         makeTest_transTerm
           defaultOptions {mb_module = Just mdl}
           "f1(true)"
@@ -88,7 +88,7 @@ test_transApp =
         makeTest_transTerm
           defaultOptions {mb_module = Just mdl}
           "f1(true)"
-          (Just $ Term (TermApp (AppVar "f1#5") [Term (TermLiteral (Base.LiteralBit True)) (bitBaseType mempty)]) (bitBaseType mempty))
+          (Just $ Term (TermApp (AppVar "f1#2") [Term (TermLiteral (Base.LiteralBit True)) (bitBaseType mempty)]) (bitBaseType mempty))
       ]
   where
     mdl :: Base.Module

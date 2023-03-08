@@ -297,8 +297,7 @@ inferTerm tm = enterInfer tm do
       locs <- asks (^. ctxLocals)
       (setType <$>) $
         (normType =<<) $
-          lookupTerm throwTypingError locs x $
-            (^. termMaybeType) >>> lift . fromJust ("typing", "term in local typing context must be type-inferred")
+          lookupTerm throwTypingError locs x termType
     TermCast tm -> do
       tm <- inferTerm tm
       ty <- getInferredType tm
@@ -344,13 +343,11 @@ inferTerm tm = enterInfer tm do
               tm <- inferTerm tm
               tm <- checkTerm tm ty
               return $ setPretermAndType (TermConstructor x (Just tm)) (TypeVariant varnt)
-    TermApplication x args cxargs -> do
+    TermApplication (AppPrimFun pf) args cxargs -> inferAppPrimFun pf args cxargs
+    TermApplication (AppId x) args cxargs -> do
       fun <- lookupFunction throwTypingError x
 
-      funTy <-
-        case functionBody fun of
-          DefinitionBodyPrimFun _pf -> freshenFunctionTypeUnifIds $ functionType fun
-          _ -> return $ functionType fun
+      funTy <- return $ functionType fun
       debug $ "funTy = " <> prettyShow funTy
 
       -- check arguments length
@@ -404,8 +401,8 @@ inferTerm tm = enterInfer tm do
                 )
               `traverse` cxargsList
         Just (Right _) -> throwTypingBug "contextual arguments should not already be type-checked here"
-      debug $ "inferTerm: output preterm = " <> prettyShow (TermApplication x args (Just . Right $ cxargsMap))
-      return $ setPretermAndType (TermApplication x args (Just . Right $ cxargsMap)) (functionTypeOutput funTy)
+      debug $ "inferTerm: output preterm = " <> prettyShow (TermApplication (AppId x) args (Just . Right $ cxargsMap))
+      return $ setPretermAndType (TermApplication (AppId x) args (Just . Right $ cxargsMap)) (functionTypeOutput funTy)
     TermStructure x fields -> do
       struct <- lookupStructure throwTypingError x
       fields <-
@@ -607,25 +604,46 @@ unwrapCasts = \case
 
 -- ** primitives
 
--- TODO
--- inferPrimFun :: PrimFun -> Typing FunctionType
--- inferPrimFun pf =
--- freshenTypeUnifIds
+-- the type of a primitive function can depend on the type of its arguments, so
+-- needs a special inference algorithm
+inferAppPrimFun :: PrimFun -> [Term] -> Maybe (Either [Term] (Map.Map Type Term)) -> Typing Term
+inferAppPrimFun pf args cxargs = case (pf, args, cxargs) of
+  (PrimFunEq, [tm1, tm2], Nothing) -> do
+    -- infer type of tm1
+    tm1 <- inferTerm tm1
+    -- check that tm2 has tm1's type
+    tm2 <- checkInferTerm tm2 =<< termType tm1
+    return_ [tm1, tm2] cxargs TypeBit
+  (PrimFunAnd, [tm1, tm2], Nothing) -> booleanBinop tm1 tm2
+  (PrimFunOr, [tm1, tm2], Nothing) -> booleanBinop tm1 tm2
+  (PrimFunNot, [tm], Nothing) -> do
+    tm <- checkInferTerm tm TypeBit
+    return_ [tm] cxargs TypeBit
+  (PrimFunAdd, [tm1, tm2], Nothing) -> numericBinop tm1 tm2
+  (PrimFunDiv, [tm1, tm2], Nothing) -> numericBinop tm1 tm2
+  _ -> throwTypingError $ "invalid primitive function application: " <> prettyShow (TermApplication (AppPrimFun pf) args cxargs)
+  where
+    booleanBinop tm1 tm2 = do
+      tm1 <- checkInferTerm tm1 TypeBit
+      tm2 <- checkInferTerm tm2 TypeBit
+      return_ [tm1, tm2] cxargs TypeBit
 
--- inferPrimFun :: PrimFun -> Typing FunctionType
--- inferPrimFun = \case
---   PrimFunEq -> do
---     alpha <- freshUnifType (stringOfPrimFun PrimFunEq)
---     return $ FunctionType [(Nothing, alpha), (Nothing, alpha)] Map.empty TypeBit
---   PrimFunAnd -> do
---     return $ FunctionType [(Nothing, TypeBit), (Nothing, TypeBit)] Map.empty TypeBit
---   PrimFunOr -> do
---     return $ FunctionType [(Nothing, TypeBit), (Nothing, TypeBit)] Map.empty TypeBit
---   PrimFunNot -> do
---     return $ FunctionType [(Nothing, TypeBit)] Map.empty TypeBit
+    numericBinop tm1 tm2 = do
+      -- infer type of tm1
+      tm1 <- inferTerm tm1
+      ty1 <- termType tm1
+      -- check that ty1 is a numeric type
+      unless (isNumericType ty1) . throwTypingError $ "the primitive function application " <> prettyShow (TermApplication (AppPrimFun pf) args cxargs) <> " expects its argument " <> prettyShow tm1 <> " to have a numeric type"
+      -- check that tm2 has type ty1
+      tm2 <- checkInferTerm tm2 ty1
+      return_ [tm1, tm2] cxargs ty1
 
-primitive_constants :: Map.Map Text (Typing Type)
-primitive_constants = Map.empty
+    return_ args cxargs ty =
+      return
+        Term
+          { _termPreterm = TermApplication (AppPrimFun pf) args cxargs,
+            _termMaybeType = Just ty
+          }
 
 -- ** defaulting
 
@@ -646,6 +664,11 @@ defaultType = \case
   ty -> ty
 
 -- ** utilities
+
+termType :: Term -> Typing Type
+termType =
+  (^. termMaybeType)
+    >>> lift . fromJust ("typing", "expected term to be type-inferred at this point")
 
 freshUnifId :: String -> Typing Unif.Id
 freshUnifId str = do
