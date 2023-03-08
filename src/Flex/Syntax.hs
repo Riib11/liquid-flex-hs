@@ -1,3 +1,4 @@
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -16,6 +17,32 @@ import PrettyShow
 import Utility
 
 -- * syntax
+
+-- TODO: depending on what I use this for, can add other cases
+data Syntax
+  = SyntaxModule Module
+  | SyntaxDeclaration Declaration
+  | SyntaxTerm Term
+  deriving (Show)
+
+instance PrettyShow Syntax where
+  prettyShow :: Syntax -> String
+  prettyShow = \case
+    SyntaxModule mdl -> prettyShow mdl
+    SyntaxDeclaration decl -> prettyShow decl
+    SyntaxTerm tm -> prettyShow tm
+
+class IsSyntax a where
+  toSyntax :: a -> Syntax
+
+instance IsSyntax Module where
+  toSyntax = SyntaxModule
+
+instance IsSyntax Declaration where
+  toSyntax = SyntaxDeclaration
+
+instance IsSyntax Term where
+  toSyntax = SyntaxTerm
 
 -- ** identifier
 

@@ -28,7 +28,6 @@ import qualified Flex.Refining.Syntax as Reft
 import qualified Flex.Syntax as Base
 import qualified Language.Fixpoint.Types as F
 import PrettyShow (PrettyShow (prettyShow))
-import Utility (fromJust')
 
 -- * Translation
 

@@ -94,8 +94,7 @@ evalTerm tm = do
         TermCast _tm' -> throwInterpError $ "`cast` should not appear in type-checked term: " <> show tm
         TermNamed x -> do
           locs <- asks (^. ctxLocals)
-          cs <- asks (^. callStack)
-          lift $ lookupTerm id locs (InterpError cs) x
+          lookupTerm throwInterpError locs x return
         TermTuple tms -> setPreterm $ TermTuple <$> evalTerm `mapM` tms
         TermArray tms -> setPreterm $ TermArray <$> evalTerm `mapM` tms
         TermBlock (stmts, tm') -> foldr evalStatement (evalTerm tm') stmts

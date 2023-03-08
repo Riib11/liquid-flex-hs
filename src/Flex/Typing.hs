@@ -3,6 +3,7 @@
 
 module Flex.Typing where
 
+import Control.Category ((>>>))
 import Control.Lens hiding (enum)
 import Control.Monad
 import Control.Monad.Error.Class
@@ -12,7 +13,7 @@ import Control.Monad.Trans
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
 import Data.Bifunctor
 import qualified Data.Map as Map
-import Data.Maybe
+import Data.Maybe (Maybe (..), isJust)
 import Data.Text (Text)
 import Flex.Flex
 import Flex.Syntax
@@ -53,19 +54,43 @@ tryTyping m = do
 
 data Ctx = Ctx
   { -- | local variable typings
-    _ctxLocals :: Map.Map Text Type
+    _ctxLocals :: Map.Map Text Type,
+    -- | which things are currently being type-checked
+    _typingStack :: [TypingStackItem]
   }
+  deriving (Show)
+
+data TypingStackItem
+  = TypingStackCheck Syntax
+  | TypingStackInfer Syntax
+  | TypingStackUnify
+      Type
+      -- ^ inferred type
+      Type
+      -- ^ expected type
+  deriving (Show)
 
 emptyCtx :: Ctx
 emptyCtx =
   Ctx
-    { -- local variable typings
-      _ctxLocals = mempty
+    { _ctxLocals = mempty,
+      _typingStack = mempty
     }
 
 -- *** lenses
 
 makeLenses ''Ctx
+
+-- *** utilities
+
+enterCheck :: IsSyntax a => a -> Typing b -> Typing b
+enterCheck a = locally typingStack (TypingStackCheck (toSyntax a) :)
+
+enterInfer :: IsSyntax a => a -> Typing b -> Typing b
+enterInfer a = locally typingStack (TypingStackInfer (toSyntax a) :)
+
+enterUnify :: Type -> Type -> Typing b -> Typing b
+enterUnify ty1 ty2 = locally typingStack (TypingStackUnify ty1 ty2 :)
 
 -- *** errors/bugs
 
@@ -75,13 +100,13 @@ throwTypingError = throwError . TypingError
 
 -- bug in typing algorithm
 throwTypingBug :: String -> Typing a
-throwTypingBug = error
+throwTypingBug msg = lift $ throwBug ("typing", msg)
 
 -- ** processing
 
 -- expects environment to already be loaded
 procModule :: Module -> Typing ()
-procModule mdl = do
+procModule mdl = enterCheck mdl do
   debug $ "procModule: " <> prettyShow (moduleId mdl)
   mapM_ procImport (moduleImports mdl)
   mapM_ procDeclaration (moduleDeclarations mdl)
@@ -89,7 +114,7 @@ procModule mdl = do
 -- add imported stuff to module envModuleCtx
 procImport :: Import -> Typing ()
 procImport _imp =
-  -- error "TODO"
+  -- TODO: forally outline how module system impl works
   return ()
 
 -- check is a valid type id
@@ -121,7 +146,7 @@ procStructureId x =
 
 -- checks terms and norms types, and updates ModuleCtx to reflect updates
 procDeclaration :: Declaration -> Typing ()
-procDeclaration decl = do
+procDeclaration decl = enterCheck decl do
   debug $ "procDeclaration: " <> prettyShow (get_name decl)
   case decl of
     DeclarationStructure struct -> do
@@ -259,7 +284,7 @@ checkInferTerm tm ty = do
 
 -- annotate the term with it's inferred type, and proc its children
 inferTerm :: Term -> Typing Term
-inferTerm tm = do
+inferTerm tm = enterInfer tm do
   debug $ "inferTerm: " <> prettyShow tm
   case tm ^. termPreterm of
     -- without kids
@@ -270,7 +295,10 @@ inferTerm tm = do
     TermLiteral (LiteralString _) -> return $ setType (TypeCast (TypeArray TypeChar))
     TermNamed x -> do
       locs <- asks (^. ctxLocals)
-      setType <$> (normType =<< lift (lookupTerm (fromJust . (^. termMaybeType)) locs ScopingError x))
+      (setType <$>) $
+        (normType =<<) $
+          lookupTerm throwTypingError locs x $
+            (^. termMaybeType) >>> lift . fromJust ("typing", "term in local typing context must be type-inferred")
     TermCast tm -> do
       tm <- inferTerm tm
       ty <- getInferredType tm
@@ -461,7 +489,7 @@ introLocal x ty = locally ctxLocals (Map.insert x ty)
 -- check that term has expected type via unification with its inferred type, and
 -- normalize the term's type (with the new unification substitution)
 checkTerm :: Term -> Type -> Typing Term
-checkTerm tm ty = do
+checkTerm tm ty = enterCheck tm do
   debug $ "checkTerm: " <> prettyShow tm <> " :? " <> prettyShow ty
   ty <- join $ liftM2 checkUnify (getInferredType tm) (return ty)
   return $ tm & termMaybeType ?~ ty
@@ -486,7 +514,7 @@ inferLiteral = \case
 -- | checks if `tyInf` unities with `tyExp` (directional), and returns `tyExp`
 -- after normalizing.
 checkUnify :: Type -> Type -> Typing Type
-checkUnify tyInf tyExp = do
+checkUnify tyInf tyExp = enterUnify tyInf tyExp do
   debug $ "checkUnify: " <> prettyShow tyInf <> " ~? " <> prettyShow tyExp
   case (tyInf, tyExp) of
     -- a-normal types

@@ -88,15 +88,6 @@ modifyingM l mb a = do
   b' <- mb (a ^. l)
   return (a & l .~ b')
 
-_Just' :: String -> Lens' (Maybe a) a
-_Just' msg = lens (maybe (error ("_Just': " <> msg)) id) (\_ a -> Just a)
-
--- st <- get
--- a' <- f (st ^. l)
--- put (st & l .~ a')
-
--- foldr123 :: (a -> b -> b) -> b -> t a -> b
-
 ffoldr231 :: Foldable t => b -> t a -> (a -> b -> b) -> b
 ffoldr231 b ta f = foldr f b ta
 
@@ -107,11 +98,6 @@ fromJustDefault :: a -> Maybe a -> a
 fromJustDefault a = \case
   Nothing -> a
   Just a' -> a'
-
-fromJust' :: String -> Maybe a -> a
-fromJust' str = \case
-  Nothing -> error $ "fromJust: " <> str
-  Just a -> a
 
 findM :: Monad m => (a -> m Bool) -> [a] -> m (Maybe a)
 findM _ [] = return Nothing

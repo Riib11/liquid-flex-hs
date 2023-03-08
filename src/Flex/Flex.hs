@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Flex.Flex where
@@ -34,6 +35,7 @@ tryFlexM m = do
 -- interpreting should go on the end of the monad transformer, right??
 type FlexM = StateT FlexEnv (ExceptT FlexError IO)
 
+-- | FlexError
 data FlexError
   = ScopingError String
   | TypingError String
@@ -57,6 +59,25 @@ instance PrettyShow FlexError where
 
 refineError :: String -> FlexError
 refineError = RefineError . MakeRefineError
+
+-- | Flex Bug
+type Bug = (String, String)
+
+throwBug :: Bug -> FlexM a
+throwBug (lbl, msg) =
+  error . unlines $
+    [ replicate 40 '=',
+      "bug: " <> lbl,
+      "",
+      msg,
+      "",
+      replicate 40 '='
+    ]
+
+fromJust :: Bug -> Maybe a -> FlexM a
+fromJust bug = \case
+  Nothing -> throwBug bug
+  Just a -> return a
 
 -- | RefineError
 newtype RefineError = MakeRefineError String
@@ -137,26 +158,26 @@ instance PrettyShow FlexEnv where
         ["  " <> show (env ^. envUnif)]
       ]
 
-lookupTerm :: (Term -> a) -> Map.Map Text a -> (String -> FlexError) -> Id -> FlexM a
-lookupTerm proj locs makeError x =
+lookupTerm :: (MonadTrans t, Monad (t FlexM)) => (String -> t FlexM a) -> Map.Map Text a -> Id -> (Term -> t FlexM a) -> t FlexM a
+lookupTerm e locs x k =
   case tryUnqualify x of
     -- if qualified, try global constants
     Nothing ->
-      gets (^. envModuleCtx . ctxModuleConstants . at x) >>= \case
-        Nothing -> throwError . ScopingError $ "unknown term id: " <> prettyShow x
+      lift (gets (^. envModuleCtx . ctxModuleConstants . at x)) >>= \case
+        Nothing -> e $ "unknown term id: " <> prettyShow x
         Just con -> case constantBody con of
-          DefinitionBodyTerm tm -> return (proj tm)
-          _ -> throwError . makeError $ "looked up the constant but it was not evaluated: " <> prettyShow x
+          DefinitionBodyTerm tm -> k tm
+          _ -> e $ "looked up the constant but it was not evaluated: " <> prettyShow x
     -- if unqualified, try local vars, then try global constants
     Just txt ->
       case Map.lookup txt locs of
         Just a -> return a
         Nothing ->
-          gets (^. envModuleCtx . ctxModuleConstants . at x) >>= \case
-            Nothing -> throwError . ScopingError $ "unknown term id: " <> prettyShow x
+          lift (gets (^. envModuleCtx . ctxModuleConstants . at x)) >>= \case
+            Nothing -> e $ "unknown term id: " <> prettyShow x
             Just con -> case constantBody con of
-              DefinitionBodyTerm tm -> return (proj tm)
-              _ -> throwError . makeError $ "looked up the constant but it was not evaluated: " <> prettyShow x
+              DefinitionBodyTerm tm -> k tm
+              _ -> e $ "looked up the constant but it was not evaluated: " <> prettyShow x
 
 lookupFunction :: Id -> FlexM Function
 lookupFunction x =
