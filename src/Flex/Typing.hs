@@ -25,9 +25,10 @@ import Utility
 # Type Normalization
 
 Since types are usually pretty small, normalization is cheap, so its not a huge
-deal that I have to normalize types all the time. But to be more efficient,
-could reduce repeated normaliations if I know a type is already normal. To do
-this I need to statically keep track of whether or not a type is normalized.
+deal that I often have to normalize types, even if they are already normalized.
+But to be more efficient, could reduce repeated normaliations if I know a type
+is already normal. To do this I need to statically keep track of whether or not
+a type is normalized.
 
 -}
 
@@ -66,6 +67,16 @@ emptyCtx =
 
 makeLenses ''Ctx
 
+-- *** errors/bugs
+
+-- type error
+throwTypingError :: String -> Typing a
+throwTypingError = throwError . TypingError
+
+-- bug in typing algorithm
+throwTypingBug :: String -> Typing a
+throwTypingBug = error
+
 -- ** processing
 
 -- expects environment to already be loaded
@@ -84,17 +95,15 @@ procImport _imp =
 -- check is a valid type id
 procTypeId :: Id -> Typing ()
 procTypeId x =
-  unlessM (isJust <$> gets (^. envModuleCtx . ctxModuleTypes . at x)) $
-    throwError . ScopingError $
-      "unknown type id: " <> prettyShow x
+  unlessM (isJust <$> gets (^. envModuleCtx . ctxModuleTypes . at x)) $ throwTypingError $ "unknown type id: " <> prettyShow x
 
 -- check is an existing structure id
 procStructureId :: Id -> Typing ()
 procStructureId x =
   gets (^. envModuleCtx . ctxModuleTypes . at x) >>= \case
     Just (DeclarationTypeStructure _) -> return ()
-    Nothing -> throwError . ScopingError $ "unknown structure id: " <> prettyShow x
-    _ -> throwError . ScopingError $ "expected to be a structure id: " <> prettyShow x
+    Nothing -> throwTypingError $ "unknown structure id: " <> prettyShow x
+    _ -> throwTypingError $ "expected to be a structure id: " <> prettyShow x
 
 -- -- check is an existing term id
 -- procTermId :: Id -> Typing ()
@@ -104,7 +113,7 @@ procStructureId x =
 --     Nothing ->
 --       gets (^. envModuleCtx . ctxModuleConstants . at) >>= \case
 --         Just _ -> return ()
---         Nothing -> throwError . ScopingError $ "unknown term id: " <> prettyShow x
+--         Nothing -> throwTypingError $ "unknown term id: " <> prettyShow x
 
 -- -- check is an existing constructor id
 -- procConstructorId :: Id -> Typing ()
@@ -138,9 +147,7 @@ procDeclaration decl = do
         . at (fromUnqualName $ variantName varnt)
         .= Just (DeclarationTypeVariant varnt {variantConstructors})
     DeclarationEnumerated enm -> do
-      unless (isLiteralType (enumeratedLiteralType enm)) $
-        throwError . TypingError $
-          "the type of an enum must be a literal type, but instead it is: " <> prettyShow (enumeratedLiteralType enm)
+      unless (isLiteralType (enumeratedLiteralType enm)) $ throwTypingError $ "the type of an enum must be a literal type, but instead it is: " <> prettyShow (enumeratedLiteralType enm)
       envModuleCtx
         . ctxModuleTypes
         . at (fromUnqualName $ enumeratedName enm)
@@ -192,24 +199,18 @@ normTransformFunctionType funTy = do
   -- check that the input and output types are messages
   functionTypeParams <- forM (functionTypeParams funTy) \(txt, ty) -> do
     ty <- normType ty
-    unlessM (isMessageType ty) $
-      throwError . TypingError $
-        "the parameter '" <> prettyShow txt <> ": " <> prettyShow ty <> "' must be a message type in order to be the parameter of a transform function"
+    unlessM (isMessageType ty) $ throwTypingError $ "the parameter '" <> prettyShow txt <> ": " <> prettyShow ty <> "' must be a message type in order to be the parameter of a transform function"
     return (txt, ty)
   functionTypeContextualParams <- normType `mapM` functionTypeContextualParams funTy
   functionTypeOutput <- normType (functionTypeOutput funTy)
-  unlessM (isMessageType functionTypeOutput) $
-    throwError . TypingError $
-      "the function output type '" <> prettyShow functionTypeOutput <> "' must be a message type in order to be the output of a transform function"
-  unlessM (isMessageType functionTypeOutput) $
-    throwError . TypingError $
-      "the output type '" <> prettyShow functionTypeOutput <> "' must be a message type in order to be the output of a transform function"
+  unlessM (isMessageType functionTypeOutput) $ throwTypingError $ "the function output type '" <> prettyShow functionTypeOutput <> "' must be a message type in order to be the output of a transform function"
+  unlessM (isMessageType functionTypeOutput) $ throwTypingError $ "the output type '" <> prettyShow functionTypeOutput <> "' must be a message type in order to be the output of a transform function"
   return funTy {functionTypeParams, functionTypeContextualParams, functionTypeOutput}
 
 -- expects type to be normalized
 isMessageType :: Type -> Typing Bool
 isMessageType ty = do
-  unless (isNorm ty) $ throwError . TypingError $ "isMessageType expects input type to be normalized: " <> prettyShow ty
+  unless (isNorm ty) $ throwTypingBug $ "isMessageType expects input type to be normalized: " <> prettyShow ty
   case ty of
     TypeStructure struct -> return $ get_isMessage struct
     TypeNewtype newty -> return $ get_isMessage newty
@@ -224,7 +225,7 @@ procDefinitionBody ty = \case
 procIntroId :: Id -> Typing ()
 procIntroId x@(Id mb_mdlId _) = case mb_mdlId of
   Nothing -> return ()
-  Just _mdlId -> throwError . ScopingError $ "unnecessary qualification of introduced id: " <> prettyShow x
+  Just _mdlId -> throwTypingError $ "unnecessary qualification of introduced id: " <> prettyShow x
 
 procRefinement :: Refinement -> Typing Refinement
 procRefinement rfn@(Refinement Nothing) = return rfn
@@ -299,19 +300,18 @@ inferTerm tm = do
       lift (lookupConstructor x) >>= \case
         ConstructorEnumerated enm _lit ->
           case mb_tm of
-            Just _ -> throwError . TypingError $ "an enum constructor must not have any arguments"
-            Nothing ->
-              return $ setPretermAndType (TermConstructor x Nothing) (TypeEnumerated enm)
+            Just _ -> throwTypingError "an enum constructor must not have any arguments"
+            Nothing -> return $ setPretermAndType (TermConstructor x Nothing) (TypeEnumerated enm)
         ConstructorNewtype newty ->
           case mb_tm of
-            Nothing -> throwError . TypingError $ "a newtype constructor must have an argument"
+            Nothing -> throwTypingError "a newtype constructor must have an argument"
             Just tm -> do
               tm <- inferTerm tm
               tm <- checkTerm tm (newtypeType newty)
               return $ setPretermAndType (TermConstructor x (Just tm)) (TypeNewtype newty)
         ConstructorVariant varnt (_, ty) ->
           case mb_tm of
-            Nothing -> throwError . TypingError $ "a variant constructor must have an argument"
+            Nothing -> throwTypingError "a variant constructor must have an argument"
             Just tm -> do
               tm <- inferTerm tm
               tm <- checkTerm tm ty
@@ -328,19 +328,7 @@ inferTerm tm = do
       -- check arguments length
       let n_args_expected = length (functionTypeParams funTy)
       let n_args_actual = length args
-      when (n_args_actual /= n_args_expected) do
-        throwError . TypingError $
-          "the function `"
-            <> prettyShow x
-            <> "` was given too "
-            <> ( if n_args_actual < n_args_expected
-                   then "few"
-                   else "many"
-               )
-            <> " arguments; expected "
-            <> show n_args_expected
-            <> " but actually got "
-            <> show n_args_actual
+      when (n_args_actual /= n_args_expected) $ throwTypingError $ "the function `" <> prettyShow x <> "` was given too " <> (if n_args_actual < n_args_expected then "few" else "many") <> " arguments; expected " <> show n_args_expected <> " but actually got " <> show n_args_actual
 
       -- check arguments
       args <-
@@ -358,7 +346,7 @@ inferTerm tm = do
                         (\(_txtLoc, tyLoc) -> isJust <$> tryTyping (checkUnify tyLoc ty))
                         (Map.toList locs)
                         >>= \case
-                          Nothing -> throwError . TypingError $ "could not infer value Gof contextual parameter: " <> prettyShow txt
+                          Nothing -> throwTypingError $ "could not infer value of contextual parameter: " <> prettyShow txt
                           Just (txt, ty) -> return (ty, makeTerm (TermNamed (fromUnqualName txt)) ty)
                   )
                     `traverse` Map.toList (functionTypeContextualParams funTy)
@@ -383,11 +371,11 @@ inferTerm tm = do
                         )
                         (Map.toList . functionTypeContextualParams $ funTy)
                     case mb_txt_ty of
-                      Nothing -> throwError . TypingError $ "missing explicit contextual argument: " <> prettyShow tm
+                      Nothing -> throwTypingError $ "missing explicit contextual argument: " <> prettyShow tm
                       Just (ty, tm') -> return (ty, tm')
                 )
               `traverse` cxargsList
-        Just (Right _) -> throwError . TypingError $ "should not already be typ-checked here"
+        Just (Right _) -> throwTypingBug "contextual arguments should not already be type-checked here"
       debug $ "inferTerm: output preterm = " <> prettyShow (TermApplication x args (Just . Right $ cxargsMap))
       return $ setPretermAndType (TermApplication x args (Just . Right $ cxargsMap)) (functionTypeOutput funTy)
     TermStructure x fields -> do
@@ -396,7 +384,7 @@ inferTerm tm = do
         mapAsListM
           ( \(txt, field) -> do
               case structureFields struct Map.!? txt of
-                Nothing -> throwError . ScopingError $ "the structure '" <> prettyShow x <> "' does not have the field '" <> prettyShow txt <> "'"
+                Nothing -> throwTypingError $ "the structure '" <> prettyShow x <> "' does not have the field '" <> prettyShow txt <> "'"
                 Just ty -> (txt,) <$> checkInferTerm field ty
           )
           fields
@@ -406,9 +394,9 @@ inferTerm tm = do
       getInferredType tm >>= \case
         TypeStructure struct ->
           case Map.lookup txt (structureFields struct) of
-            Nothing -> throwError . TypingError $ "the structure '" <> prettyShow struct <> "' does not have field '" <> prettyShow txt <> "'"
+            Nothing -> throwTypingError $ "the structure '" <> prettyShow struct <> "' does not have field '" <> prettyShow txt <> "'"
             Just ty -> setPretermAndType (TermMember tm txt) <$> normType ty
-        _ -> throwError . TypingError $ "expected '" <> prettyShow tm <> "' to be of a structure type"
+        _ -> throwTypingError $ "expected '" <> prettyShow tm <> "' to be of a structure type"
     TermIf tm1 tm2 tm3 -> do
       tm1 <- checkInferTerm tm1 TypeBit
       ty <- freshUnifType (prettyShow tm)
@@ -503,8 +491,8 @@ checkUnify tyInf tyExp = do
   case (tyInf, tyExp) of
     -- a-normal types
     _
-      | not (isNorm tyInf) -> throwError . TypingError $ "a-normal type during checkUnify: " <> prettyShow tyInf
-      | not (isNorm tyExp) -> throwError . TypingError $ "a-normal type during checkUnify: " <> prettyShow tyExp
+      | not (isNorm tyInf) -> throwTypingBug $ "anormal type during checkUnify: " <> prettyShow tyInf
+      | not (isNorm tyExp) -> throwTypingBug $ "anormal type during checkUnify: " <> prettyShow tyExp
     -- unification variable
     (TypeUnif u, ty) -> substUnifId u ty
     (ty, TypeUnif u) -> substUnifId u ty
@@ -519,19 +507,19 @@ checkUnify tyInf tyExp = do
     (TypeOptional ty1, TypeOptional ty2) -> TypeOptional <$> checkUnify ty1 ty2
     -- casting
     -- TODO: if ty2 is a Cast also, then should be able to cast
-    (TypeCast ty1, _) -> tyExp <$ unless (isCastableTo ty1 tyExp) (throwError . TypingError $ "cannot cast the type '" <> prettyShow ty1 <> "' to the type '" <> prettyShow tyExp <> "'")
+    (TypeCast ty1, _) -> tyExp <$ unless (isCastableTo ty1 tyExp) (throwTypingError $ "cannot cast the type '" <> prettyShow ty1 <> "' to the type '" <> prettyShow tyExp <> "'")
     -- equality checks (includes checking named types)
     _ | tyInf == tyExp -> return tyExp
     -- unification failure
     _ | otherwise -> tyExp <$ failure
   where
-    failure = throwError . TypingError $ "expected the type '" <> prettyShow tyExp <> "' but found the type '" <> prettyShow tyInf <> "'"
+    failure = throwTypingError $ "expected the type '" <> prettyShow tyExp <> "' but found the type '" <> prettyShow tyInf <> "'"
 
 -- requires normal `ty`
 substUnifId :: Unif.Id -> Type -> Typing Type
 substUnifId u ty = do
   if occursIn ty
-    then throwError . TypingError $ "tried to substitute '" <> prettyShow u <> "' for '" <> prettyShow ty <> "', during unification, but failed non-occurence check"
+    then throwTypingError $ "tried to substitute '" <> prettyShow u <> "' for '" <> prettyShow ty <> "', during unification, but failed non-occurence check"
     else envUnifSubst . at u .= Just ty -- TODO: this does proper insertion right?
   return (TypeUnif u)
   where
@@ -549,11 +537,11 @@ isExtensionOf x xExt
   | x == xExt = return True
   | otherwise =
       gets (^. envModuleCtx . ctxModuleTypes . at x) >>= \case
-        Nothing -> False <$ (throwError . ScopingError $ "unknown id: " <> prettyShow x)
+        Nothing -> False <$ throwTypingError ("unknown id: " <> prettyShow x)
         Just (DeclarationTypeStructure struct) -> case structureExtensionId struct of
           Nothing -> return False
           Just x' -> x' `isExtensionOf` xExt
-        _ -> False <$ (throwError . ScopingError $ "id must be a structure id: " <> prettyShow x)
+        _ -> False <$ throwTypingError ("id must be a structure id: " <> prettyShow x)
 
 isCastableTo :: Type -> Type -> Bool
 isCastableTo ty1 ty2 = case (ty1, ty2) of
@@ -718,7 +706,7 @@ freshenTypeUnifIds = fmap snd . go Map.empty
 --       Nothing ->
 --         gets (^. envModuleCtx . ctxModuleConstants . at x) >>= \case
 --           Just con -> return $ TermNamedValueConstant con
---           _ -> throwError . ScopingError $ "unknown term id: " <> prettyShow x
+--           _ -> throwTypingError $ "unknown term id: " <> prettyShow x
 
 -- data TermNamedValue
 --   = TermNamedValueConstant Constant
