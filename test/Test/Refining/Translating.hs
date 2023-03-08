@@ -2,7 +2,7 @@
 
 {-# HLINT ignore "Use camelCase" #-}
 {-# HLINT ignore "Missing NOINLINE pragma" #-}
-module Test.Refining (test) where
+module Test.Translating  (test) where
 
 import Control.Lens
 import Control.Monad
@@ -28,7 +28,7 @@ import Utility
 
 test :: Test
 test =
-  TestLabel "Refining" $
+  TestLabel "Refining.Translating" $
     TestList
       [ -- test_transLiteral,
         test_transApp
@@ -38,6 +38,7 @@ test_transLiteral :: Test
 test_transLiteral =
   TestLabel "transLiteral" $
     TestList . map TestCase $
+    ty = _ 
       [ makeTest_transTerm
           defaultOptions
           "true"

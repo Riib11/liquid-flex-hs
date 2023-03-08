@@ -44,6 +44,7 @@ library
       Flex.Typing
       Flex.Unif
       Graph
+      MainExample
       PrettyShow
       Utility
   other-modules:
@@ -126,7 +127,7 @@ test-suite liquid-flex-hs-test
   main-is: Spec.hs
   other-modules:
       Test.Parsing
-      Test.Refining
+      Test.Refining.Translating
       Test.Typing
       Test.Utility
       Paths_liquid_flex_hs
