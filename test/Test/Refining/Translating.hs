@@ -2,7 +2,7 @@
 
 {-# HLINT ignore "Use camelCase" #-}
 {-# HLINT ignore "Missing NOINLINE pragma" #-}
-module Test.Translating  (test) where
+module Test.Refining.Translating (test) where
 
 import Control.Lens
 import Control.Monad
@@ -30,7 +30,7 @@ test :: Test
 test =
   TestLabel "Refining.Translating" $
     TestList
-      [ -- test_transLiteral,
+      [ test_transLiteral,
         test_transApp
       ]
 
@@ -38,7 +38,6 @@ test_transLiteral :: Test
 test_transLiteral =
   TestLabel "transLiteral" $
     TestList . map TestCase $
-    ty = _ 
       [ makeTest_transTerm
           defaultOptions
           "true"
@@ -59,7 +58,7 @@ test_transLiteral =
           defaultOptions
           "'c'"
           Nothing,
-        -- TODO: transType TypeArrow
+        -- TODO: transType TypeArray (for string type)
         -- makeTest_transTerm
         --   defaultOptions
         --   "\"s\""
@@ -127,10 +126,10 @@ makeTest_transTerm opts tmStr mb_tm = do
             )
       let ptm = tmTyped ^. Base.termPreterm
           ty =
-            fromJust' "type-checked term must have annotated type" $
+            fromJustDefault (error "type-checked term must have annotated type") $
               tmTyped ^. Base.termMaybeType
       verboseLog opts $ "base term   = " <> prettyShow ptm <> " : " <> prettyShow ty
-      runTranslating $ transTerm tmTyped
+      runRefining $ transTerm tmTyped
     )
     >>= \case
       Left err -> when (pass opts) do

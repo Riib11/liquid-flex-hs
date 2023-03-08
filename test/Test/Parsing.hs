@@ -279,7 +279,8 @@ test_parseType :: Test
 test_parseType =
   TestLabel "parseType" $
     TestList
-      [ makeTest' "int32" . return $ tyInt 32,
+      [ makeTest' "int8" . return $ tyInt 8,
+        makeTest' "int32" . return $ tyInt 32,
         makeTest' "int64" . return $ tyInt 64,
         makeTest' "uint32" . return $ tyUInt 32,
         makeTest' "uint64" . return $ tyUInt 64,

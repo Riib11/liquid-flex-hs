@@ -210,8 +210,7 @@ parseTerm = buildExpressionParser table term0 <?> "term"
     term1 =
       choice
         ( try (parens parseTerm)
-            : (<$$>)
-              fromPreterm
+            : (fromPreterm <$$>)
               [ TermLiteral <$> parseLiteral,
                 -- begin with: parens
                 try parseTermTuple,
@@ -360,20 +359,19 @@ parseStatement =
         -- annotating a `let` is the same as ascribing its imp
         symbol_ "let"
         pat <- parsePattern
+        -- with type annotation
         symbol_ ":"
         sig <- parseType
         symbol_ "="
         imp <- parseTerm
         return $ StatementLet pat (fromPreterm $ TermAscribe imp sig),
-      StatementLet
-        <$ symbol "let"
-        <*> parsePattern
-        -- <*> choice
-        --   [ colon *> (Just <$> parseType),
-        --     return Nothing
-        --   ]
-        -- <* symbol "="
-        <*> parseTerm,
+      do
+        symbol_ "let"
+        pat <- parsePattern
+        -- no type annotation
+        symbol_ "="
+        imp <- parseTerm
+        return $ StatementLet pat imp,
       StatementAssert <$ symbol "assert" <*> parens parseTerm
     ]
 
