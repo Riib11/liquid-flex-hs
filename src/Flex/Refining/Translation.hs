@@ -1,11 +1,5 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Flex.Refining.Translation
-  ( TransCtx,
-    initTransCtx,
-    Translating,
-    runTranslating,
-    transTerm,
+  ( transTerm,
     transType,
     transApp,
     transBlock,
@@ -24,6 +18,7 @@ import Control.Monad.State (MonadState (get), StateT, gets, modify')
 import qualified Data.Map as Map
 import Data.Text (Text, pack, unpack)
 import Flex.Flex
+import Flex.Refining.Common (Refining, idSymbols)
 import qualified Flex.Refining.Syntax as Reft
 import qualified Flex.Syntax as Base
 import qualified Language.Fixpoint.Types as F
@@ -34,53 +29,53 @@ import PrettyShow (PrettyShow (prettyShow))
 --
 -- Translate terms and types from Flex to LiquidFlex
 
--- | TransCtx
-data TransCtx = TransCtx
-  { _idSymbols :: Map.Map Base.Id F.Symbol
-  }
+-- -- | TransCtx
+-- data TransCtx = TransCtx
+--   { _idSymbols :: Map.Map Base.Id F.Symbol
+--   }
 
-makeLenses ''TransCtx
+-- makeLenses ''TransCtx
 
--- | Translating
-type Translating a = ReaderT TransCtx FlexM a
+-- -- | Refining
+-- type Refining a = ReaderT TransCtx FlexM a
 
-runTranslating :: Translating a -> FlexM a
-runTranslating m = runReaderT m =<< initTransCtx
+-- runRefining :: Refining a -> FlexM a
+-- runRefining m = runReaderT m =<< initTransCtx
 
-initTransCtx :: FlexM TransCtx
-initTransCtx = do
-  env <- get
-  -- need to iterate over functions, constants, and constructors in the current
-  -- module context
-  idSyms <-
-    flip
-      ( foldM . flip $ \fun m -> do
-          s <- freshSymbol (unpack $ Base.functionName fun)
-          return $ Map.insert (Base.fromUnqualName (Base.functionName fun)) s m
-      )
-      (env ^. envModuleCtx . Base.ctxModuleFunctions)
-      =<< flip
-        ( foldM . flip $ \con m -> do
-            let n = Base.constantName con
-            s <- freshSymbol (unpack n)
-            return $ Map.insert (Base.fromUnqualName n) s m
-        )
-        (env ^. envModuleCtx . Base.ctxModuleConstants)
-      =<< flip
-        ( foldM . flip $ \cnstr m -> do
-            let n = Base.constructorName cnstr
-            s <- freshSymbol (unpack n)
-            return $ Map.insert (Base.fromUnqualName n) s m
-        )
-        (env ^. envModuleCtx . Base.ctxModuleConstructors)
-      =<< return Map.empty
-  return
-    TransCtx
-      { _idSymbols = idSyms
-      }
+-- initTransCtx :: FlexM TransCtx
+-- initTransCtx = do
+--   env <- get
+--   -- need to iterate over functions, constants, and constructors in the current
+--   -- module context
+--   idSyms <-
+--     flip
+--       ( foldM . flip $ \fun m -> do
+--           s <- freshSymbol (unpack $ Base.functionName fun)
+--           return $ Map.insert (Base.fromUnqualName (Base.functionName fun)) s m
+--       )
+--       (env ^. envModuleCtx . Base.ctxModuleFunctions)
+--       =<< flip
+--         ( foldM . flip $ \con m -> do
+--             let n = Base.constantName con
+--             s <- freshSymbol (unpack n)
+--             return $ Map.insert (Base.fromUnqualName n) s m
+--         )
+--         (env ^. envModuleCtx . Base.ctxModuleConstants)
+--       =<< flip
+--         ( foldM . flip $ \cnstr m -> do
+--             let n = Base.constructorName cnstr
+--             s <- freshSymbol (unpack n)
+--             return $ Map.insert (Base.fromUnqualName n) s m
+--         )
+--         (env ^. envModuleCtx . Base.ctxModuleConstructors)
+--       =<< return Map.empty
+--   return
+--     TransCtx
+--       { _idSymbols = idSyms
+--       }
 
 -- | transTerm
-transTerm :: Base.Term -> Translating Reft.Term
+transTerm :: Base.Term -> Refining Reft.Term
 transTerm tm = case tm ^. Base.termPreterm of
   Base.TermLiteral lit -> transLiteral lit =<< (transType =<< termType tm)
   Base.TermCast _ -> lift $ throwError $ refineError $ "there should be no `cast`s left after type-checking, yet there is: " <> prettyShow tm
@@ -106,17 +101,17 @@ transTerm tm = case tm ^. Base.termPreterm of
   Base.TermAscribe _te _ty -> throwError $ refineError $ "there should be no `ascribe`s left after type-checking, yet there is: " <> prettyShow tm
   Base.TermMatch _te _x0 -> error "TODO: transTerm TermMatch"
 
-termType :: Base.Term -> Translating Base.Type
+termType :: Base.Term -> Refining Base.Type
 termType tm = case tm ^. Base.termMaybeType of
   Nothing ->
     throwError . refineError $
       "expected term to be type-annotated before translation to refinement syntax: " <> prettyShow tm
   Just ty -> pure ty
 
-transBlock :: forall m. Base.Block -> Translating Reft.Term
+transBlock :: forall m. Base.Block -> Refining Reft.Term
 transBlock (stmts, tm0) = go stmts []
   where
-    go :: [Base.Statement] -> [Reft.Statement] -> Translating Reft.Term
+    go :: [Base.Statement] -> [Reft.Statement] -> Refining Reft.Term
     go [] stmts = do
       ty <- transType =<< termType tm0
       tm0 <- transTerm tm0
@@ -136,19 +131,19 @@ transBlock (stmts, tm0) = go stmts []
         tm <- transTerm tm
         go stmtsBase' (Reft.StatementAssert tm : stmts)
 
-transNameBind :: Text -> Translating F.Symbol
+transNameBind :: Text -> Refining F.Symbol
 transNameBind txt = do
   i <- gets (^. envFreshSymbolIndex)
   modify' $ envFreshSymbolIndex %~ (1 +)
   return $ parseSymbol (unpack txt <> "#" <> show i)
 
-transNameRef :: Text -> Translating F.Symbol
+transNameRef :: Text -> Refining F.Symbol
 transNameRef = error "TODO: how exactly should this work?"
 
-transIdBind :: Base.Id -> Translating F.Symbol
+transIdBind :: Base.Id -> Refining F.Symbol
 transIdBind = error "TODO: transIdBind"
 
-transIdRef :: Base.Id -> Translating F.Symbol
+transIdRef :: Base.Id -> Refining F.Symbol
 transIdRef x =
   asks (^. idSymbols)
     >>= ( \case
@@ -160,7 +155,7 @@ transIdRef x =
         )
       . Map.lookup x
 
-transType :: Base.Type -> Translating Reft.BaseType
+transType :: Base.Type -> Refining Reft.BaseType
 transType ty0 = case ty0 of
   -- IntSize bounds value
   Base.TypeInt (Base.IntSize s) -> do
@@ -194,13 +189,13 @@ transType ty0 = case ty0 of
           F.PAtom F.Lt (F.expr x) (F.expr nMax)
         ]
 
-transLiteral :: Base.Literal -> Reft.BaseType -> Translating Reft.Term
+transLiteral :: Base.Literal -> Reft.BaseType -> Refining Reft.Term
 transLiteral lit ty = pure $ Reft.Term (Reft.TermLiteral lit) ty
 
-transApp :: Base.Id -> Translating Reft.App
+transApp :: Base.Id -> Refining Reft.App
 transApp (Base.Id Nothing n) | Just pf <- Base.toPrimFun n = return $ Reft.AppPrimFun pf
 transApp x = Reft.AppVar <$> transIdRef x
 
 -- TODO: handle primitive constants differently? what if there is an "error" constant??
-transVar :: Base.Id -> Reft.BaseType -> Translating Reft.Term
+transVar :: Base.Id -> Reft.BaseType -> Refining Reft.Term
 transVar x ty = Reft.Term <$> (Reft.TermVar <$> transIdRef x) <*> return ty

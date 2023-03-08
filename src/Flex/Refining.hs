@@ -60,7 +60,7 @@ checkConstant env con = do
     Base.DefinitionBodyDerived (Just tm) -> return \f -> f tm
     _ -> return \_f -> return ()
   k \tm -> do
-    tm' <- runTranslating $ transTerm tm
+    tm' <- transTerm tm
     runCheck env tm' (termType tm')
 
 runCheck :: Env -> Term -> BaseType -> Refining ()
