@@ -4,6 +4,11 @@ module Flex.Refining
     module Flex.Refining.Query,
     module Flex.Refining.Syntax,
     module Flex.Refining.Translation,
+    checkModule,
+    checkDeclaration,
+    checkFunction,
+    checkConstant,
+    runCheck,
   )
 where
 
@@ -53,7 +58,7 @@ checkConstant env con = do
   k <- case Base.constantBody con of
     Base.DefinitionBodyTerm tm -> return \f -> f tm
     Base.DefinitionBodyDerived (Just tm) -> return \f -> f tm
-    _ -> return \f -> return ()
+    _ -> return \_f -> return ()
   k \tm -> do
     tm' <- runTranslating $ transTerm tm
     runCheck env tm' (termType tm')
