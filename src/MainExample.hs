@@ -4,9 +4,6 @@ import Flex.Flex
 import Flex.Refining
 
 main :: IO ()
--- main = Ex1.main
--- main = Refining.main
--- main = error "TODO: main"
 main = do
   let tm = undefined
       ty = undefined
