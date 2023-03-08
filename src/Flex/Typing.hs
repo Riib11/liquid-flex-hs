@@ -325,7 +325,7 @@ inferTerm tm = enterInfer tm do
       return $ setPretermAndType (TermBlock (stmts, tm)) ty
     -- decide whether this is a variant constructor or newtype constructor
     TermConstructor x mb_tm ->
-      lift (lookupConstructor x) >>= \case
+      lookupConstructor throwTypingError x >>= \case
         ConstructorEnumerated enm _lit ->
           case mb_tm of
             Just _ -> throwTypingError "an enum constructor must not have any arguments"
@@ -345,7 +345,7 @@ inferTerm tm = enterInfer tm do
               tm <- checkTerm tm ty
               return $ setPretermAndType (TermConstructor x (Just tm)) (TypeVariant varnt)
     TermApplication x args cxargs -> do
-      fun <- lift $ lookupFunction x
+      fun <- lookupFunction throwTypingError x
 
       funTy <-
         case functionBody fun of
@@ -407,7 +407,7 @@ inferTerm tm = enterInfer tm do
       debug $ "inferTerm: output preterm = " <> prettyShow (TermApplication x args (Just . Right $ cxargsMap))
       return $ setPretermAndType (TermApplication x args (Just . Right $ cxargsMap)) (functionTypeOutput funTy)
     TermStructure x fields -> do
-      struct <- lift $ lookupStructure x
+      struct <- lookupStructure throwTypingError x
       fields <-
         mapAsListM
           ( \(txt, field) -> do
@@ -593,7 +593,7 @@ normType = \case
   TypeTuple tys -> TypeTuple <$> mapM normType tys
   TypeOptional ty -> TypeOptional <$> normType ty
   TypeCast ty -> TypeCast . unwrapCasts <$> normType ty
-  TypeNamed x -> lift $ lookupType x
+  TypeNamed x -> lookupType throwTypingError x
   TypeUnif u ->
     gets (^. envUnifSubst . at u) >>= \case
       Nothing -> return (TypeUnif u)

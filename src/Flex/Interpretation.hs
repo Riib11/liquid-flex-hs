@@ -66,7 +66,7 @@ procDeclaration :: Declaration -> Interp ()
 procDeclaration = \case
   DeclarationConstant con_orig -> do
     let x = fromUnqualName $ get_name con_orig
-    con <- lift $ lookupConstant x
+    con <- lookupConstant throwInterpBug x
     constantBody <- evalDefinitionBody (constantBody con)
     envModuleCtx . ctxModuleConstants . ix x .= con {constantBody}
   -- don't need to process anything else
@@ -109,7 +109,7 @@ evalTerm tm = do
             _ -> throwInterpError "type error: TermMember of non-Structure"
         TermConstructor x mb_tm -> setPreterm $ TermConstructor x <$> (evalTerm `traverse` mb_tm)
         TermApplication x args mb_cxargs -> do
-          fun <- lift $ lookupFunction x
+          fun <- lookupFunction throwInterpBug x
 
           -- evaluate args
           argsList <-
@@ -213,9 +213,12 @@ evalStatement stmt m = do
       debug $ "evalStatement: " <> prettyShow stmt <> " ==> " <> prettyShow tm'
       introPattern pat tm' m
     StatementAssert tm ->
-      (evalTerm tm <&> (^. termPreterm)) >>= \case
-        TermLiteral (LiteralBit True) -> m
-        tm' -> throwError . PartialError $ "assertion failure: " <> prettyShow tm <> " ==> " <> prettyShow tm'
+      evalTerm tm
+        >>= ( \case
+                TermLiteral (LiteralBit True) -> m
+                tm' -> throwError . PartialError $ "assertion failure: " <> prettyShow tm <> " ==> " <> prettyShow tm'
+            )
+          . (^. termPreterm)
 
 -- requires evaluated `tm`
 introPattern :: Pattern -> Term -> Interp a -> Interp a
@@ -232,3 +235,9 @@ throwInterpError :: String -> Interp a
 throwInterpError str = do
   cs <- asks (^. callStack)
   throwError $ InterpError cs str
+
+throwInterpBug :: String -> Interp a
+throwInterpBug str = do
+  cs <- asks (^. callStack)
+  -- throwError $ InterpError cs str
+  lift $ throwBug ("interp", str <> "\n\ncallstack:\n" <> unlines (show <$> cs))

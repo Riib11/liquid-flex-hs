@@ -158,7 +158,7 @@ instance PrettyShow FlexEnv where
         ["  " <> show (env ^. envUnif)]
       ]
 
-lookupTerm :: (MonadTrans t, Monad (t FlexM)) => (String -> t FlexM a) -> Map.Map Text a -> Id -> (Term -> t FlexM a) -> t FlexM a
+lookupTerm :: (MonadTrans t, Monad (t FlexM)) => (forall a'. String -> t FlexM a') -> Map.Map Text a -> Id -> (Term -> t FlexM a) -> t FlexM a
 lookupTerm e locs x k =
   case tryUnqualify x of
     -- if qualified, try global constants
@@ -179,34 +179,34 @@ lookupTerm e locs x k =
               DefinitionBodyTerm tm -> k tm
               _ -> e $ "looked up the constant but it was not evaluated: " <> prettyShow x
 
-lookupFunction :: Id -> FlexM Function
-lookupFunction x =
-  gets (^. envModuleCtx . ctxModuleFunctions . at x) >>= \case
-    Nothing -> throwError . ScopingError $ "unknown function id: " <> prettyShow x
+lookupFunction :: forall t. (MonadTrans t, Monad (t FlexM)) => (forall a. String -> t FlexM a) -> Id -> t FlexM Function
+lookupFunction e x =
+  lift (gets (^. envModuleCtx . ctxModuleFunctions . at x)) >>= \case
+    Nothing -> e $ "unknown function id: " <> prettyShow x :: t FlexM Function
     Just fun -> return fun
 
-lookupConstructor :: Id -> FlexM Constructor
-lookupConstructor x =
-  gets (^. envModuleCtx . ctxModuleConstructors . at x) >>= \case
-    Nothing -> throwError . ScopingError $ "unknown constructor id: " <> prettyShow x
+lookupConstructor :: (MonadTrans t, Monad (t FlexM)) => (forall a. String -> t FlexM a) -> Id -> t FlexM Constructor
+lookupConstructor e x =
+  lift (gets (^. envModuleCtx . ctxModuleConstructors . at x)) >>= \case
+    Nothing -> e $ "unknown constructor id: " <> prettyShow x
     Just cnstr -> return cnstr
 
-lookupStructure :: Id -> FlexM Structure
-lookupStructure x =
-  lookupType x >>= \case
+lookupStructure :: (MonadTrans t, Monad (t FlexM)) => (forall a. String -> t FlexM a) -> Id -> t FlexM Structure
+lookupStructure e x =
+  lookupType e x >>= \case
     TypeStructure struct -> return struct
-    _ -> throwError . TypingError $ "expected to be a structure id: " <> prettyShow x
+    _ -> e $ "expected to be a structure id: " <> prettyShow x
 
-lookupConstant :: Id -> FlexM Constant
-lookupConstant x =
-  gets (^. envModuleCtx . ctxModuleConstants . at x) >>= \case
-    Nothing -> throwError . ScopingError $ "unknown constant id: " <> prettyShow x
+lookupConstant :: (MonadTrans t, Monad (t FlexM)) => (forall a. String -> t FlexM a) -> Id -> t FlexM Constant
+lookupConstant e x =
+  lift (gets (^. envModuleCtx . ctxModuleConstants . at x)) >>= \case
+    Nothing -> e $ "unknown constant id: " <> prettyShow x
     Just con -> return con
 
-lookupType :: Id -> FlexM Type
-lookupType x =
-  gets (^. envModuleCtx . ctxModuleTypes . at x) >>= \case
-    Nothing -> throwError . ScopingError $ "unknown type id: " <> prettyShow x
+lookupType :: (MonadTrans t, Monad (t FlexM)) => (forall a. String -> t FlexM a) -> Id -> t FlexM Type
+lookupType e x =
+  lift (gets (^. envModuleCtx . ctxModuleTypes . at x)) >>= \case
+    Nothing -> e $ "unknown type id: " <> prettyShow x
     Just (DeclarationTypeStructure struct) -> return $ TypeStructure struct
     Just (DeclarationTypeEnumerated enm) -> return $ TypeEnumerated enm
     Just (DeclarationTypeVariant varnt) -> return $ TypeVariant varnt
