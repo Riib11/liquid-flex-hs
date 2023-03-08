@@ -131,7 +131,7 @@ makeTest_checkTerm :: Bool -> String -> String -> Test
 makeTest_checkTerm pass tmStr tyStr = TestCase do
   tm <- readTerm tmStr
   ty <- readType tyStr
-  ei_tm <- runFlexT topFlexEnv $ runTyping emptyCtx $ liftM2' checkTerm (inferTerm tm) (return ty)
+  ei_tm <- runFlexM topFlexEnv $ runTyping emptyCtx $ liftM2' checkTerm (inferTerm tm) (return ty)
 
   case ei_tm of
     Left err ->

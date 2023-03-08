@@ -114,7 +114,7 @@ defaultOptions =
 makeTest_transTerm :: Options -> String -> Maybe Term -> IO ()
 makeTest_transTerm opts tmStr mb_tm = do
   tmParsed <- readTerm tmStr
-  ( runFlexT topFlexEnv do
+  ( runFlexM topFlexEnv do
       forM_ (mb_module opts) loadModule
       tmTyped <-
         mapTermType defaultType

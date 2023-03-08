@@ -43,12 +43,12 @@ data TransCtx = TransCtx
 makeLenses ''TransCtx
 
 -- | Translating
-type Translating a = ReaderT TransCtx FlexT a
+type Translating a = ReaderT TransCtx FlexM a
 
-runTranslating :: Translating a -> FlexT a
+runTranslating :: Translating a -> FlexM a
 runTranslating m = runReaderT m =<< initTransCtx
 
-initTransCtx :: FlexT TransCtx
+initTransCtx :: FlexM TransCtx
 initTransCtx = do
   env <- get
   -- need to iterate over functions, constants, and constructors in the current

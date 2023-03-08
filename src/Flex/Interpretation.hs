@@ -18,15 +18,15 @@ import Utility
 
 -- ** interpretation monad
 
-type Interp = ReaderT Ctx FlexT
+type Interp = ReaderT Ctx FlexM
 
-runInterp :: Ctx -> Interp a -> FlexT a
+runInterp :: Ctx -> Interp a -> FlexM a
 runInterp ctx m = runReaderT m ctx
 
 tryInterp :: Interp a -> Interp (Maybe a)
 tryInterp m = do
   ctx <- ask
-  lift (tryFlexT (runInterp ctx m)) >>= \case
+  lift (tryFlexM (runInterp ctx m)) >>= \case
     Left _err -> return Nothing
     Right a -> return $ Just a
 

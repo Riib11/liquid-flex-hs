@@ -20,19 +20,19 @@ import Utility
 
 type FlexResult a = Either FlexError (a, FlexEnv)
 
-runFlexT :: FlexEnv -> FlexT a -> IO (Either FlexError (a, FlexEnv))
-runFlexT env m = runExceptT (runStateT m env)
+runFlexM :: FlexEnv -> FlexM a -> IO (Either FlexError (a, FlexEnv))
+runFlexM env m = runExceptT (runStateT m env)
 
-tryFlexT :: FlexT a -> FlexT (Either FlexError a)
-tryFlexT m = do
+tryFlexM :: FlexM a -> FlexM (Either FlexError a)
+tryFlexM m = do
   env <- get
-  (lift . lift) (runFlexT env m) >>= \case
+  (lift . lift) (runFlexM env m) >>= \case
     Left err -> throwError err
     Right (a, env') -> put env' >> return (Right a)
 
 -- TODO: actually, flex should be a monad transformer, and then typing and
 -- interpreting should go on the end of the monad transformer, right??
-type FlexT = StateT FlexEnv (ExceptT FlexError IO)
+type FlexM = StateT FlexEnv (ExceptT FlexError IO)
 
 data FlexError
   = ScopingError String
@@ -137,7 +137,7 @@ instance PrettyShow FlexEnv where
         ["  " <> show (env ^. envUnif)]
       ]
 
-lookupTerm :: (Term -> a) -> Map.Map Text a -> (String -> FlexError) -> Id -> FlexT a
+lookupTerm :: (Term -> a) -> Map.Map Text a -> (String -> FlexError) -> Id -> FlexM a
 lookupTerm proj locs makeError x =
   case tryUnqualify x of
     -- if qualified, try global constants
@@ -158,31 +158,31 @@ lookupTerm proj locs makeError x =
               DefinitionBodyTerm tm -> return (proj tm)
               _ -> throwError . makeError $ "looked up the constant but it was not evaluated: " <> prettyShow x
 
-lookupFunction :: Id -> FlexT Function
+lookupFunction :: Id -> FlexM Function
 lookupFunction x =
   gets (^. envModuleCtx . ctxModuleFunctions . at x) >>= \case
     Nothing -> throwError . ScopingError $ "unknown function id: " <> prettyShow x
     Just fun -> return fun
 
-lookupConstructor :: Id -> FlexT Constructor
+lookupConstructor :: Id -> FlexM Constructor
 lookupConstructor x =
   gets (^. envModuleCtx . ctxModuleConstructors . at x) >>= \case
     Nothing -> throwError . ScopingError $ "unknown constructor id: " <> prettyShow x
     Just cnstr -> return cnstr
 
-lookupStructure :: Id -> FlexT Structure
+lookupStructure :: Id -> FlexM Structure
 lookupStructure x =
   lookupType x >>= \case
     TypeStructure struct -> return struct
     _ -> throwError . TypingError $ "expected to be a structure id: " <> prettyShow x
 
-lookupConstant :: Id -> FlexT Constant
+lookupConstant :: Id -> FlexM Constant
 lookupConstant x =
   gets (^. envModuleCtx . ctxModuleConstants . at x) >>= \case
     Nothing -> throwError . ScopingError $ "unknown constant id: " <> prettyShow x
     Just con -> return con
 
-lookupType :: Id -> FlexT Type
+lookupType :: Id -> FlexM Type
 lookupType x =
   gets (^. envModuleCtx . ctxModuleTypes . at x) >>= \case
     Nothing -> throwError . ScopingError $ "unknown type id: " <> prettyShow x
@@ -193,7 +193,7 @@ lookupType x =
     -- alias's type should already be normalized during typechecking
     Just (DeclarationTypeAlias alias) -> return $ aliasType alias
 
-loadModule :: Module -> FlexT ()
+loadModule :: Module -> FlexM ()
 loadModule mdl = do
   -- initialize envModuleCtx for this module
   envModuleCtx .= toOpenedModuleCtx mdl
@@ -201,14 +201,14 @@ loadModule mdl = do
   loadImport `mapM_` moduleImports mdl
 
 -- add imported stuff to module envModuleCtx
-loadImport :: Import -> FlexT ()
+loadImport :: Import -> FlexM ()
 loadImport _imp =
   -- error "TODO"
   return ()
 
 -- ** symbols
 
-freshSymbol :: String -> FlexT F.Symbol
+freshSymbol :: String -> FlexM F.Symbol
 freshSymbol str = do
   i <- gets (^. envFreshSymbolIndex)
   modify' $ envFreshSymbolIndex %~ (1 +)
@@ -224,7 +224,7 @@ parsePred = FP.doParse' FP.predP "parsePred"
 -- ** debugging
 
 -- TODO: better way of writing this constraint?
-debug :: (MonadIO (t FlexT)) => String -> t FlexT ()
+debug :: (MonadIO (t FlexM)) => String -> t FlexM ()
 debug msg =
   when False do
     let ls = lines msg

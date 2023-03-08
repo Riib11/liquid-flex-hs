@@ -33,18 +33,18 @@ this I need to statically keep track of whether or not a type is normalized.
 
 -- ** typing monad
 
--- type Typing = FlexT TypingM
+-- type Typing = FlexM TypingM
 
-type Typing = ReaderT Ctx FlexT
+type Typing = ReaderT Ctx FlexM
 
-runTyping :: Ctx -> Typing a -> FlexT a
+runTyping :: Ctx -> Typing a -> FlexM a
 runTyping ctx m = runReaderT m ctx
 
 tryTyping :: Typing a -> Typing (Maybe a)
 tryTyping m = do
   env <- get
   ctx <- ask
-  (lift . lift . lift) (runFlexT env (runTyping ctx m)) >>= \case
+  (lift . lift . lift) (runFlexM env (runTyping ctx m)) >>= \case
     Left _err -> return Nothing
     Right (a, env) -> do
       put env

@@ -1,4 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Flex.Parsing where
@@ -15,7 +14,7 @@ import Text.Parsec.Expr as ParsecExpr
 import Utility
 
 runParser :: String -> Parser a -> String -> IO a
-runParser label parser string = do
+runParser label parser string =
   runParserT parser (emptyEnv topModuleId) (label <> "(" <> string <> ")") string >>= \case
     Left err -> error $ "parse error: " <> show err
     Right a -> return a
@@ -69,13 +68,11 @@ parseImport = do
   choice
     [ do
         symbol_ "as"
-        txt <- parseName
-        return $ ImportAliased moduleId txt,
+        ImportAliased moduleId <$> parseName,
       do
-        qualImps <- parens (parseQualImport `sepBy` (symbol_ ","))
+        qualImps <- parens (parseQualImport `sepBy` symbol_ ",")
         return $ ImportQual moduleId qualImps,
-      do
-        return $ ImportOpened moduleId
+      return $ ImportOpened moduleId
     ]
 
 parseQualImport :: Parser QualImport
@@ -108,7 +105,7 @@ parseDeclaration = do
             ty <- parseType
             symbol_ ";"
             return (n, ty)
-        structureRefinement <- maybe trivialRefinement id <$> optionMaybe (try parseRefinement)
+        structureRefinement <- fromMaybe trivialRefinement <$> optionMaybe (try parseRefinement)
         symbol_ "}"
         structureAnnotations <- parseAnnotations
         return $ DeclarationStructure Structure {structureName, structureModuleId = moduleId, structureIsMessage, structureExtensionId, structureFields, structureRefinement, structureAnnotations},
@@ -138,7 +135,7 @@ parseDeclaration = do
         newtypeFieldName <- parseName
         symbol_ ":"
         newtypeType <- parseType
-        newtypeRefinement <- maybe trivialRefinement id <$> optionMaybe (try (symbol_ ";" *> parseRefinement))
+        newtypeRefinement <- fromMaybe trivialRefinement <$> optionMaybe (try (symbol_ ";" *> parseRefinement))
         symbol_ "}"
         newtypeAnnotations <- parseAnnotations
         return $ DeclarationNewtype Newtype {newtypeName, newtypeModuleId = moduleId, newtypeIsMessage, newtypeFieldName, newtypeType, newtypeRefinement, newtypeAnnotations},
@@ -168,12 +165,12 @@ parseDeclaration = do
     ]
 
 parseRefinement :: Parser Refinement
-parseRefinement = Refinement . Just <$> (reserved "@assert" *> (parens parseTerm))
+parseRefinement = Refinement . Just <$> (reserved "@assert" *> parens parseTerm)
 
 parseFunctionType :: Parser FunctionType
 parseFunctionType = do
-  functionTypeParams <- parens $ (parseTuple parseNameMaybe (symbol ":") parseType) `sepBy` symbol ","
-  functionTypeContextualParams <- maybe Map.empty id <$> optionMaybe (mapFromUniqueList =<< braces ((parseTuple parseName (symbol ":") parseType) `sepBy` symbol ","))
+  functionTypeParams <- parens $ parseTuple parseNameMaybe (symbol ":") parseType `sepBy` symbol ","
+  functionTypeContextualParams <- fromMaybe Map.empty <$> optionMaybe (mapFromUniqueList =<< braces (parseTuple parseName (symbol ":") parseType `sepBy` symbol ","))
   symbol_ "->"
   functionTypeOutput <- parseType
   return FunctionType {functionTypeParams, functionTypeContextualParams, functionTypeOutput}
@@ -211,9 +208,10 @@ parseTerm = buildExpressionParser table term0 <?> "term"
       k tm
 
     term1 =
-      ( choice . concat $
-          [ [try (parens parseTerm)],
-            (fromPreterm <$$>) $
+      choice
+        ( try (parens parseTerm)
+            : (<$$>)
+              fromPreterm
               [ TermLiteral <$> parseLiteral,
                 -- begin with: parens
                 try parseTermTuple,
@@ -238,8 +236,7 @@ parseTerm = buildExpressionParser table term0 <?> "term"
                 TermIf <$ symbol "if" <*> parseTerm <* symbol "then" <*> parseTerm <* symbol "else" <*> parseTerm,
                 TermNamed <$> parseQualId
               ]
-          ]
-      )
+        )
         <?> "simple term"
 
     parseTermTuple = TermTuple <$> parens (parseTerm `sepBy` symbol ",")
@@ -401,7 +398,7 @@ mapFromUniqueList vs = do
   unless (Map.size m == length vs) $
     unexpected $
       "expected labels to be unique among: " <> show (fst <$> vs)
-  return $ m
+  return m
 
 -- mapFromUniqueListHas_id :: Show a => Has_id a => [a] -> Parser (Map.Map Id a)
 -- mapFromUniqueListHas_id as = do
