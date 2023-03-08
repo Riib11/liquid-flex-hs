@@ -7,8 +7,7 @@ main :: IO ()
 main = do
   let tm = undefined
       ty = undefined
-  (runFlexM topFlexEnv)
-    (runRefining $ runCheck undefined tm ty)
+  (runFlexM topFlexEnv . runRefining $ runCheck undefined tm ty)
     >>= ( \case
             Left fe -> undefined
             Right x0 -> undefined
