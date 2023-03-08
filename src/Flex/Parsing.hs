@@ -329,8 +329,8 @@ parseDefinitionBody =
 parseLiteral :: Parser Literal
 parseLiteral =
   choice
-    [ LiteralInteger <$> integer,
-      LiteralFloat <$> float,
+    [ try $ LiteralFloat <$> float,
+      LiteralInteger <$> integer,
       LiteralBit <$> choice [True <$ reserved "true", False <$ reserved "false"],
       LiteralChar <$> charLiteral,
       LiteralString <$> (pack <$> stringLiteral)

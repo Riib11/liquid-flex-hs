@@ -86,12 +86,14 @@ test_checkTerm_lit =
       [ ("10", "int 32"),
         ("10", "int 64"),
         ("-10", "int 64"),
-        ("-10", "int 64")
-      ]
-      -- fails
-      [ ("3.14", "float 32"),
+        ("-10", "int 64"),
+        ("3.14", "float 32"),
         ("3.14", "float 64")
       ]
+      -- fails
+      []
+
+-- []
 
 test_checkTerm_tuple :: Test
 test_checkTerm_tuple =

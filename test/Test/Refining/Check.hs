@@ -33,6 +33,7 @@ test =
         test_checkTerm
       ]
 
+{- TMP example for testing subtype checking
 test_tmp :: Test
 test_tmp =
   TestLabel "tmp" . TestCase $ do
@@ -46,16 +47,18 @@ test_tmp =
     case res of
       Left fe -> assertFailure $ "refinement-check failure: " <> prettyShow fe
       Right (a, _) -> assertFailure $ "refinement-check success"
+-}
 
 test_checkTerm :: Test
 test_checkTerm =
   TestLabel "checkTerm" $
     TestList . fmap TestCase $
-      [ -- makeTest_checkTerm True "true" "bit",
-        -- makeTest_checkTerm True "(true || false)" "bit",
-        makeTest_checkTerm True "(1 + 1)" "int32",
-        -- makeTest_checkTerm False "(1 + true)" "int32",
-        makeTest_checkTerm True "1 / 0" "int32"
+      [ makeTest_checkTerm True "true" "bit",
+        makeTest_checkTerm True "true || false" "bit",
+        makeTest_checkTerm True "1 + 1" "int32",
+        makeTest_checkTerm False "1 + true" "int32",
+        makeTest_checkTerm False "1 / 0" "int32",
+        makeTest_checkTerm True "1 / 1" "int32"
       ]
 
 makeTest_checkTerm :: Bool -> String -> String -> IO ()
