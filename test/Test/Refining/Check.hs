@@ -59,6 +59,24 @@ test_checkTerm =
         makeTest_checkTerm False "1 + true" "int32",
         makeTest_checkTerm False "1 / 0" "int32",
         makeTest_checkTerm True "1 / 1" "int32"
+        {- TODO: translating/embedding structures/newtype
+
+        newtype Positive {
+          value: int32;
+          assert(0 <= value)
+        }
+
+        structure Triangular {
+          a: int32;
+          b: int32;
+          c: int32;
+          assert(a + b <= c)
+        }
+
+        makeTest_checkTerm True "Positive { value = 1 }" "Positive"
+        makeTest_checkTerm False "Positive { value = -1 }" "Positive"
+        makeTest_checkTerm True "Triangular { a = 1; b = 2; c = 3 }" "Triangular"
+        -}
       ]
 
 makeTest_checkTerm :: Bool -> String -> String -> IO ()
