@@ -73,6 +73,10 @@ data BaseType_ r
   deriving
     (Eq, Show, Functor)
 
+baseTypeReft :: BaseType -> F.Reft
+baseTypeReft = \case
+  TypeAtomic r _ -> r
+
 data Atomic
   = AtomicInt
   | AtomicFloat

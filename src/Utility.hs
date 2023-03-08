@@ -24,6 +24,9 @@ _ $> b = pure b
 
 infixl 4 $>
 
+(<&>) :: Functor f => f a -> (a -> b) -> f b
+(<&>) = flip (<$>)
+
 mapTupleM :: Monad m => (a -> m a') -> (b -> m b') -> (a, b) -> m (a', b')
 mapTupleM fa fb = uncurry (liftM2 (,)) . bimap fa fb
 

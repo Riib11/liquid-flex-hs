@@ -64,7 +64,7 @@ synth env (Term ptm ty) = case ptm of
   TermLiteral lit -> (trivialCstr,) <$> synthLiteral lit ty
   TermVar x -> (trivialCstr,) <$> synthCon env x
   TermBlock _ -> throwError . refineError $ "should never synthesize a TermBlock; should only ever check"
-  TermApp (AppPrimFun pf) args -> synthAppPrimFun env pf args
+  TermApp (AppPrimFun pf) args -> synthAppPrimFun env ty pf args
   TermApp (AppVar x) args -> do
     -- synth the arg types
     tyArgs <- (snd <$>) <$> (synth env `traverse` args)
@@ -84,27 +84,56 @@ reftTerm tm = F.exprReft <$> embedTerm tm
 reftPreterm :: Preterm -> Refining F.Reft
 reftPreterm tm = F.exprReft <$> embedPreterm tm
 
-synthAppPrimFun :: Env -> Syn.PrimFun -> [Term] -> Refining (Cstr, BaseType)
-synthAppPrimFun env Syn.PrimFunEq [tm1, tm2] = do
+synthAppPrimFun :: Env -> BaseType -> Syn.PrimFun -> [Term] -> Refining (Cstr, BaseType)
+synthAppPrimFun env ty Syn.PrimFunEq [tm1, tm2] = do
   -- synth type of first arg
   (cstr, ty1) <- synth env tm1
   -- check that second arg has same (unrefined) type
   cstr <- andCstr cstr <$> checkTerm env tm2 (unrefineBaseType ty1)
   r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunEq) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
-synthAppPrimFun env Syn.PrimFunAnd [tm1, tm2] = do
+synthAppPrimFun env ty Syn.PrimFunAnd [tm1, tm2] = do
   cstr <- andCstrs <$> traverse (\tm -> checkTerm env tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
   r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunAnd) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
-synthAppPrimFun env Syn.PrimFunOr [tm1, tm2] = do
+synthAppPrimFun env ty Syn.PrimFunOr [tm1, tm2] = do
   cstr <- andCstrs <$> traverse (\tm -> checkTerm env tm (TypeAtomic F.trueReft AtomicBit)) [tm1, tm2]
   r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunOr) [tm1, tm2]
   return (cstr, TypeAtomic r AtomicBit)
-synthAppPrimFun env Syn.PrimFunNot [tm] = do
+synthAppPrimFun env ty Syn.PrimFunNot [tm] = do
   cstr <- checkTerm env tm (TypeAtomic F.trueReft AtomicBit)
   r <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunNot) [tm]
   return (cstr, TypeAtomic r AtomicBit)
-synthAppPrimFun _env pf args =
+-- TODO: may need to extract the numeric types into `TypeNumber :: NumberSize ->
+-- Type` so that I can keep track of the modulus to use in these primitive
+-- numeric operations; for example to keep `+` total, need to wrap around the
+-- numeric size, but currently I don't actually have that info statically
+-- because I only store it in the refinement; so i probably want AtomicInt to
+-- have a NumericSize field
+synthAppPrimFun env ty Syn.PrimFunAdd [tm1, tm2] = do
+  let r = baseTypeReft ty
+  cstr <- andCstrs <$> traverse (\tm -> checkTerm env tm (TypeAtomic r AtomicInt)) [tm1, tm2]
+  r' <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunAdd) [tm1, tm2]
+  return (cstr, TypeAtomic r' AtomicInt)
+synthAppPrimFun env ty Syn.PrimFunDiv [tm1, tm2] = do
+  let r = baseTypeReft ty
+  cstr <- checkTerm env tm1 (TypeAtomic r AtomicInt)
+  -- the refinement {tm2 /= 0}
+  r_nonzero_tm2 <-
+    reftPreterm $
+      TermApp
+        (AppPrimFun Syn.PrimFunEq)
+        [ tm2,
+          Term (TermLiteral (Syn.LiteralInteger 0)) (bitBaseType mempty)
+        ]
+  -- in addition to checking that tm2 satisfies the numeric type bounds, also
+  -- check that it's nonzero
+  cstr <- checkTerm env tm2 (TypeAtomic (r_nonzero_tm2 <> r) AtomicInt) <&> andCstr cstr
+  r' <- reftPreterm $ TermApp (AppPrimFun Syn.PrimFunDiv) [tm1, tm2]
+  -- TODO: do i need to include the result that `a/b != 0`? or will z3 be smart
+  -- enough to figure that out on its own
+  return (cstr, TypeAtomic r' AtomicInt)
+synthAppPrimFun _env _ty pf args =
   throwError . refineError $
     concat
       [ "primitive function",
