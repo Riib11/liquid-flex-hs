@@ -13,4 +13,4 @@ To get refinement type checking working with at least base types (e.g. just `int
 - [ ] examples/tests for translation
     - [x] literals
     - [x] simple applications (no implicit parameters)
-
+- [ ] setup golden file test suite style
