@@ -25,6 +25,9 @@ source-repository head
 
 library
   exposed-modules:
+      Language.Flex.Literal
+      Language.Flex.PrimitiveFunction
+      Language.Flex.Syntax
       PrettyShow
       Utility
   other-modules:
