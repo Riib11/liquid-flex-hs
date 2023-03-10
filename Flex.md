@@ -5,7 +5,11 @@
     - upper-case
   - terms
     - lower-case
+  - functions
+    - lower-case
   - constructors (variant, newtype, enum):
+    - upper-case
+  - modules
     - upper-case
 - Names cannot be shadowed (with respect to their corresponding namespace)
 
