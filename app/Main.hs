@@ -6,24 +6,8 @@
 
 module Main (main) where
 
-import Control.Lens hiding (argument)
-import Control.Monad
-import qualified Data.List as List
-import qualified Data.Map as Map
-import Data.Text (pack)
-import qualified Flex.Flex as Flex
-import qualified Flex.Interpretation as Interp
-import qualified Flex.Lexing as Lexing
-import qualified Flex.Parsing as Parsing
-import qualified Flex.Syntax as Syntax
-import qualified Flex.Typing as Typing
-import qualified MainExample
-import Options.Applicative
-import PrettyShow
-import System.IO
-import qualified Text.Parsec as Parsec
-
-main = MainExample.main
+main :: IO ()
+main = return ()
 
 {-
 data Options = Options

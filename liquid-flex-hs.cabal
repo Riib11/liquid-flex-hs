@@ -25,26 +25,6 @@ source-repository head
 
 library
   exposed-modules:
-      Example.Example1
-      Flex.Examples
-      Flex.Flex
-      Flex.Interpretation
-      Flex.Lexing
-      Flex.Parsing
-      Flex.Refining
-      Flex.Refining.Check
-      Flex.Refining.Common
-      Flex.Refining.Constraint
-      Flex.Refining.Embedding
-      Flex.Refining.Query
-      Flex.Refining.Syntax
-      Flex.Refining.Translation
-      Flex.Shallow
-      Flex.Syntax
-      Flex.Typing
-      Flex.Unif
-      Graph
-      MainExample
       PrettyShow
       Utility
   other-modules:
@@ -126,11 +106,6 @@ test-suite liquid-flex-hs-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Test.Parsing
-      Test.Refining.Check
-      Test.Refining.Translating
-      Test.Typing
-      Test.Utility
       Paths_liquid_flex_hs
   hs-source-dirs:
       test
