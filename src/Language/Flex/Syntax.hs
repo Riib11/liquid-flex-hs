@@ -8,22 +8,22 @@ import qualified Language.Flex.PrimitiveFunction as PrimitiveFunction
 
 -- ** Idents
 
-data ModuleId
+newtype ModuleId = ModuleId String
   deriving (Eq, Ord, Show)
 
-data TypeId
+newtype TypeId = TypeId String
   deriving (Eq, Ord, Show)
 
-data TermId
+newtype TermId = TermId String
   deriving (Eq, Ord, Show)
 
-data FunctionId
+newtype FunctionId = FunctionId String
   deriving (Eq, Ord, Show)
 
-data ConstructorId
+newtype ConstructorId = ConstructorId String
   deriving (Eq, Ord, Show)
 
-data FieldId
+newtype FieldId = FieldId String
   deriving (Eq, Ord, Show)
 
 -- ** Module
