@@ -1,8 +1,6 @@
 module Language.Flex.Syntax where
 
 import qualified Data.Map as Map
-import qualified Language.Flex.Literal as Literal
-import qualified Language.Flex.PrimitiveFunction as PrimitiveFunction
 
 -- * Syntax
 
@@ -15,12 +13,6 @@ newtype TypeId = TypeId String
   deriving (Eq, Ord, Show)
 
 newtype TermId = TermId String
-  deriving (Eq, Ord, Show)
-
-newtype FunctionId = FunctionId String
-  deriving (Eq, Ord, Show)
-
-newtype ConstructorId = ConstructorId String
   deriving (Eq, Ord, Show)
 
 newtype FieldId = FieldId String
@@ -56,7 +48,6 @@ data Structure ann = Structure
 
 data Newtype ann = Newtype
   { newtypeId :: TypeId,
-    newtypeIsMessage :: Bool,
     newtypeField :: (FieldId, Type),
     newtypeRefinement :: Refinement ann,
     newtypeAnnotations :: [Annotation]
@@ -65,7 +56,7 @@ data Newtype ann = Newtype
 
 data Variant ann = Variant
   { variantId :: TypeId,
-    variantConstructors :: [(ConstructorId, [Type])],
+    variantConstructors :: [(TermId, [Type])],
     variantAnnotations :: [Annotation]
   }
   deriving (Show)
@@ -73,7 +64,7 @@ data Variant ann = Variant
 data Enumerated ann = Enumerated
   { enumeratedId :: TypeId,
     enumeratedType :: Type,
-    enumeratedConstructors :: [(ConstructorId, Literal.Literal)]
+    enumeratedConstructors :: [(TermId, Literal)]
   }
   deriving (Show)
 
@@ -84,7 +75,7 @@ data Alias ann = Alias
   deriving (Show)
 
 data Function ann = Function
-  { functionId :: FunctionId,
+  { functionId :: TermId,
     functionIsTransform :: Bool,
     functionParameters :: [(TermId, Type)],
     functionContextualParameters :: [(Type, TermId)],
@@ -102,52 +93,60 @@ data Constant ann = Constant
 -- ** Term
 
 data Term ann
-  = TermLiteral Literal.Literal ann
+  = TermLiteral Literal ann
+  | TermPrimitive (Primitive ann) ann
   | TermNamed TermId ann
-  | TermBlock (Block ann)
-  | TermStructure TypeId (Map.Map FieldId (Term ann)) ann
+  | TermBlock (Block ann) ann
+  | TermStructure TypeId [(FieldId, Term ann)] ann
   | TermMember (Term ann) FieldId ann
-  | TermConstructor ConstructorId (Maybe (Term ann)) ann
-  | TermApplication Applicant [Term ann] (Maybe [Term ann]) ann
+  | TermApplication TermId [Term ann] (Maybe [Term ann]) ann
   | TermAscribe (Term ann) Type ann
-  | TermMatch (Term ann) (Branches ann)
-  deriving (Show, Functor)
-
-data Applicant
-  = ApplicantNamed FunctionId
-  | ApplicantPrimitive PrimitiveFunction.PrimitiveFunction
-  deriving (Show)
+  | TermMatch (Term ann) (Branches ann) ann
+  deriving (Show, Functor, Foldable, Traversable)
 
 type Block ann = ([Statement ann], Term ann)
 
 type Branches ann = [(Pattern, Term ann)]
+
+-- ** Primitive
+
+data Primitive ann
+  = PrimitiveTry (Term ann)
+  | PrimitiveCast (Term ann)
+  | PrimitiveTuple [Term ann]
+  | PrimitiveArray [Term ann]
+  | PrimitiveIf (Term ann) (Term ann) (Term ann)
+  | PrimitiveAnd (Term ann) (Term ann)
+  | PrimitiveOr (Term ann) (Term ann)
+  | PrimitiveNot (Term ann)
+  deriving (Show, Functor, Foldable, Traversable)
 
 -- ** Statement
 
 data Statement ann
   = StatementLet Pattern (Term ann)
   | StatementAssert (Term ann)
-  deriving (Show, Functor)
+  deriving (Show, Functor, Foldable, Traversable)
 
 -- ** Pattern
 
 data Pattern
   = PatternNamed TermId
-  | PatternLiteral Literal.Literal
+  | PatternLiteral Literal
   | PatternDiscard
   deriving (Show)
 
 -- ** Type
 
 data Type
-  = TypeNumber NumberType
+  = TypeNumber NumberType Integer
   | TypeBit
   | TypeChar
   | TypeArray Type
   | TypeTuple [Type]
   | TypeOptional Type
   | TypeNamed TypeId
-  | TypeUnifVar UnifVar
+  | TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
   | TypeStructure (Structure Type)
   | TypeEnumerated (Enumerated Type)
   | TypeVariant (Variant Type)
@@ -155,9 +154,26 @@ data Type
   deriving (Show)
 
 data NumberType
+  = TypeInt
+  | TypeUInt
+  | TypeFloat
   deriving (Show)
 
-data UnifVar
+newtype UnifyVar = UnifyVar Int
+  deriving (Eq, Ord, Show)
+
+data UnifyConstraint
+  = CastedFrom Type
+  deriving (Show)
+
+-- ** Literal
+
+data Literal
+  = LiteralInteger Integer
+  | LiteralFloat Float
+  | LiteralBool Bool
+  | LiteralChar Char
+  | LiteralString String
   deriving (Show)
 
 -- ** Refinement

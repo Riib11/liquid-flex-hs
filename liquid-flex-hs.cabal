@@ -26,9 +26,8 @@ source-repository head
 library
   exposed-modules:
       Language.Flex.FlexM
-      Language.Flex.Literal
-      Language.Flex.PrimitiveFunction
       Language.Flex.Syntax
+      Language.Flex.Typing
       PrettyShow
       Utility
   other-modules:
@@ -46,11 +45,12 @@ library
       ApplicativeDo
       DeriveFunctor
       DeriveGeneric
+      DeriveTraversable
       FlexibleInstances
       ScopedTypeVariables
       MultiParamTypeClasses
       FunctionalDependencies
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-missing-export-lists -Wno-unused-imports
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports
   build-depends:
       HUnit
     , base >=4.7 && <5
@@ -84,11 +84,12 @@ executable liquid-flex-hs-exe
       ApplicativeDo
       DeriveFunctor
       DeriveGeneric
+      DeriveTraversable
       FlexibleInstances
       ScopedTypeVariables
       MultiParamTypeClasses
       FunctionalDependencies
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
     , base >=4.7 && <5
@@ -124,11 +125,12 @@ test-suite liquid-flex-hs-test
       ApplicativeDo
       DeriveFunctor
       DeriveGeneric
+      DeriveTraversable
       FlexibleInstances
       ScopedTypeVariables
       MultiParamTypeClasses
       FunctionalDependencies
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
     , base >=4.7 && <5

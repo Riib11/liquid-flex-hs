@@ -158,3 +158,6 @@ indent = unlines . indentLines . lines
 
 indentLines :: [String] -> [String]
 indentLines = map ("  " <>)
+
+-- forM :: Monad m => [a] -> (a -> m b) -> m [b]
+-- forM = flip traverse

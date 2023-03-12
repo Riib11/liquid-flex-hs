@@ -1,20 +1,26 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Language.Flex.FlexM where
 
 import Control.Lens
-import Control.Monad.State (StateT)
+import Control.Monad.Writer (WriterT)
 
 -- | The `FlexM` monad is the base monad under which all the impure comptuations
 -- are done in this implementation. In particular, all state is
 -- handled by `FlexM`.
-type FlexM a = StateT FlexEnv IO a
+type FlexM = WriterT [FlexLog] IO
 
--- TODO:
--- - type-unification substitution (for type-checking)
--- - fresh type unification variable id source
-data FlexEnv = FlexEnv
-  { flexEnvFilePath :: FilePath
-  }
+data FlexLog
+  = FlexLog
+      String
+      -- ^ title
+      String
+      -- ^ body
 
-makeLenses ''FlexEnv
+throwFlexBug :: FlexLog -> a
+throwFlexBug (FlexLog title body) =
+  error $
+    unlines
+      [ replicate 40 '=',
+        "[flex bug in " <> title <> "]",
+        body,
+        replicate 40 '='
+      ]

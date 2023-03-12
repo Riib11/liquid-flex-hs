@@ -1,10 +1,9 @@
 # Flex
 
 - Namespaces:
+  - modules
   - types
   - terms
-  - constructors (variant, newtype, enum):
-  - modules
 - Names cannot be shadowed (with respect to their corresponding namespace)
 
 ## Declaration

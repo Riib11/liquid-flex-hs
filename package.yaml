@@ -44,6 +44,7 @@ ghc-options:
 - -Wpartial-fields
 - -Wredundant-constraints
 - -Wno-unrecognised-pragmas
+- -Wno-partial-fields
 - -Wno-missing-export-lists #TMP
 - -Wno-unused-imports #TMP
 
@@ -58,6 +59,7 @@ default-extensions:
 - ApplicativeDo
 - DeriveFunctor
 - DeriveGeneric
+- DeriveTraversable
 - FlexibleInstances
 - ScopedTypeVariables
 - MultiParamTypeClasses
