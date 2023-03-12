@@ -2,11 +2,9 @@
 
 - Namespaces:
   - types
-    - upper-case
   - terms
-    - lower-case
   - constructors (variant, newtype, enum):
-    - upper-case
+  - modules
 - Names cannot be shadowed (with respect to their corresponding namespace)
 
 ## Declaration
@@ -23,7 +21,7 @@
 
 Example:
 ```
-message structure Bounded {
+message struct Bounded {
   x: Int32;
   min: Int32;
   max: Int32;
@@ -36,11 +34,11 @@ message structure Bounded {
 
 - one field with associated type
 - can have refinement
-- can be a _message_
+- contextual parameters must be newtypes
 
 Example:
 ```
-message newtype PositiveInt32 {
+newtype PositiveInt32 {
   x: Int32;
   assert(0 <= x);
 }
@@ -52,8 +50,8 @@ message newtype PositiveInt32 {
 
 Example:
 ```
-data Nat {
-  Zero();
+variant Nat {
+  Zero;
   Suc(n: Nat);
 }
 ```
@@ -65,7 +63,7 @@ data Nat {
 
 Example
 ```
-enum Day = String {
+enum Day String {
   Monday = "Monday";
   Tuesday = "Tuesday";
   ...
@@ -88,16 +86,18 @@ defined over; an _argument_ is a concrete value that is passed in a specific
 application of a function)
 
 - list of params with associated types
-- list of contextual params with associated types
+- list of contextual params with associated newtypes (must be newtypes!)
   - the associated type of each contextual param must be unique among the
     contextual params of the function
-  - contextual args can be given explicitly via `f(<args>) given (<cxargs>)` 
+  - contextual args can be given explicitly via `f(<args>) giving (<cxargs>)` 
   - when given explicitly, the contextul args can be given in any order; which
     contextual param each contextual arg corresponds to is determined uniquely
     by its type
   - when given implicitly, expects there to only be one named term in context
     that has the expected type, and that term is given as the contextual
     argument
+  - contextual args can only be implicitly inferred from among the in-scope
+    contextual arguments (of the function whose body you're currently in)
 - output type
 - can be a _transform_
 - if is a _transform_:
@@ -115,15 +115,15 @@ function add1(x: Int32) -> Float32 {
   y
 }
 
-function mod(x: Int32) given (modulus: Int32) {
-  x % modulus
+function mod(x: Int32) given (?modulus: Int32) {
+  x % ?modulus
 }
 
-function foo() given (x: Int32, flag: Bool) {
-  if flag then {
-    x
+function foo() given (?x: Int32, ?flag: Bool) {
+  if ?flag then {
+    ?x
   } else {
-    -x
+    -?x
   }
 }
 
@@ -161,8 +161,8 @@ function main() -> Int32 {
 
 Example
 ```
-constant x: Int32 = 10
-constant b: Bool = true
+const x: Int32 = 10
+const b: Bool = true
 ```
 
 ## Term
@@ -192,12 +192,12 @@ primitive polymorphic functions are annotated with their monomorphized type.
 - each instance of primitive polymorphism is monomorphized during type-checking
 - examples:
   - constructors of parametric types
-    - `None<a> : Optional<a>`
-    - `Some<a> : (a: a) -> Optional<a>`
-    - `[a, ...]<a> : Array<a>`
-    - `(a, b, c)<a, b, c> : Tuple<a, b, c>`
-  - `try<a> : (a: a) -> Optional<a>`
-  - `cast<a, b> : (a: a) -> b` where `a` is castable to `b`
+    - `none<a> -> Optional<a>`
+    - `some<a>(a: a) -> Optional<a>`
+    - `[a, ...]<a> -> Array<a>`
+    - `(a, b, c)<a, b, c> -> Tuple<a, b, c>`
+  - `try<a>(a: a) -> Optional<a>`
+  - `cast<a, b>(a: a) -> b` where `a` is castable to `b`
 
 ### Try
 
