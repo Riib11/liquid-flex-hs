@@ -46,8 +46,8 @@ checkTerm ty tm = do
 synthTerm :: Term () -> TypingM (Term Type)
 synthTerm = \case
   TermLiteral lit _ -> case lit of
-    LiteralInteger _ -> TermLiteral lit <$> freshTypeUnfiyVar (Just $ CastedFrom $ TypeNumber TypeInt 32)
-    LiteralFloat x -> TermLiteral lit <$> freshTypeUnfiyVar (Just $ CastedFrom $ TypeNumber TypeFloat 64)
+    LiteralInteger _ -> TermLiteral lit <$> freshTypeUnfiyVar "literal integer" (Just $ CastedFrom $ TypeNumber TypeInt 32)
+    LiteralFloat x -> TermLiteral lit <$> freshTypeUnfiyVar "literal float" (Just $ CastedFrom $ TypeNumber TypeFloat 64)
     LiteralBool b -> return $ TermLiteral lit TypeBit
     LiteralChar c -> return $ TermLiteral lit TypeChar
     LiteralString s -> return $ TermLiteral lit (TypeArray TypeChar)
@@ -58,12 +58,17 @@ synthTerm = \case
       return $ TermPrimitive (PrimitiveTry tm') ty
     PrimitiveCast tm -> do
       tm' <- synthTerm tm
-      ty <- freshTypeUnfiyVar . Just . CastedFrom =<< inferTerm tm'
+      ty <- freshTypeUnfiyVar "cast" . Just . CastedFrom =<< inferTerm tm'
       return $ TermPrimitive (PrimitiveCast tm') ty
-    PrimitiveTuple tms_ -> do
-      (tm, tms) <- case tms_ of
-        [] -> throwFlexBug $ FlexLog "typing" "empty tuple"
-        tm : tms -> return (tm, tms)
+    PrimitiveTuple tms -> do
+      tms' <- synthTerm `traverse` tms
+      tys <- inferTerm `traverse` tms'
+      return $ TermPrimitive (PrimitiveTuple tms') (TypeTuple tys)
+    PrimitiveArray [] -> do
+      -- empty array introduces a new type unification variable
+      ty <- freshTypeUnfiyVar "empty array" Nothing
+      return $ TermPrimitive (PrimitiveTuple []) (TypeArray ty)
+    PrimitiveArray (tm : tms) -> do
       -- synthesize first term
       tm' <- synthTerm tm
       ty <- inferTerm tm'
@@ -71,20 +76,23 @@ synthTerm = \case
       tms' <- forM tms \tm -> do
         ty <- normType ty
         checkTerm ty tm
-      tys <- inferTerm `traverse` (tm' : tms')
-      return $ TermPrimitive (PrimitiveTuple (tm' : tms')) (TypeTuple tys)
-    PrimitiveArray tes -> error "TODO"
-    PrimitiveIf te te' te2 -> error "TODO"
-    PrimitiveAnd te te' -> error "TODO"
-    PrimitiveOr te te' -> error "TODO"
-    PrimitiveNot te -> error "TODO"
+      ty <- normType ty
+
+      tm' <- normTerm tm'
+      tms' <- normTerm `traverse` tms'
+
+      return $ TermPrimitive (PrimitiveArray (tm' : tms')) (TypeArray ty)
+    PrimitiveIf tm tm' tm2 -> error "TODO"
+    PrimitiveAnd tm tm' -> error "TODO"
+    PrimitiveOr tm tm' -> error "TODO"
+    PrimitiveNot tm -> error "TODO"
   TermNamed ti _ -> error "TODO"
   TermBlock _ x1 -> error "TODO"
   TermStructure ti map _ -> error "TODO"
-  TermMember te fi _ -> error "TODO"
-  TermApplication ti tes m_tes _ -> error "TODO"
-  TermAscribe te ty _ -> error "TODO"
-  TermMatch te _ x1 -> error "TODO"
+  TermMember tm fi _ -> error "TODO"
+  TermApplication ti tms m_tms _ -> error "TODO"
+  TermAscribe tm ty _ -> error "TODO"
+  TermMatch tm _ x1 -> error "TODO"
 
 -- ** Normalization
 
@@ -110,7 +118,7 @@ inferTerm = \case
 
 -- ** TypeUnifVar
 
-freshTypeUnfiyVar :: Maybe UnifyConstraint -> TypingM Type
+freshTypeUnfiyVar :: String -> Maybe UnifyConstraint -> TypingM Type
 freshTypeUnfiyVar = error "freshTypeUnfiyVar"
 
 -- ** Unification
