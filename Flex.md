@@ -5,11 +5,7 @@
     - upper-case
   - terms
     - lower-case
-  - functions
-    - lower-case
   - constructors (variant, newtype, enum):
-    - upper-case
-  - modules
     - upper-case
 - Names cannot be shadowed (with respect to their corresponding namespace)
 
@@ -131,6 +127,13 @@ function foo() given (x: Int32, flag: Bool) {
   }
 }
 
+transform function doubleBoundedInt32(bounded: BoundedInt32) -> BoundedInt32 =
+  BoundedInt32 {
+    x = 2 * bounded.x;
+    min = 2 * bounded.min;
+    max = 2 * bounded.max;
+  }
+
 function main() -> Int32 {
   let modulus = 2;
   let flag = true;
@@ -142,15 +145,19 @@ function main() -> Int32 {
   
   let _ = foo(); // finds `modulus` and `flag` to be the implicit args
   // next 2 equivalent
-  let _ = foo() given (1, true)
-  let _ = foo() given (true, 1)
+  let _ = foo() given (1, true);
+  let _ = foo() given (true, 1);
+
+  let bounded = BoundedInt32 { x = 2; min = 0; max = 4 };
+  let _ = doubleBoundedInt32(bounded);
+
   0
 }
 ```
 
 ### Constant
 
-- must be annnotated
+- must be type-annotated, since at top level.
 
 Example
 ```
