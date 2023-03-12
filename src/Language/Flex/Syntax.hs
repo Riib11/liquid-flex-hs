@@ -35,29 +35,32 @@ data Declaration ann
   | DeclarationAlias (Alias ann)
   | DeclarationFunction (Function ann)
   | DeclarationConstant (Constant ann)
+  | DeclarationRefinedStructure (RefinedStructure ann)
+  | DeclarationAnnotation (Annotation ann)
   deriving (Show)
 
 data Structure ann = Structure
   { structureId :: TypeId,
     structureIsMessage :: Bool,
-    structureFields :: Map.Map FieldId Type,
-    structureRefinement :: Refinement ann,
-    structureAnnotations :: [Annotation]
+    structureFields :: Map.Map FieldId Type
+  }
+  deriving (Show)
+
+data RefinedStructure ann = RefinedStructure
+  { refineStructureId :: TypeId,
+    refineStructureRefinement :: Refinement ann
   }
   deriving (Show)
 
 data Newtype ann = Newtype
   { newtypeId :: TypeId,
-    newtypeField :: (FieldId, Type),
-    newtypeRefinement :: Refinement ann,
-    newtypeAnnotations :: [Annotation]
+    newtypeType :: Type
   }
   deriving (Show)
 
 data Variant ann = Variant
   { variantId :: TypeId,
-    variantConstructors :: [(TermId, [Type])],
-    variantAnnotations :: [Annotation]
+    variantConstructors :: [(TermId, [Type])]
   }
   deriving (Show)
 
@@ -95,11 +98,10 @@ data Constant ann = Constant
 data Term ann
   = TermLiteral {termLiteral :: Literal, termAnn :: ann}
   | TermPrimitive {termPrimitive :: Primitive ann, termAnn :: ann}
-  | TermNamed {termId :: TermId, termAnn :: ann}
   | TermBlock {termBlock :: Block ann, termAnn :: ann}
   | TermStructure {termStructureId :: TypeId, termFields :: [(FieldId, Term ann)], termAnn :: ann}
   | TermMember {termTerm :: Term ann, termFieldId :: FieldId, termAnn :: ann}
-  | TermApplication {termId :: TermId, termArgs :: [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
+  | TermNeutral {termId :: TermId, termArgs :: [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
   | TermAscribe {termTerm :: Term ann, termType :: Type, ternAnn :: ann}
   | TermMatch {termTerm :: Term ann, termBranches :: Branches ann, termAnn :: ann}
   deriving (Show, Functor, Foldable, Traversable)
@@ -146,11 +148,16 @@ data Type
   | TypeTuple [Type]
   | TypeOptional Type
   | TypeNamed TypeId
-  | TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
+  | -- the types below cannot be written directly by the user; they are only
+    -- introduced during typing
+    TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
   | TypeStructure (Structure Type)
   | TypeEnumerated (Enumerated Type)
   | TypeVariant (Variant Type)
   | TypeNewtype (Newtype Type)
+  | TypeVariantConstuctor (Variant Type) TermId
+  | TypeEnumConstructor (Enumerated Type) TermId
+  | TypeNewtypeConstructor (Newtype Type) TermId
   deriving (Show)
 
 data NumberType
@@ -183,4 +190,6 @@ newtype Refinement ann = Refinement (Term ann)
 
 -- ** Annotation
 
-data Annotation deriving (Show)
+-- has `ann` since in the future could refer to terms, which will need to be
+-- typechecked
+data Annotation ann deriving (Show)

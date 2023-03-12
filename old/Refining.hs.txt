@@ -133,8 +133,8 @@ checkTerm hyp tm k = case tm ^. termPreterm of
   TermBlock (stmts, tm) -> do
     checkTerm hyp tm $
       foldr (\stmt k _tm hyp -> checkStatement hyp stmt k) k stmts
-  TermApplication _x _args _cxargs -> unimplemented "checkTerm TermApplication"
-  TermStructure _x _fields -> unimplemented "checkTerm TermApplication"
+  TermNeutral _x _args _cxargs -> unimplemented "checkTerm TermNeutral"
+  TermStructure _x _fields -> unimplemented "checkTerm TermNeutral"
   TermConstructor _x _tm -> unimplemented "checkTerm TermConstructor"
   TermArray _tms -> unimplemented "checkTerm TermArray"
   TermTuple _tms -> unimplemented "checkTerm TermTuple"
