@@ -27,6 +27,14 @@ k =<<< mma = do
 
 infixl 1 =<<<
 
+(>>>=) :: Monad m => m (m a) -> (a -> m b) -> m b
+mma >>>= k = do
+  ma <- mma
+  a <- ma
+  k a
+
+infixl 1 >>>=
+
 (=<<$>) :: (Monad m, Functor f) => (a -> m b) -> f (m a) -> f (m b)
 f =<<$> m = (f =<<) <$> m
 
@@ -174,3 +182,6 @@ indentLines = map ("  " <>)
 
 -- forM :: Monad m => [a] -> (a -> m b) -> m [b]
 -- forM = flip traverse
+
+(@) :: [a] -> a -> [a]
+xs @ x = xs <> [x]

@@ -42,7 +42,7 @@ data Declaration ann
 data Structure ann = Structure
   { structureId :: TypeId,
     structureIsMessage :: Bool,
-    structureFields :: Map.Map FieldId Type
+    structureFields :: [(FieldId, Type)]
   }
   deriving (Show)
 
@@ -81,7 +81,9 @@ data Function ann = Function
   { functionId :: TermId,
     functionIsTransform :: Bool,
     functionParameters :: [(TermId, Type)],
-    functionContextualParameters :: [(Type, TermId)],
+    -- | since contextual parameters must have newtypes, only need to store the
+    -- newtypes' ids
+    functionContextualParameters :: Maybe [(TypeId, TermId)],
     functionOutput :: Type,
     functionBody :: Term ann
   }
@@ -151,6 +153,7 @@ data Type
   | -- the types below cannot be written directly by the user; they are only
     -- introduced during typing
     TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
+  | TypeFunction (Function Type)
   | TypeStructure (Structure Type)
   | TypeEnumerated (Enumerated Type)
   | TypeVariant (Variant Type)

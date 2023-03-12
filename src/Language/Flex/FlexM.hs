@@ -15,6 +15,16 @@ data FlexLog
       String
       -- ^ body
 
+throwFlexError :: FlexLog -> a
+throwFlexError (FlexLog title body) =
+  error $
+    unlines
+      [ replicate 40 '=',
+        "[flex error in " <> title <> "]",
+        body,
+        replicate 40 '='
+      ]
+
 throwFlexBug :: FlexLog -> a
 throwFlexBug (FlexLog title body) =
   error $

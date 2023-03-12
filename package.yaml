@@ -64,6 +64,7 @@ default-extensions:
 - ScopedTypeVariables
 - MultiParamTypeClasses
 - FunctionalDependencies
+- TypeApplications
 
 library:
   source-dirs: src
