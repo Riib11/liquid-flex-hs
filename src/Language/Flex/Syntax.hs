@@ -93,15 +93,15 @@ data Constant ann = Constant
 -- ** Term
 
 data Term ann
-  = TermLiteral Literal ann
-  | TermPrimitive (Primitive ann) ann
-  | TermNamed TermId ann
-  | TermBlock (Block ann) ann
-  | TermStructure TypeId [(FieldId, Term ann)] ann
-  | TermMember (Term ann) FieldId ann
-  | TermApplication TermId [Term ann] (Maybe [Term ann]) ann
-  | TermAscribe (Term ann) Type ann
-  | TermMatch (Term ann) (Branches ann) ann
+  = TermLiteral {termLiteral :: Literal, termAnn :: ann}
+  | TermPrimitive {termPrimitive :: Primitive ann, termAnn :: ann}
+  | TermNamed {termId :: TermId, termAnn :: ann}
+  | TermBlock {termBlock :: Block ann, termAnn :: ann}
+  | TermStructure {termStructureId :: TypeId, termFields :: [(FieldId, Term ann)], termAnn :: ann}
+  | TermMember {termTerm :: Term ann, termFieldId :: FieldId, termAnn :: ann}
+  | TermApplication {termId :: TermId, termArgs :: [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
+  | TermAscribe {termTerm :: Term ann, termType :: Type, ternAnn :: ann}
+  | TermMatch {termTerm :: Term ann, termBranches :: Branches ann, termAnn :: ann}
   deriving (Show, Functor, Foldable, Traversable)
 
 type Block ann = ([Statement ann], Term ann)

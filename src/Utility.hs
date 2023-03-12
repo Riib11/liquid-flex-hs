@@ -19,6 +19,19 @@ asUncurry f g = curry (uncurry f . g)
 
 infixr 0 <$$>
 
+(=<<<) :: Monad m => (a -> m b) -> m (m a) -> m b
+k =<<< mma = do
+  ma <- mma
+  a <- ma
+  k a
+
+infixl 1 =<<<
+
+(=<<$>) :: (Monad m, Functor f) => (a -> m b) -> f (m a) -> f (m b)
+f =<<$> m = (f =<<) <$> m
+
+infixr 0 =<<$>
+
 ($>) :: Applicative f => f a -> b -> f b
 _ $> b = pure b
 
