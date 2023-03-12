@@ -98,21 +98,6 @@ normType ty = error "normType"
 normTerm :: Term Type -> TypingM (Term Type)
 normTerm = traverse normType
 
--- ** getType
-
-inferTerm :: Term (TypingM Type) -> TypingM (TypingM Type)
-inferTerm =
-  return . \case
-    TermLiteral _ ty -> normType =<< ty
-    TermNamed _ ty -> normType =<< ty
-    TermBlock _ ty -> normType =<< ty
-    TermStructure _ _ ty -> normType =<< ty
-    TermMember _ _ ty -> normType =<< ty
-    TermAscribe _ _ ty -> normType =<< ty
-    TermMatch _ _ ty -> normType =<< ty
-    TermApplication _ _ _ ty -> normType =<< ty
-    TermPrimitive _ ty -> normType =<< ty
-
 -- ** TypeUnifVar
 
 freshTypeUnfiyVar :: String -> Maybe UnifyConstraint -> TypingM (TypingM Type)
@@ -131,3 +116,18 @@ unify' m_ty1 m_ty2 = do
 
 unify :: Type -> Type -> TypingM ()
 unify = error "checkUnify"
+
+-- ** Inference
+
+inferTerm :: Term (TypingM Type) -> TypingM (TypingM Type)
+inferTerm =
+  return . \case
+    TermLiteral _ ty -> normType =<< ty
+    TermNamed _ ty -> normType =<< ty
+    TermBlock _ ty -> normType =<< ty
+    TermStructure _ _ ty -> normType =<< ty
+    TermMember _ _ ty -> normType =<< ty
+    TermAscribe _ _ ty -> normType =<< ty
+    TermMatch _ _ ty -> normType =<< ty
+    TermApplication _ _ _ ty -> normType =<< ty
+    TermPrimitive _ ty -> normType =<< ty
