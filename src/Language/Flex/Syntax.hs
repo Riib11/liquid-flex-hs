@@ -107,7 +107,7 @@ instance Pretty (Declaration ann) where
 data Structure ann = Structure
   { structureId :: TypeId,
     structureIsMessage :: Bool,
-    structureExtensionid :: Maybe TypeId,
+    structureExtensionId :: Maybe TypeId,
     structureFields :: [(FieldId, Type)]
   }
   deriving (Show)
@@ -118,7 +118,7 @@ instance Pretty (Structure ann) where
       [ if structureIsMessage then "message" else mempty,
         "structure",
         pPrint structureId,
-        case structureExtensionid of
+        case structureExtensionId of
           Nothing -> mempty
           Just extId -> "extends" <+> pPrint extId,
         "{"
@@ -472,6 +472,17 @@ instance Pretty Literal where
 
 newtype Refinement ann = Refinement (Term ann)
   deriving (Show, Functor, Traversable, Foldable)
+
+trueRefinement :: Refinement ()
+trueRefinement = Refinement (TermLiteral (LiteralBool True) ())
+
+andRefinement :: Refinement () -> Refinement () -> Refinement ()
+andRefinement (Refinement tm1) (Refinement tm2) = Refinement (TermPrimitive (PrimitiveAnd tm1 tm2) ())
+
+andRefinements :: [Refinement ()] -> Refinement ()
+andRefinements [] = trueRefinement
+andRefinements [rfn] = rfn
+andRefinements (rfn : rfns) = foldr andRefinement rfn rfns
 
 instance Pretty (Refinement ann) where
   pPrint tm = "assert" <> parens (pPrint tm)

@@ -11,19 +11,25 @@ import Prelude hiding (lex)
 
 -- ** parser state
 
-data Env = Env
+data LexingEnv = LexingEnv
   {}
 
-makeLenses ''Env
+makeLenses ''LexingEnv
 
-emptyEnv :: Env
-emptyEnv = Env {}
+emptyLexingEnv :: LexingEnv
+emptyLexingEnv = LexingEnv {}
 
 -- ** parser
 
-type Parser = ParsecT String Env IO
+type Parser = ParsecT String LexingEnv IO
 
-languageDef :: Token.GenLanguageDef String Env IO
+runParser :: SourceName -> Parser a -> String -> IO a
+runParser srcName parser str =
+  runParserT parser emptyLexingEnv srcName str >>= \case
+    Left err -> error $ "parse error: " <> show err
+    Right a -> return a
+
+languageDef :: Token.GenLanguageDef String LexingEnv IO
 languageDef =
   Token.LanguageDef
     { Token.commentStart = "/*",
@@ -49,9 +55,7 @@ languageDef =
             -- "_": discarded id or pattern
             ["try", "cast", "match", "with", "if", "then", "else", "given"],
             -- pattern
-            ["_"],
-            -- refinements
-            ["#refine"]
+            ["_"]
           ],
       Token.reservedOpNames = ["=", ",", ";", ":", "."],
       Token.caseSensitive = True
@@ -63,7 +67,7 @@ identStart = letter <|> char '?'
 identLetter :: Parser Char
 identLetter = alphaNum <|> char '_'
 
-lexer :: Token.GenTokenParser String Env IO
+lexer :: Token.GenTokenParser String LexingEnv IO
 lexer = Token.makeTokenParser languageDef
 
 parens :: Parser a -> Parser a
@@ -121,8 +125,8 @@ comma = Token.comma lexer
 colon :: Parser String
 colon = Token.colon lexer
 
-equal :: Parser ()
-equal = reservedOp "="
+equals :: Parser ()
+equals = reservedOp "="
 
 divider :: Parser ()
 divider = reservedOp "|"
