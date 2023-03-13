@@ -61,6 +61,33 @@ data Declaration ann
   | DeclarationRefinedStructure (RefinedStructure ann)
   deriving (Show)
 
+class ToDeclaration a where
+  toDeclaration :: a ann -> Declaration ann
+
+instance ToDeclaration Structure where
+  toDeclaration = DeclarationStructure
+
+instance ToDeclaration Newtype where
+  toDeclaration = DeclarationNewtype
+
+instance ToDeclaration Variant where
+  toDeclaration = DeclarationVariant
+
+instance ToDeclaration Enumerated where
+  toDeclaration = DeclarationEnumerated
+
+instance ToDeclaration Alias where
+  toDeclaration = DeclarationAlias
+
+instance ToDeclaration Function where
+  toDeclaration = DeclarationFunction
+
+instance ToDeclaration Constant where
+  toDeclaration = DeclarationConstant
+
+instance ToDeclaration RefinedStructure where
+  toDeclaration = DeclarationRefinedStructure
+
 instance Pretty (Declaration ann) where
   pPrint = \case
     DeclarationStructure struct -> pPrint struct
@@ -70,7 +97,9 @@ instance Pretty (Declaration ann) where
     DeclarationAlias alias -> pPrint alias
     DeclarationFunction fun -> pPrint fun
     DeclarationConstant con -> pPrint con
-    DeclarationRefinedStructure reftStruct -> pPrint reftStruct
+    DeclarationRefinedStructure refnStruct -> pPrint refnStruct
+
+-- *** Structure
 
 data Structure ann = Structure
   { structureId :: TypeId,
@@ -97,6 +126,8 @@ instance Pretty (Structure ann) where
          )
       $$ "}"
 
+-- *** RefinedStructure
+
 data RefinedStructure ann = RefinedStructure
   { refinedStructureId :: TypeId,
     refinedStructureRefinement :: Refinement ann
@@ -107,6 +138,8 @@ instance Pretty (RefinedStructure ann) where
   pPrint (RefinedStructure {..}) =
     "#" <> "refine" <> brackets (pPrint refinedStructureId) <> parens (pPrint refinedStructureRefinement)
 
+-- *** Newtype
+
 data Newtype ann = Newtype
   { newtypeId :: TypeId,
     newtypeType :: Type
@@ -115,6 +148,8 @@ data Newtype ann = Newtype
 
 instance Pretty (Newtype ann) where
   pPrint (Newtype {..}) = pPrint newtypeId <+> "=" <+> pPrint newtypeType
+
+-- *** Variant
 
 data Variant ann = Variant
   { variantId :: TypeId,
@@ -135,6 +170,8 @@ instance Pretty (Variant ann) where
         "}"
       ]
 
+-- *** Enumerated
+
 data Enumerated ann = Enumerated
   { enumeratedId :: TypeId,
     enumeratedType :: Type,
@@ -152,6 +189,8 @@ instance Pretty (Enumerated ann) where
         "}"
       ]
 
+-- *** Alias
+
 data Alias ann = Alias
   { aliasId :: TypeId,
     aliasType :: Type
@@ -160,6 +199,8 @@ data Alias ann = Alias
 
 instance Pretty (Alias ann) where
   pPrint (Alias {..}) = pPrint aliasId <+> "=" <+> pPrint aliasType
+
+-- *** Function
 
 data Function ann = Function
   { functionId :: TermId,
@@ -192,6 +233,8 @@ instance Pretty (Function ann) where
       tuple :: [Doc] -> Doc
       tuple = parens . hsep . punctuate comma
 
+-- *** Constant
+
 data Constant ann = Constant
   { constantId :: TermId,
     constantTerm :: Term ann
@@ -221,7 +264,7 @@ data Term ann
 
 type Block ann = ([Statement ann], Term ann)
 
-type Branches ann = [(Pattern, Term ann)]
+type Branches ann = [(Pattern ann, Term ann)]
 
 instance Pretty (Term ann) where
   pPrint = \case
@@ -291,7 +334,7 @@ instance Pretty (Primitive ann) where
 -- ** Statement
 
 data Statement ann
-  = StatementLet Pattern (Term ann)
+  = StatementLet (Pattern ann) (Term ann)
   | StatementAssert (Term ann)
   deriving (Show, Functor, Foldable, Traversable)
 
@@ -302,17 +345,17 @@ instance Pretty (Statement ann) where
 
 -- ** Pattern
 
-data Pattern
-  = PatternNamed TermId
-  | PatternLiteral Literal
-  | PatternDiscard
-  deriving (Show)
+data Pattern ann
+  = PatternNamed TermId ann
+  | PatternLiteral Literal ann
+  | PatternDiscard ann
+  deriving (Show, Functor, Foldable, Traversable)
 
-instance Pretty Pattern where
+instance Pretty (Pattern ann) where
   pPrint = \case
-    PatternNamed tmId -> pPrint tmId
-    PatternLiteral lit -> pPrint lit
-    PatternDiscard -> "_"
+    PatternNamed tmId _ -> pPrint tmId
+    PatternLiteral lit _ -> pPrint lit
+    PatternDiscard _ -> "_"
 
 -- ** Type
 
@@ -382,7 +425,7 @@ data NumberType
   = TypeInt
   | TypeUInt
   | TypeFloat
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty NumberType where
   pPrint = \case
@@ -390,11 +433,11 @@ instance Pretty NumberType where
     TypeUInt -> "uint"
     TypeFloat -> "float"
 
-newtype UnifyVar = UnifyVar Int
+data UnifyVar = UnifyVar String Int
   deriving (Eq, Ord, Show)
 
 instance Pretty UnifyVar where
-  pPrint (UnifyVar i) = "?" <> pPrint i
+  pPrint (UnifyVar str i) = "?" <> text str <> pPrint i
 
 data UnifyConstraint
   = CastedFrom Type
@@ -425,7 +468,7 @@ instance Pretty Literal where
 -- ** Refinement
 
 newtype Refinement ann = Refinement (Term ann)
-  deriving (Show)
+  deriving (Show, Functor, Traversable, Foldable)
 
 instance Pretty (Refinement ann) where
   pPrint tm = "assert" <> parens (pPrint tm)

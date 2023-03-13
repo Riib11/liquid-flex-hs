@@ -1,13 +1,20 @@
 module Language.Flex.FlexBug where
 
-import Language.Flex.FlexM (FlexLog (FlexLog))
+import Language.Flex.FlexM (FlexLog (..))
+import Text.PrettyPrint.HughesPJ
+  ( braces,
+    render,
+    text,
+    vcat,
+    (<+>),
+  )
 
 throw :: FlexLog -> a
-throw (FlexLog title body) =
-  error $
-    unlines
-      [ replicate 40 '=',
-        "[flex bug in " <> title <> "]",
-        body,
-        replicate 40 '='
+throw (FlexLog {..}) =
+  error . render $
+    vcat
+      [ text $ replicate 40 '=',
+        braces $ "bug in" <+> logLabel,
+        logBody,
+        text $ replicate 40 '='
       ]

@@ -5,6 +5,7 @@ module Language.Flex.FlexM where
 import Control.Lens
 import Control.Monad.Writer (MonadWriter, WriterT)
 import qualified Control.Monad.Writer.Class as Writer
+import Text.PrettyPrint.HughesPJ
 import Prelude hiding (log)
 
 -- | The `FlexM` monad is the base monad under which all the impure comptuations
@@ -13,8 +14,8 @@ import Prelude hiding (log)
 type FlexM = WriterT [FlexLog] IO
 
 data FlexLog = FlexLog
-  { title :: String,
-    body :: String
+  { logLabel :: Doc,
+    logBody :: Doc
   }
   deriving (Show)
 

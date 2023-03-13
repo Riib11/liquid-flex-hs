@@ -6,6 +6,7 @@ import Control.Monad.Reader (MonadReader (ask, local), asks)
 import Control.Monad.State (MonadState (get, put))
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
+import Text.PrettyPrint.HughesPJClass (Doc)
 
 unimplemented :: String -> a
 unimplemented str = error $ "unimplemented: " <> str
@@ -202,3 +203,9 @@ xs @ x = xs <> [x]
 
 comps :: [a -> a] -> a -> a
 comps fs a = foldr ($) a fs
+
+ticks :: Doc -> Doc
+ticks doc = "`" <> doc <> "`"
+
+foldr' :: Foldable t => (a -> b -> b) -> t a -> b -> b
+foldr' f ta b = foldr f b ta
