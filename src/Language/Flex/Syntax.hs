@@ -36,6 +36,9 @@ newtype FieldId = FieldId String
 instance Pretty FieldId where
   pPrint (FieldId x) = text x
 
+fromFieldIdToTermId :: FieldId -> TermId
+fromFieldIdToTermId (FieldId x) = TermId x
+
 -- ** Module
 
 data Module ann = Module
@@ -58,7 +61,7 @@ data Declaration ann
   | DeclarationAlias (Alias ann)
   | DeclarationFunction (Function ann)
   | DeclarationConstant (Constant ann)
-  | DeclarationRefinedStructure (RefinedStructure ann)
+  | DeclarationRefinedType (RefinedType ann)
   deriving (Show)
 
 class ToDeclaration a where
@@ -85,8 +88,8 @@ instance ToDeclaration Function where
 instance ToDeclaration Constant where
   toDeclaration = DeclarationConstant
 
-instance ToDeclaration RefinedStructure where
-  toDeclaration = DeclarationRefinedStructure
+instance ToDeclaration RefinedType where
+  toDeclaration = DeclarationRefinedType
 
 instance Pretty (Declaration ann) where
   pPrint = \case
@@ -97,7 +100,7 @@ instance Pretty (Declaration ann) where
     DeclarationAlias alias -> pPrint alias
     DeclarationFunction fun -> pPrint fun
     DeclarationConstant con -> pPrint con
-    DeclarationRefinedStructure refnStruct -> pPrint refnStruct
+    DeclarationRefinedType refnStruct -> pPrint refnStruct
 
 -- *** Structure
 
@@ -126,22 +129,22 @@ instance Pretty (Structure ann) where
          )
       $$ "}"
 
--- *** RefinedStructure
-
-data RefinedStructure ann = RefinedStructure
-  { refinedStructureId :: TypeId,
-    refinedStructureRefinement :: Refinement ann
+-- RefinedType
+data RefinedType ann = RefinedType
+  { refinedTypeId :: TypeId,
+    refinedTypeRefinement :: Refinement ann
   }
   deriving (Show)
 
-instance Pretty (RefinedStructure ann) where
-  pPrint (RefinedStructure {..}) =
-    "#" <> "refine" <> brackets (pPrint refinedStructureId) <> parens (pPrint refinedStructureRefinement)
+instance Pretty (RefinedType ann) where
+  pPrint (RefinedType {..}) =
+    "#refine" <> angles (pPrint refinedTypeId) <> parens (pPrint refinedTypeRefinement)
 
 -- *** Newtype
 
 data Newtype ann = Newtype
   { newtypeId :: TypeId,
+    newtypeFieldId :: FieldId,
     newtypeType :: Type
   }
   deriving (Show)

@@ -253,14 +253,27 @@ procDeclaration = \case
         { constantId,
           constantTerm = body
         }
-  DeclarationRefinedStructure (RefinedStructure {..}) -> do
+  DeclarationRefinedType (RefinedType {..}) -> do
+    let m_rfn = sequence =<< synthRefinement refinedTypeRefinement
     rfn <-
-      sequence
-        =<< synthRefinement refinedStructureRefinement
+      lookupTypeId refinedTypeId >>= \case
+        TypeStructure struct ->
+          foldr'
+            ( \(fieldId, ty) ->
+                introTerm (fromFieldIdToTermId fieldId) (return ty)
+            )
+            (structureFields struct)
+            m_rfn
+        TypeNewtype newty ->
+          introTerm
+            (fromFieldIdToTermId $ newtypeFieldId newty)
+            (return $ newtypeType newty)
+            m_rfn
+        ty -> throwTypingError ("cannot declare refinement for" <+> pPrint ty <+> "; can only refine structures and newtypes") Nothing
     return . toDeclaration $
-      RefinedStructure
-        { refinedStructureId,
-          refinedStructureRefinement = rfn
+      RefinedType
+        { refinedTypeId,
+          refinedTypeRefinement = rfn
         }
 
 -- ** Synthesizing then Checking
@@ -373,9 +386,7 @@ synthTerm term = case term of
       Just ty -> return (normType ty)
     return $ TermMember tm' fieldId ty
   TermNeutral tmId mb_args mb_cxargs () -> synthNeutral term tmId mb_args mb_cxargs
-  TermAscribe tm ty () -> do
-    -- unwraps the ascription
-    synthCheckTerm' (normType ty) tm
+  TermAscribe tm ty () -> synthCheckTerm' (normType ty) tm
   TermMatch tm branches () -> synthMatch tm branches
 
 synthNeutral :: Term () -> TermId -> Maybe [Term ()] -> Maybe [Term ()] -> TypingM (Term TypeM)
@@ -399,9 +410,7 @@ synthNeutral term tmId mb_args mb_cxargs =
                 Nothing -> return Nothing
                 -- implicit cxparams
                 Just cxparams ->
-                  fmap Just . forM cxparams $ \(tyIdCxparam, tmIdCxparam) -> do
-                    -- look for a contextual parameter in scope that has the
-                    -- same newtype
+                  fmap Just . forM cxparams $ \(tyIdCxparam, tmIdCxparam) ->
                     asks (^. ctxCxparams . at tyIdCxparam) >>= \case
                       Nothing -> throwTypingError ("could not infer the implicit contextual argument" <+> ticks (pPrint tmIdCxparam)) (Just term)
                       Just tmIdCxarg -> return $ TermNeutral tmIdCxarg Nothing Nothing (normType $ TypeNamed tyIdCxparam)

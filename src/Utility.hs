@@ -207,5 +207,8 @@ comps fs a = foldr ($) a fs
 ticks :: Doc -> Doc
 ticks doc = "`" <> doc <> "`"
 
+angles :: Doc -> Doc
+angles doc = "<" <> doc <> ">"
+
 foldr' :: Foldable t => (a -> b -> b) -> t a -> b -> b
 foldr' f ta b = foldr f b ta

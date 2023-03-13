@@ -27,6 +27,8 @@ library
   exposed-modules:
       Language.Flex.FlexBug
       Language.Flex.FlexM
+      Language.Flex.Lexing
+      Language.Flex.Parsing
       Language.Flex.Syntax
       Language.Flex.Typing
       PrettyShow
@@ -120,6 +122,8 @@ test-suite liquid-flex-hs-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Test.Typing
+      Test.Utility
       Paths_liquid_flex_hs
   hs-source-dirs:
       test
