@@ -7,23 +7,65 @@ module Language.Flex.Typing where
 import Control.Category ((>>>))
 import Control.Lens
 import Control.Monad (forM, join)
-import Control.Monad.Reader (MonadTrans (lift), ReaderT, asks, foldM)
+import Control.Monad.Reader (MonadReader (ask, local), MonadTrans (lift), ReaderT, asks, foldM)
 import Control.Monad.State (StateT)
 import Data.Bifunctor (Bifunctor (second))
 import qualified Data.Map as Map
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
-import Language.Flex.FlexM (FlexLog (FlexLog), FlexM, throwFlexBug, throwFlexError)
+import qualified Language.Flex.FlexBug as FlexBug
+import Language.Flex.FlexM (FlexLog (FlexLog), FlexM)
+import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Syntax
+import Text.Printf (printf)
 import Utility
 
 -- * Typing
 
-throwTypingError :: String -> Maybe (Term a) -> TypingM b
-throwTypingError = error "TODO"
+-- | After typing, the valid syntax for types and terms is more specific. In
+-- particular, types must be normal and a few term constructors are unwrapped.
+-- These properties are specified by the following predicates.
 
-assertTypingProp :: String -> Bool -> TypingM ()
-assertTypingProp = error "TODO"
+-- | Forms that are not allowed in normal types are:
+-- - TypeNamed
+isNormalType :: Type -> Bool
+isNormalType = error "TODO"
+
+-- | A concrete type has no type unifications variables left
+isConcreteType :: Type -> Bool
+isConcreteType = \case
+  TypeArray ty -> isConcreteType ty
+  TypeTuple tys -> isConcreteType `all` tys
+  TypeOptional ty -> isConcreteType ty
+  TypeUnifyVar {} -> False
+  _ -> True
+
+-- | Forms that are not allowed in typed terms are:
+-- - PrimitiveCast (unwrapped)
+-- - TermAscribe (unwrapped)
+isTypedTerm :: Term a -> Bool
+isTypedTerm = \case
+  TermLiteral {} -> True
+  TermPrimitive prim _ -> case prim of
+    PrimitiveTry te -> isTypedTerm te
+    PrimitiveCast {} -> False
+    PrimitiveTuple tes -> isTypedTerm `all` tes
+    PrimitiveArray tes -> isTypedTerm `all` tes
+    PrimitiveIf te te1 te2 -> isTypedTerm `all` [te, te1, te2]
+    PrimitiveAnd te te' -> isTypedTerm `all` [te, te']
+    PrimitiveOr te te' -> isTypedTerm `all` [te, te']
+    PrimitiveNot te -> isTypedTerm te
+  TermBlock (stmts, tm) _ -> all isTypedStatement stmts && isTypedTerm tm
+  TermStructure _ fields _ -> isTypedTerm `all` (snd <$> fields)
+  TermMember te _ _ -> isTypedTerm te
+  TermNeutral _ m_tes m_te's _ -> maybe True (isTypedTerm `all`) m_tes && maybe True (isTypedTerm `all`) m_te's
+  TermAscribe {} -> False
+  TermMatch te branches _ -> isTypedTerm te && isTypedTerm `all` (snd <$> branches)
+
+isTypedStatement :: Statement a -> Bool
+isTypedStatement = \case
+  StatementLet pat te -> isTypedTerm te
+  StatementAssert te -> isTypedTerm te
 
 -- ** TypingM
 
@@ -37,30 +79,33 @@ data TypingCtx = TypingCtx
 
 data TypingEnv = TypingEnv {}
 
+data TypingError = TypingError String (Maybe (Term ()))
+
 makeLenses 'TypingCtx
 makeLenses 'TypingEnv
 
--- ** Interacting with TypingCtx
+-- ** TypingM utilities
 
 introType :: TypeId -> Type -> TypingM a -> TypingM a
 introType tyId ty =
-  locally (ctxTypes . at tyId) \case
-    Nothing -> Just ty
+  locallyM (ctxTypes . at tyId) \case
+    Nothing -> return $ pure ty
     Just _ ->
-      throwFlexError $
-        FlexLog "typing" $
-          "attempted to introduce two types with the same name: '" <> show tyId <> "'"
+      throwTypingError
+        ("attempted to introduce two types with the same name: '" <> show tyId <> "'")
+        Nothing
 
 introTerm :: Bool -> TermId -> Type -> TypingM a -> TypingM a
-introTerm isCxparam tmId ty =
-  ( locally (ctxTerms . at tmId) \case
-      Nothing -> Just (normType ty)
-      Just _ ->
-        throwFlexError $
-          FlexLog "typing" $
-            "attempted to introduce two top-level tersm with the same name: '" <> show tmId <> "'"
-  )
-    >>> if isCxparam then locally ctxCxparams (Set.insert tmId) else id
+introTerm isCxparam tmId ty = do
+  comps
+    [ locallyM (ctxTerms . at tmId) \case
+        Nothing -> return $ pure (normType ty)
+        Just _ ->
+          throwTypingError
+            ("attempted to introduce two top-level tersm with the same name: '" <> show tmId <> "'")
+            Nothing,
+      if isCxparam then locally ctxCxparams (Set.insert tmId) else id
+    ]
 
 lookupTypeId :: TypeId -> TypingM Type
 lookupTypeId tyId =
@@ -74,6 +119,18 @@ lookupTermId tmId =
   asks (^. ctxTerms . at tmId) >>= \case
     Just mty -> return mty
     Nothing -> throwTypingError ("unknown term id '" <> show tmId <> "'") Nothing
+
+throwTypingError :: String -> Maybe (Term ()) -> TypingM b
+throwTypingError = error "TODO"
+
+assertTypingProp :: String -> Maybe (Term ()) -> Bool -> TypingM ()
+assertTypingProp = error "TODO"
+
+throwTypingBug :: String -> Maybe (Term ()) -> a
+throwTypingBug = error "TODO"
+
+tellTypingLog :: String -> TypingM ()
+tellTypingLog = error "TODO"
 
 -- ** Top TypingCtx and TypingEnv
 
@@ -107,7 +164,9 @@ synthCheckTerm ty tm = do
 -- ** Checking
 
 checkTerm :: Type -> Term (TypingM Type) -> TypingM ()
-checkTerm ty tm = unify ty =<< join (inferTerm tm)
+checkTerm ty tm = do
+  tellTypingLog $ unwords ["[checkTerm]", "TODO: show tm", ":?", show ty]
+  unify ty =<< join (inferTerm tm)
 
 -- ** Synthesizing
 
@@ -115,26 +174,36 @@ synthTerm :: Term () -> TypingM (Term (TypingM Type))
 synthTerm term = case term of
   TermLiteral lit () -> case lit of
     LiteralInteger _ ->
-      TermLiteral lit <$> freshTypeUnfiyVar "literal integer" (Just $ CastedFrom $ TypeNumber TypeInt 32)
+      TermLiteral lit <$> freshTypeUnfiyVar "literal integer" (pure $ CastedFrom $ TypeNumber TypeInt 32)
     LiteralFloat _x ->
-      TermLiteral lit <$> freshTypeUnfiyVar "literal float" (Just $ CastedFrom $ TypeNumber TypeFloat 64)
+      TermLiteral lit <$> freshTypeUnfiyVar "literal float" (pure $ CastedFrom $ TypeNumber TypeFloat 64)
     LiteralBool _b ->
-      return (TermLiteral lit (normType TypeBit))
+      return (TermLiteral lit (return TypeBit))
     LiteralChar _c ->
-      return (TermLiteral lit (normType TypeChar))
+      return (TermLiteral lit (return TypeChar))
     LiteralString _s ->
-      return (TermLiteral lit (normType (TypeArray TypeChar)))
+      return (TermLiteral lit (return (TypeArray TypeChar)))
   TermPrimitive prim () -> case prim of
     PrimitiveTry tm -> do
+      -- synth type of arg, alpha
       tm' <- synthTerm tm
+      -- output type is Optional alpha
       ty <- TypeOptional <$$> inferTerm tm'
       return $ TermPrimitive (PrimitiveTry tm') ty
+    -- unwraps
     PrimitiveCast tm -> do
+      -- synth type of arg, alpha
       tm' <- synthTerm tm
-      ty <- freshTypeUnfiyVar "cast" . Just . CastedFrom =<<< inferTerm tm'
-      return $ TermPrimitive (PrimitiveCast tm') ty
+      -- output type is a fresh type unification var, with constraint that it
+      -- was casted from an alpha
+      ty <- freshTypeUnfiyVar "cast" . pure . CastedFrom =<<< inferTerm tm'
+      -- sets the top term ann to be the result type of casting, which unwraps
+      -- the cast
+      return $ mapTopAnnTerm (const ty) tm'
     PrimitiveTuple tms -> do
+      -- synth type of each term, alphas
       tms' <- synthTerm `traverse` tms
+      -- output type is Tuple alphas
       tys <- inferTerm `traverse` tms'
       return $ TermPrimitive (PrimitiveTuple tms') (TypeTuple <$> sequence tys)
     PrimitiveArray [] -> do
@@ -159,23 +228,23 @@ synthTerm term = case term of
     PrimitiveAnd tm1 tm2 -> do
       tm1' <- synthCheckTerm TypeBit tm1
       tm2' <- synthCheckTerm TypeBit tm2
-      return $ TermPrimitive (PrimitiveAnd tm1' tm2') (normType TypeBit)
+      return $ TermPrimitive (PrimitiveAnd tm1' tm2') (return TypeBit)
     PrimitiveOr tm1 tm2 -> do
       tm1' <- synthCheckTerm TypeBit tm1
       tm2' <- synthCheckTerm TypeBit tm2
-      return $ TermPrimitive (PrimitiveOr tm1' tm2') (normType TypeBit)
+      return $ TermPrimitive (PrimitiveOr tm1' tm2') (return TypeBit)
     PrimitiveNot tm -> do
       tm' <- synthCheckTerm TypeBit tm
-      return $ TermPrimitive (PrimitiveNot tm') (normType TypeBit)
+      return $ TermPrimitive (PrimitiveNot tm') (return TypeBit)
   TermBlock blk () -> synthBlock blk
   TermStructure tyId fields () -> do
     ty <- lookupTypeId tyId
     struct <- case ty of
       TypeStructure struct -> return struct
-      _ -> throwTypingError ("expected '" <> show tyId <> "' to be a structure type id") (Just term)
+      _ -> throwTypingError ("expected '" <> show tyId <> "' to be a structure type id") (pure term)
     fields' <- forM fields \(fieldId, tm) ->
       case lookup fieldId (structureFields struct) of
-        Nothing -> throwTypingError ("unknown field '" <> show fieldId <> "' of the structure '" <> show tyId <> "'") (Just term)
+        Nothing -> throwTypingError ("unknown field '" <> show fieldId <> "' of the structure '" <> show tyId <> "'") (pure term)
         Just ty -> (fieldId,) <$> synthCheckTerm ty tm
     return $ TermStructure tyId fields' (normType ty)
   TermMember tm fieldId () -> do
@@ -183,16 +252,27 @@ synthTerm term = case term of
     struct <-
       inferTerm tm' >>>= \case
         TypeStructure struct -> return struct
-        _ -> throwTypingError ("in order to access the field '" <> show fieldId <> "', expected '" <> show tm <> "' to have a structure type") (Just term)
+        _ -> throwTypingError ("in order to access the field '" <> show fieldId <> "', expected '" <> show tm <> "' to have a structure type") (pure term)
     ty <- case fieldId `lookup` structureFields struct of
-      Nothing -> throwTypingError ("attempted to access the field '" <> show fieldId <> "' from term '" <> "TODO: show tm'" <> "', but it has structure type '" <> show (structureId struct) <> "' which does not have that field") (Just term)
+      Nothing -> throwTypingError ("attempted to access the field '" <> show fieldId <> "', but it has structure type '" <> show (structureId struct) <> "' which does not have that field") (pure term)
       Just ty -> return (normType ty)
     return $ TermMember tm' fieldId ty
-  TermNeutral tmId args mb_cxargs () -> do
-    lookupTermId tmId >>>= \ty -> case ty of
+  TermNeutral tmId mb_args mb_cxargs () -> synthNeutral term tmId mb_args mb_cxargs
+  -- unwraps
+  TermAscribe tm ty () -> do synthCheckTerm' (normType ty) tm
+  TermMatch tm branches () -> synthMatch tm branches
+
+synthNeutral :: Term () -> TermId -> Maybe [Term ()] -> Maybe [Term ()] -> TypingM (Term (TypingM Type))
+synthNeutral term tmId mb_args mb_cxargs =
+  lookupTermId tmId >>= \mtype ->
+    mtype >>= \type_ -> case type_ of
+      -- TypeFunction
       TypeFunction func -> do
-        -- check arg
-        args' <- uncurry synthCheckTerm `traverse` ((snd <$> functionParameters func) `zip` args)
+        args <- case mb_args of
+          Nothing -> throwTypingError "a function application must have arguments" (pure term)
+          Just args -> return args
+        -- check args
+        mb_args' <- pure <$> uncurry synthCheckTerm `traverse` ((snd <$> functionParameters func) `zip` args)
         -- check cxargs
         mb_cxargs' <-
           case mb_cxargs of
@@ -206,13 +286,13 @@ synthTerm term = case term of
             Just cxargs -> do
               case functionContextualParameters func of
                 -- actually, no cxparams!
-                Nothing -> throwTypingError "attempted to give explicit contextual arguments to a function that does not have contextual parameters" (Just term)
+                Nothing -> throwTypingError "attempted to give explicit contextual arguments to a function that does not have contextual parameters" (pure term)
                 Just cxparams -> do
                   cxargs <- synthTerm `traverse` cxargs
                   newtyIds_cxargs <- forM cxargs \tm ->
                     inferTerm tm >>>= \case
                       TypeNewtype newty -> return (newtypeId newty, tm)
-                      _ -> undefined
+                      _ -> throwTypingError "each explicit contextual argument must be a newtype" (Just term)
                   -- cxargs' is in the same order as cxparams
                   cxargs' <-
                     reverse . snd
@@ -220,28 +300,67 @@ synthTerm term = case term of
                         ( \(newtyIds_cxargs, cxargs') (newtyId, cxparamId) -> do
                             -- extract the cxarg that has the right newtype
                             case newtyId `lookup` newtyIds_cxargs of
-                              Nothing -> throwTypingError ("missing explicit contextual argument: " <> show newtyId) (Just term)
+                              Nothing -> throwTypingError ("missing explicit contextual argument: " <> show newtyId) (pure term)
                               Just cxarg -> return (newtyIds_cxargs, cxarg : cxargs')
                         )
                         (newtyIds_cxargs, [])
                         cxparams
-                  return $ Just cxargs'
-        -- result type
-        let tyOut = normType (functionOutput func)
-        return $ TermNeutral tmId args' mb_cxargs' tyOut
-      TypeVariantConstuctor varnt ti -> undefined
-      TypeEnumConstructor enume ti -> undefined
-      TypeNewtypeConstructor newty ti -> undefined
+                  return $ pure cxargs'
+        -- output type
+        let tyOut = return $ functionOutput func
+        return $ TermNeutral tmId mb_args' mb_cxargs' tyOut
+      -- TypeVariantConstuctor
+      TypeVariantConstuctor varnt _constrId mb_tyParams -> do
+        -- check arguments
+        mb_args' <- case mb_tyParams of
+          -- expects no arguments
+          Nothing -> do
+            case mb_args of
+              Just _ -> throwTypingError "the variant constructor expects no arguments, but some were given" (pure term)
+              Nothing -> return Nothing
+          -- expects some arguments
+          Just tyParams -> do
+            case mb_args of
+              Nothing -> throwTypingError "the variant constructor expects some arguments, but none were given" (pure term)
+              Just args ->
+                pure <$> uncurry synthCheckTerm `traverse` (tyParams `zip` args)
+        -- check contextual args (can't have any)
+        assertTypingProp "a variant constructor can't have contextual arguments" (pure term) (isNothing mb_cxargs)
+        -- output type
+        let tyOut = return $ TypeVariant varnt
+        return $ TermNeutral tmId mb_args' Nothing tyOut
+      -- TypeEnumConstructor
+      TypeEnumConstructor enume constrId -> do
+        -- check arguments (can't have any)
+        assertTypingProp "cannot apply an enum constructor" (pure term) (isNothing mb_args)
+        -- check contextual args (can't have any)
+        assertTypingProp "cannot give contextual argsuments to an enum constructor" (pure term) (isNothing mb_cxargs)
+        -- output type
+        let tyOut = return $ TypeEnumerated enume
+        return $ TermNeutral tmId Nothing Nothing tyOut
+      -- TypeNewtypeConstructor
+      TypeNewtypeConstructor newty -> do
+        -- check argument (must have exactly 1)
+        mb_args' <- case mb_args of
+          Just [arg] ->
+            pure . pure <$> synthCheckTerm (newtypeType newty) arg
+          Just _ -> throwTypingError "a newtype constructor requires exactly one argument" (Just term)
+          Nothing -> throwTypingError "a newtype constructor must be given an argument" (Just term)
+        assertTypingProp "a newtype constructor cannot be given contextual arguments" (pure term) (isNothing mb_cxargs)
+        -- output type
+        let tyOut = return $ TypeNewtype newty
+        return $ TermNeutral tmId mb_args' Nothing tyOut
+      -- non-functional type
       _ -> do
-        assertTypingProp
-          ("cannot apply a term of type '" <> show ty <> "'")
-          (null args && isNothing mb_cxargs)
-        error "TODO"
-  TermAscribe tm ty () -> error "TODO"
-  TermMatch tm _ () -> error "TODO"
+        assertTypingProp ("cannot give arguments to a term of type '" <> show type_ <> "'") (pure term) (isNothing mb_args)
+        assertTypingProp ("cannot give contextual argument to a term of type '" <> show type_ <> "'") (pure term) (isNothing mb_cxargs)
+        return $ TermNeutral tmId Nothing Nothing mtype
 
 synthBlock :: Block () -> TypingM (Term (TypingM Type))
 synthBlock (stmts, tm) = error "synthBlock"
+
+synthMatch :: Term () -> Branches () -> TypingM (Term (TypingM Type))
+synthMatch tm branches = error "synthMatch"
 
 -- ** Normalization
 

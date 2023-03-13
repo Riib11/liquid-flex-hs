@@ -2,6 +2,8 @@ module Utility where
 
 import Control.Lens
 import Control.Monad
+import Control.Monad.Reader (MonadReader (ask, local), asks)
+import Control.Monad.State (MonadState (get, put))
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
 
@@ -107,10 +109,22 @@ setsM l ma st = do
   a' <- ma
   return (st & l .~ a')
 
-modifyingM :: Monad m => Lens' a b -> (b -> m b) -> (a -> m a)
-modifyingM l mb a = do
-  b' <- mb (a ^. l)
-  return (a & l .~ b')
+-- modifyM :: Monad m => Lens' a b -> (b -> m b) -> (a -> m a)
+-- modifyM l mb a = do
+--   b' <- mb (a ^. l)
+--   return (a & l .~ b')
+
+modifyM :: MonadState s m => (s -> m s) -> m ()
+modifyM f = get >>= f >>= put
+
+modifyingM :: MonadState s m => Lens' s a -> (a -> m a) -> m ()
+modifyingM l f = modifyM (l f)
+
+localM :: MonadReader r m => (r -> m r) -> m a -> m a
+localM f m = ask >>= f >>= flip local m . const
+
+locallyM :: MonadReader r m => Lens' r r' -> (r' -> m r') -> m a -> m a
+locallyM l f = localM (l f)
 
 ffoldr231 :: Foldable t => b -> t a -> (a -> b -> b) -> b
 ffoldr231 b ta f = foldr f b ta
@@ -185,3 +199,6 @@ indentLines = map ("  " <>)
 
 (@) :: [a] -> a -> [a]
 xs @ x = xs <> [x]
+
+comps :: [a -> a] -> a -> a
+comps fs a = foldr ($) a fs

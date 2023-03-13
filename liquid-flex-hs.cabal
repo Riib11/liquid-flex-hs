@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Language.Flex.FlexBug
       Language.Flex.FlexM
       Language.Flex.Syntax
       Language.Flex.Typing
@@ -51,6 +52,8 @@ library
       MultiParamTypeClasses
       FunctionalDependencies
       TypeApplications
+      FlexibleContexts
+      RecordWildCards
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports
   build-depends:
       HUnit
@@ -62,6 +65,7 @@ library
     , mtl
     , optparse-applicative
     , parsec
+    , pretty
     , singletons
     , singletons-th
     , text
@@ -91,6 +95,8 @@ executable liquid-flex-hs-exe
       MultiParamTypeClasses
       FunctionalDependencies
       TypeApplications
+      FlexibleContexts
+      RecordWildCards
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
@@ -103,6 +109,7 @@ executable liquid-flex-hs-exe
     , mtl
     , optparse-applicative
     , parsec
+    , pretty
     , singletons
     , singletons-th
     , text
@@ -133,6 +140,8 @@ test-suite liquid-flex-hs-test
       MultiParamTypeClasses
       FunctionalDependencies
       TypeApplications
+      FlexibleContexts
+      RecordWildCards
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
@@ -145,6 +154,7 @@ test-suite liquid-flex-hs-test
     , mtl
     , optparse-applicative
     , parsec
+    , pretty
     , singletons
     , singletons-th
     , text
