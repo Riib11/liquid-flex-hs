@@ -342,7 +342,7 @@ procDeclaration decl = case decl of
 
                     introTerm tmIdArg tyArg m
                 )
-                (second return <$> functionParameters)
+                (second normType <$> functionParameters)
                 $
                 -- intro contextual params
                 maybe id (foldr' (uncurry (introCxparam (pure $ toSyntax decl)))) functionContextualParameters
