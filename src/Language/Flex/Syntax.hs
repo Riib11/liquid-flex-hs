@@ -509,7 +509,7 @@ instance Pretty Literal where
   pPrint = \case
     LiteralInteger n -> pPrint n
     LiteralFloat x -> pPrint x
-    LiteralBit b -> pPrint b
+    LiteralBit b -> text if b then "true" else "false"
     LiteralChar c -> quotes $ pPrint c
     LiteralString s -> doubleQuotes $ text s
 

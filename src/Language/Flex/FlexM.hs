@@ -3,8 +3,10 @@
 module Language.Flex.FlexM where
 
 import Control.Lens
-import Control.Monad.Writer (MonadWriter, WriterT (runWriterT))
+import Control.Monad.Writer (MonadWriter, WriterT (runWriterT), when)
 import qualified Control.Monad.Writer.Class as Writer
+import Data.Foldable (traverse_)
+import Language.Flex.Constants (_DEBUG_MODE)
 import Text.PrettyPrint.HughesPJ hiding ((<>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 import Prelude hiding (log)
@@ -17,7 +19,7 @@ type FlexM = WriterT [FlexLog] IO
 runFlexM :: FlexM a -> IO a
 runFlexM m = do
   (a, logs) <- runWriterT m
-  (putStrLn . render . pPrint) `traverse` logs
+  when _DEBUG_MODE $ (putStrLn . render . pPrint) `traverse_` logs
   return a
 
 data FlexLog = FlexLog
