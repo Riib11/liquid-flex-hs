@@ -34,6 +34,7 @@ dependencies:
 - liquid-fixpoint
 - deepseq
 - pretty
+- directory
 
 ghc-options:
 - -Wall
@@ -68,6 +69,7 @@ default-extensions:
 - TypeApplications
 - FlexibleContexts
 - RecordWildCards
+- BangPatterns
 
 library:
   source-dirs: src

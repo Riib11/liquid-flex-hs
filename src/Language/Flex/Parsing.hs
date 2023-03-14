@@ -16,6 +16,11 @@ import Utility hiding (angles)
 
 -- * Parsing
 
+parseModuleFile :: FilePath -> IO (Either ParseError (Module ()))
+parseModuleFile fp = do
+  src <- readFile fp
+  runParserT (parseModule <* eof) emptyLexingEnv fp src
+
 -- ** Id
 
 parseModuleId :: Parser ModuleId
@@ -38,8 +43,10 @@ parseContextualParameterId = TermId <$> ((++) <$> string "?" <*> identifier)
 
 parseModule :: Parser (Module ())
 parseModule = do
-  symbol_ "module"
+  comments
+  reserved "module"
   moduleId <- parseModuleId
+  reserved "where"
   moduleDeclarations <- concat <$> many parseDeclaration
   return
     Module
@@ -51,6 +58,7 @@ parseModule = do
 
 parseDeclaration :: Parser [Declaration ()]
 parseDeclaration = do
+  comments
   choice
     [ parseStructure,
       parseNewtype,
@@ -63,16 +71,20 @@ parseDeclaration = do
 
 parseStructure :: Parser [Declaration ()]
 parseStructure = do
-  structureIsMessage <- isJust <$> optionMaybe (symbol_ "message")
-  symbol_ "struct"
+  structureIsMessage <-
+    try $
+      choice
+        [ reserved "message" $> True,
+          reserved "struct" $> False
+        ]
   structureId <- parseTypeId
-  structureExtensionId <- optionMaybe (symbol_ "extends" *> parseTypeId)
+  structureExtensionId <- optionMaybe (reserved "extends" *> parseTypeId)
   symbol_ "{"
   (refinedTypeRefinement, structureFields) <-
     first andRefinements . partitionEithers
       <$> (many . choice)
         [ do
-            symbol_ "assert"
+            reserved "assert"
             tm <- parseTerm
             semi
             return . Left $ Refinement tm,
@@ -101,14 +113,14 @@ parseStructure = do
 
 parseNewtype :: Parser [Declaration ()]
 parseNewtype = do
-  symbol_ "newtype"
+  try $ reserved "newtype"
   newtypeId <- parseTypeId
   symbol "{"
   (refinedTypeRefinement, newtypeFields) <-
     first andRefinements . partitionEithers
       <$> (many . choice)
         [ do
-            symbol_ "assert"
+            reserved "assert"
             tm <- parseTerm
             semi
             return . Left $ Refinement tm,
@@ -121,7 +133,7 @@ parseNewtype = do
         ]
   (newtypeFieldId, newtypeType) <- case newtypeFields of
     [(newtyFieldId, newtyType)] -> return (newtyFieldId, newtyType)
-    _ -> unexpected "a newtype declaration must have exactly one field"
+    _ -> unexpected "additional field in newtype"
   symbol "}"
   return
     [ toDeclaration
@@ -139,7 +151,7 @@ parseNewtype = do
 
 parseVariant :: Parser [Declaration ()]
 parseVariant = do
-  symbol_ "variant"
+  try $ reserved "variant"
   variantId <- parseTypeId
   symbol "{"
   variantConstructors <- many do
@@ -157,13 +169,15 @@ parseVariant = do
 
 parseEnum :: Parser [Declaration ()]
 parseEnum = do
-  symbol_ "enum"
+  try $ reserved "enum"
   enumId <- parseTypeId
   enumType <- parseType
   symbol "{"
   enumConstructors <- many do
     constrId <- parseTermId
+    equals
     lit <- parseLiteral
+    semi
     return (constrId, lit)
   symbol "}"
   return . pure $
@@ -176,7 +190,7 @@ parseEnum = do
 
 parseAlias :: Parser [Declaration ()]
 parseAlias = do
-  symbol_ "type"
+  try $ reserved "type"
   aliasId <- parseTypeId
   equals
   aliasType <- parseType
@@ -189,8 +203,12 @@ parseAlias = do
 
 parseFunction :: Parser [Declaration ()]
 parseFunction = do
-  symbol_ "transform"
-  symbol_ "function"
+  functionIsTransform <-
+    try $
+      choice
+        [ reserved "transform" $> True,
+          reserved "function" $> False
+        ]
   functionId <- parseTermId
   functionParameters <- parens $ flip sepBy comma do
     tmId <- parseTermId
@@ -198,13 +216,13 @@ parseFunction = do
     ty <- parseType
     return (tmId, ty)
   functionContextualParameters <- optionMaybe do
-    symbol_ "given"
+    reserved "given"
     parens $ flip sepBy comma do
       tmId <- parseContextualParameterId
       colon
       tyId <- parseTypeId
       return (tyId, tmId)
-  symbol_ "->"
+  reservedOp "->"
   functionOutput <- parseType
   functionBody <- parseTermBlock
   return . pure $
@@ -213,14 +231,14 @@ parseFunction = do
         { functionId,
           functionParameters,
           functionContextualParameters,
-          functionIsTransform = True,
+          functionIsTransform,
           functionOutput,
           functionBody
         }
 
 parseConstant :: Parser [Declaration ()]
 parseConstant = do
-  symbol_ "constant"
+  try $ reserved "const"
   constantId <- parseTermId
   colon
   ty <- parseType
@@ -240,30 +258,33 @@ parseType :: Parser Type
 parseType =
   choice
     [ do
-        -- doesn't parse whitespace after, so that can immediately parse size
-        -- integer
-        numty <-
-          choice
-            [ string "int" $> TypeInt,
-              string "uint" $> TypeUInt,
-              string "float" $> TypeFloat
-            ]
+        try $ string "int"
         i <- integer
-        return $ TypeNumber numty i,
+        return $ TypeNumber TypeInt i,
       do
-        symbol_ "bit" $> TypeBit,
+        try $ string "uint"
+        i <- integer
+        return $ TypeNumber TypeUInt i,
       do
-        symbol_ "char" $> TypeChar,
+        try $ string "float"
+        i <- integer
+        return $ TypeNumber TypeFloat i,
       do
-        symbol_ "Array"
+        try $ reserved "bit"
+        return TypeBit,
+      do
+        try $ reserved "char"
+        return TypeChar,
+      do
+        try $ reserved "Array"
         ty <- angles parseType
         return $ TypeArray ty,
       do
-        symbol_ "Tuple"
+        try $ reserved "Tuple"
         tys <- angles (commaSep parseType)
         return $ TypeTuple tys,
       do
-        symbol_ "Optional"
+        try $ reserved "Optional"
         ty <- angles parseType
         return $ TypeOptional ty,
       do
@@ -274,24 +295,23 @@ parseType =
 -- ** Term
 
 parseTerm :: Parser (Term ())
-parseTerm = buildExpressionParser table term0 <?> "term"
+parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
   where
     -- Term#0 ::=
     -- - «TermMember»
     -- - «TermAscribe»
     -- - «Term#1»
-    term0 :: Parser (Term ())
-    term0 = do
-      tm <- term1
+    k_term0 :: Term () -> Parser (Term ())
+    k_term0 tm = do
       choice
         [ do
-            symbol_ "."
-            fieldId <- parseFieldId
-            return $ TermMember tm fieldId (),
+            fieldId <- try (dot *> parseFieldId)
+            k_term0 $ TermMember tm fieldId (),
           do
-            symbol ":"
+            try colon
             ty <- parseType
-            return $ TermAscribe tm ty ()
+            k_term0 $ TermAscribe tm ty (),
+          return tm
         ]
 
     -- «Term#1» ::=
@@ -306,17 +326,23 @@ parseTerm = buildExpressionParser table term0 <?> "term"
     term1 =
       choice
         [ -- starts with "("
-          try do
-            parens parseTerm,
           do
-            parens do
-              tms <- commaSep parseTerm
-              return $
-                TermPrimitive
-                  { termPrimitive = PrimitiveTuple tms,
-                    termAnn = ()
-                  },
-          -- starts with "{"
+            symbol_ "("
+            tm <- parseTerm
+            optionMaybe comma
+              >>= \case
+                Nothing -> do
+                  symbol_ ")"
+                  return tm
+                Just _ -> do
+                  tms <- commaSep parseTerm
+                  symbol_ ")"
+                  return $
+                    TermPrimitive
+                      { termPrimitive = PrimitiveTuple (tm : tms),
+                        termAnn = ()
+                      },
+          -- starts with "{".
           do
             parseTermBlock,
           -- starts with "["
@@ -330,7 +356,7 @@ parseTerm = buildExpressionParser table term0 <?> "term"
                   },
           -- starts with "cast"
           do
-            symbol_ "cast"
+            try $ reserved "cast"
             tm <- parseTerm
             return $
               TermPrimitive
@@ -339,7 +365,7 @@ parseTerm = buildExpressionParser table term0 <?> "term"
                 },
           -- starts with "try"
           do
-            symbol_ "try"
+            try $ reserved "try"
             tm <- parseTerm
             return $
               TermPrimitive
@@ -348,25 +374,32 @@ parseTerm = buildExpressionParser table term0 <?> "term"
                 },
           -- starts with "if"
           do
-            symbol_ "if"
+            try $ reserved "if"
             tm1 <- parseTerm
-            symbol_ "then"
+            reserved "then"
             tm2 <- parseTerm
-            symbol_ "else"
+            reserved "else"
             tm3 <- parseTerm
             return $
               TermPrimitive
                 { termPrimitive = PrimitiveIf tm1 tm2 tm3,
                   termAnn = ()
                 },
+          -- starts with special string
+          do
+            termLiteral <- try parseLiteral
+            return $
+              TermLiteral
+                { termLiteral,
+                  termAnn = ()
+                },
           -- starts with «TypeId»
           try do
-            termStructureId <- parseTypeId
-            termFields <- braces $ many do
+            termStructureId <- try parseTypeId
+            termFields <- bracesTryOpen $ semiSep do
               tmId <- parseFieldId
               equals
               tm <- parseTerm
-              semi
               return (tmId, tm)
             return $
               TermStructure
@@ -376,24 +409,17 @@ parseTerm = buildExpressionParser table term0 <?> "term"
                 },
           -- starts with «TermId»
           try do
-            termId <- parseTermId
-            termMaybeArgs <- optionMaybe . parens $ do
+            termId <- try parseTermId
+            termMaybeArgs <- optionMaybe . parensTryOpen $ do
               commaSep parseTerm
             termMaybeCxargs <- optionMaybe do
-              symbol_ "giving"
+              try $ reserved "giving"
               parens $ commaSep parseTerm
             return $
               TermNeutral
                 { termId,
                   termMaybeArgs,
                   termMaybeCxargs,
-                  termAnn = ()
-                },
-          try do
-            termLiteral <- parseLiteral
-            return $
-              TermLiteral
-                { termLiteral,
                   termAnn = ()
                 }
         ]
@@ -407,20 +433,12 @@ parseTerm = buildExpressionParser table term0 <?> "term"
       ]
       where
         makePrefix constr str = Prefix do
-          symbol_ str
+          try $ reservedOp str
           return \tm -> TermPrimitive (constr tm) ()
 
         makeInfix constr str assoc = flip Infix assoc do
-          symbol_ str
+          try $ reservedOp str
           return \tm1 tm2 -> TermPrimitive (constr tm1 tm2) ()
-
--- infix
-
-parseBlock :: Parser (Block ())
-parseBlock = braces do
-  stmts <- many parseStatement
-  tm <- parseTerm
-  return (stmts, tm)
 
 -- | Parses a block, but if the list of statements is empty then just yields
 -- parsed term
@@ -443,7 +461,7 @@ parsePattern :: Parser (Pattern ())
 parsePattern =
   choice
     [ do
-        symbol_ "_"
+        reserved "_"
         return $ PatternDiscard (),
       do
         lit <- parseLiteral
@@ -459,14 +477,25 @@ parseStatement :: Parser (Statement ())
 parseStatement =
   choice
     [ do
-        symbol_ "let"
+        reserved "let"
         pat <- parsePattern
-        equals
-        tm <- parseTerm
-        return $ StatementLet pat tm,
+        choice
+          [ do
+              colon
+              ty <- parseType
+              equals
+              tm <- parseTerm
+              return $ StatementLet pat (TermAscribe tm ty ()),
+            do
+              equals
+              tm <- parseTerm
+              semi
+              return $ StatementLet pat tm
+          ],
       do
-        symbol_ "assert"
+        reserved "assert"
         tm <- parseTerm
+        semi
         return $ StatementAssert tm
     ]
 
@@ -475,8 +504,8 @@ parseStatement =
 parseLiteral :: Parser Literal
 parseLiteral =
   choice
-    [ LiteralInteger <$> integer,
-      LiteralFloat <$> float,
+    [ LiteralFloat <$> try float,
+      LiteralInteger <$> integer,
       LiteralBit <$> bitLiteral,
       LiteralChar <$> charLiteral,
       LiteralString <$> stringLiteral

@@ -46,7 +46,7 @@ languageDef =
           [ -- module
             ["module", "import", "as"],
             -- declaration
-            ["struct", "variant", "enum", "type", "newtype", "function", "const"],
+            ["struct", "variant", "enum", "type", "newtype", "function", "const", "giving"],
             -- statement
             ["assert"],
             -- type
@@ -58,15 +58,15 @@ languageDef =
             -- pattern
             ["_"]
           ],
-      Token.reservedOpNames = ["=", ",", ";", ":", "."],
+      Token.reservedOpNames = ["=", ",", ";", ":", ".", "->"],
       Token.caseSensitive = True
     }
 
 identStart :: Parser Char
-identStart = letter <|> char '?'
+identStart = letter <|> oneOf ['?']
 
 identLetter :: Parser Char
-identLetter = alphaNum <|> char '_'
+identLetter = alphaNum <|> oneOf ['_', '\'']
 
 lexer :: Token.GenTokenParser String LexingEnv IO
 lexer = Token.makeTokenParser languageDef
@@ -74,11 +74,32 @@ lexer = Token.makeTokenParser languageDef
 parens :: Parser a -> Parser a
 parens = Token.parens lexer
 
+parensTryOpen :: Parser a -> Parser a
+parensTryOpen p = do
+  try $ symbol_ "("
+  a <- p
+  symbol_ ")"
+  return a
+
 braces :: Parser a -> Parser a
 braces = Token.braces lexer
 
+bracesTryOpen :: Parser a -> Parser a
+bracesTryOpen p = do
+  try $ symbol_ "{"
+  a <- p
+  symbol_ "}"
+  return a
+
 brackets :: Parser a -> Parser a
 brackets = Token.brackets lexer
+
+bracketsTryOpen :: Parser a -> Parser a
+bracketsTryOpen p = do
+  try $ symbol_ "{"
+  a <- p
+  symbol_ "}"
+  return a
 
 angles :: Parser a -> Parser a
 angles = Token.angles lexer
@@ -95,6 +116,9 @@ identifierTextMaybe =
     [ Just <$> identifierText,
       Nothing <$ symbol_ "_"
     ]
+
+dot :: Parser String
+dot = Token.dot lexer
 
 reservedOp :: String -> Parser ()
 reservedOp = Token.reservedOp lexer
@@ -135,6 +159,9 @@ divider = reservedOp "|"
 semi :: Parser String
 semi = Token.semi lexer
 
+semiOrNewline :: Parser String
+semiOrNewline = try semi <|> (pure <$> newline)
+
 symbol_ :: String -> Parser ()
 symbol_ = void . symbol
 
@@ -144,9 +171,28 @@ lexeme = Token.lexeme lexer
 commaSep :: Parser a -> Parser [a]
 commaSep = Token.commaSep lexer
 
+semiSep :: Parser a -> Parser [a]
+semiSep = Token.semiSep lexer
+
+semiOrNewlineSep :: Parser a -> Parser [a]
+semiOrNewlineSep = (`sepBy` semiOrNewline)
+
 bitLiteral :: Parser Bool
 bitLiteral =
   choice
     [ symbol_ "true" $> True,
       symbol_ "false" $> False
     ]
+
+commentBlock :: Parser ()
+commentBlock = lexeme do
+  void . try . string $ Token.commentStart languageDef
+  void $ anyChar `manyTill` try (string (Token.commentEnd languageDef))
+
+commentLine :: Parser ()
+commentLine = lexeme do
+  void . try . string $ Token.commentLine languageDef
+  void $ anyChar `manyTill` try (void endOfLine <|> eof)
+
+comments :: Parser ()
+comments = void . many . choice $ [commentLine, commentBlock]

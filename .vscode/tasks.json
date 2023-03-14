@@ -8,15 +8,14 @@
             "type": "shell",
             "command": "stack build",
             "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
+            "group": "build"
         },
         {
             "label": "test",
             "type": "shell",
-            "command": "stack test"
+            "command": "stack test",
+            "problemMatcher": [],
+            "group": "build"
         },
         {
             "label": "run",

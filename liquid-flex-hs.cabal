@@ -56,12 +56,14 @@ library
       TypeApplications
       FlexibleContexts
       RecordWildCards
+      BangPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports
   build-depends:
       HUnit
     , base >=4.7 && <5
     , containers
     , deepseq
+    , directory
     , lens
     , liquid-fixpoint
     , mtl
@@ -99,12 +101,14 @@ executable liquid-flex-hs-exe
       TypeApplications
       FlexibleContexts
       RecordWildCards
+      BangPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
     , base >=4.7 && <5
     , containers
     , deepseq
+    , directory
     , lens
     , liquid-fixpoint
     , liquid-flex-hs
@@ -122,6 +126,8 @@ test-suite liquid-flex-hs-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Test.FilePaths
+      Test.Parsing
       Test.Typing
       Test.Utility
       Paths_liquid_flex_hs
@@ -146,12 +152,14 @@ test-suite liquid-flex-hs-test
       TypeApplications
       FlexibleContexts
       RecordWildCards
+      BangPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
     , base >=4.7 && <5
     , containers
     , deepseq
+    , directory
     , lens
     , liquid-fixpoint
     , liquid-flex-hs

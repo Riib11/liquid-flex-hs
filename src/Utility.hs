@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC "-Wno-name-shadowing" #-}
+
 module Utility where
 
 import Control.Lens
@@ -44,7 +46,7 @@ f =<<$> m = (f =<<) <$> m
 infixr 0 =<<$>
 
 ($>) :: Applicative f => f a -> b -> f b
-_ $> b = pure b
+($>) = flip (<$)
 
 infixl 4 $>
 
@@ -58,7 +60,7 @@ isoFrom :: Iso' a b -> (b -> a)
 isoFrom iso = withIso iso \_ from -> from
 
 isoTo :: Iso' a b -> (a -> b)
-isoTo iso = withIso iso \to _ -> to
+isoTo iso = withIso iso const
 
 comp2 :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
 comp2 f g a b = f (g a b)
@@ -88,13 +90,13 @@ firstM :: Monad m => (a -> m a') -> (a, b) -> m (a', b)
 firstM f = bimapM f pure
 
 secondM :: Monad m => (b -> m b') -> (a, b) -> m (a, b')
-secondM f = bimapM pure f
+secondM = bimapM pure
 
 sequenceTuple :: Monad m => (m a, m b) -> m (a, b)
 sequenceTuple (ma, mb) = (,) <$> ma <*> mb
 
 foldrM :: (Monad m, Foldable t) => (a -> b -> m b) -> b -> t a -> m b
-foldrM f b0 ta = foldr (\a mb -> mb >>= \b -> (f a b)) (pure b0) ta
+foldrM f b0 = foldr (\a mb -> mb >>= \b -> f a b) (pure b0)
 
 liftM2' :: Monad m => (a -> b -> m c) -> m a -> m b -> m c
 liftM2' k ma mb = do
@@ -153,7 +155,7 @@ findMapM f (a : as) =
     Just b -> return (Just b)
 
 findMaybe :: (a -> Maybe b) -> [a] -> Maybe b
-findMaybe f as = foldr (\m1 m2 -> maybe m1 Just m2) Nothing (f <$> as)
+findMaybe f as = foldr (`maybe` Just) Nothing (f <$> as)
 
 findMaybeM :: Monad m => (a -> m Bool) -> [a] -> m (Maybe a)
 findMaybeM _ [] = return Nothing
@@ -163,10 +165,10 @@ findMaybeM f (a : as) =
     True -> return (Just a)
 
 applyArg1 :: (a -> a') -> (a' -> b -> c) -> (a -> b -> c)
-applyArg1 f g a b = g (f a) b
+applyArg1 f g a = g (f a)
 
 mconcatMap :: (Foldable f, Monoid m) => (a -> m) -> f a -> m
-mconcatMap f as = foldr (applyArg1 f (<>)) mempty as
+mconcatMap f = foldr (applyArg1 f (<>)) mempty
 
 mapFromListMaybeKey :: Ord k => [(Maybe k, v)] -> Map.Map k v
 mapFromListMaybeKey = Map.fromList . concatMap (\(mb_txt, tm) -> maybe [] (\txt -> [(txt, tm)]) mb_txt)
@@ -194,9 +196,6 @@ indent = unlines . indentLines . lines
 
 indentLines :: [String] -> [String]
 indentLines = map ("  " <>)
-
--- forM :: Monad m => [a] -> (a -> m b) -> m [b]
--- forM = flip traverse
 
 (@) :: [a] -> a -> [a]
 xs @ x = xs <> [x]
