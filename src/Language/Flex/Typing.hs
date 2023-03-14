@@ -197,13 +197,14 @@ procDeclaration = \case
       Structure
         { structureId,
           structureIsMessage,
-          structureExtensionid,
+          structureExtensionId,
           structureFields
         }
   DeclarationNewtype (Newtype {..}) ->
     return . toDeclaration $
       Newtype
         { newtypeId,
+          newtypeFieldId,
           newtypeType
         }
   DeclarationVariant (Variant {..}) ->
