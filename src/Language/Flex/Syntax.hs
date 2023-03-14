@@ -7,6 +7,7 @@ import Data.List (intercalate)
 import qualified Data.Map as Map
 import Text.PrettyPrint.HughesPJClass (Doc, Pretty (pPrint), braces, brackets, colon, comma, doubleQuotes, hsep, nest, parens, punctuate, quotes, text, vcat, ($$), (<+>))
 import Utility
+import Prelude hiding (Enum)
 
 -- * Syntax
 
@@ -57,7 +58,7 @@ data Declaration ann
   = DeclarationStructure (Structure ann)
   | DeclarationNewtype (Newtype ann)
   | DeclarationVariant (Variant ann)
-  | DeclarationEnumerated (Enumerated ann)
+  | DeclarationEnum (Enum ann)
   | DeclarationAlias (Alias ann)
   | DeclarationFunction (Function ann)
   | DeclarationConstant (Constant ann)
@@ -76,8 +77,8 @@ instance ToDeclaration Newtype where
 instance ToDeclaration Variant where
   toDeclaration = DeclarationVariant
 
-instance ToDeclaration Enumerated where
-  toDeclaration = DeclarationEnumerated
+instance ToDeclaration Enum where
+  toDeclaration = DeclarationEnum
 
 instance ToDeclaration Alias where
   toDeclaration = DeclarationAlias
@@ -96,7 +97,7 @@ instance Pretty (Declaration ann) where
     DeclarationStructure struct -> pPrint struct
     DeclarationNewtype newty -> pPrint newty
     DeclarationVariant varnt -> pPrint varnt
-    DeclarationEnumerated enume -> pPrint enume
+    DeclarationEnum enum -> pPrint enum
     DeclarationAlias alias -> pPrint alias
     DeclarationFunction fun -> pPrint fun
     DeclarationConstant con -> pPrint con
@@ -173,21 +174,21 @@ instance Pretty (Variant ann) where
         "}"
       ]
 
--- *** Enumerated
+-- *** Enum
 
-data Enumerated ann = Enumerated
-  { enumeratedId :: TypeId,
-    enumeratedType :: Type,
-    enumeratedConstructors :: [(TermId, Literal)]
+data Enum ann = Enum
+  { enumId :: TypeId,
+    enumType :: Type,
+    enumConstructors :: [(TermId, Literal)]
   }
   deriving (Show)
 
-instance Pretty (Enumerated ann) where
-  pPrint (Enumerated {..}) =
+instance Pretty (Enum ann) where
+  pPrint (Enum {..}) =
     vcat
-      [ pPrint enumeratedId <+> pPrint enumeratedType <+> "{",
+      [ pPrint enumId <+> pPrint enumType <+> "{",
         nest 4 . vcat $
-          enumeratedConstructors <&> \(tmId, lit) ->
+          enumConstructors <&> \(tmId, lit) ->
             pPrint tmId <+> "=" <+> pPrint lit,
         "}"
       ]
@@ -326,14 +327,15 @@ data Primitive ann
 
 instance Pretty (Primitive ann) where
   pPrint = \case
-    PrimitiveTry tm -> "try" <> parens (pPrint tm) <> ")"
-    PrimitiveCast tm -> "cast" <> parens (pPrint tm) <> ")"
+    PrimitiveTry tm -> "try" <> parens (pPrint tm)
+    PrimitiveCast tm -> "cast" <> parens (pPrint tm)
     PrimitiveTuple tms -> parens . hsep . punctuate comma . fmap pPrint $ tms
     PrimitiveArray tms -> braces . hsep . punctuate comma . fmap pPrint $ tms
     PrimitiveIf tm1 tm2 tm3 -> parens $ hsep ["if", pPrint tm1, "then", pPrint tm2, "else", pPrint tm3]
     PrimitiveAnd tm1 tm2 -> parens $ hsep [pPrint tm1, "&&", pPrint tm2]
     PrimitiveOr tm1 tm2 -> parens $ hsep [pPrint tm1, "||", pPrint tm2]
     PrimitiveNot tm -> "!" <> pPrint tm
+    PrimitiveEq tm1 tm2 -> parens $ pPrint tm1 <+> "==" <+> pPrint tm2
 
 -- ** Statement
 
@@ -376,11 +378,11 @@ data Type
     TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
   | TypeFunction (Function Type)
   | TypeStructure (Structure Type)
-  | TypeEnumerated (Enumerated Type)
+  | TypeEnum (Enum Type)
   | TypeVariant (Variant Type)
   | TypeNewtype (Newtype Type)
   | TypeVariantConstuctor (Variant Type) TermId (Maybe [Type])
-  | TypeEnumConstructor (Enumerated Type) TermId
+  | TypeEnumConstructor (Enum Type) TermId
   | TypeNewtypeConstructor (Newtype Type)
   deriving (Show)
 
@@ -406,7 +408,7 @@ instance Pretty Type where
             Just cxparams -> "given" <+> parameters cxparams
         ]
     TypeStructure struct -> pPrint (structureId struct)
-    TypeEnumerated enume -> pPrint (enumeratedId enume)
+    TypeEnum enum -> pPrint (enumId enum)
     TypeVariant varnt -> pPrint (variantId varnt)
     TypeNewtype newty -> pPrint (newtypeId newty)
     TypeVariantConstuctor varnt constrId mb_tyParams ->
@@ -414,8 +416,8 @@ instance Pretty Type where
         <> case mb_tyParams of
           Nothing -> mempty
           Just tys -> tuple $ pPrint <$> tys
-    TypeEnumConstructor enume constrId ->
-      pPrint (enumeratedId enume) <> "." <> pPrint constrId
+    TypeEnumConstructor enum constrId ->
+      pPrint (enumId enum) <> "." <> pPrint constrId
     TypeNewtypeConstructor newty ->
       pPrint (newtypeId newty)
     where

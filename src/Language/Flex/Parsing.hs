@@ -55,7 +55,7 @@ parseDeclaration = do
     [ parseStructure,
       parseNewtype,
       parseVariant,
-      parseEnumerated,
+      parseEnum,
       parseAlias,
       parseFunction,
       parseConstant
@@ -155,23 +155,23 @@ parseVariant = do
           variantConstructors
         }
 
-parseEnumerated :: Parser [Declaration ()]
-parseEnumerated = do
+parseEnum :: Parser [Declaration ()]
+parseEnum = do
   symbol_ "enum"
-  enumeratedId <- parseTypeId
-  enumeratedType <- parseType
+  enumId <- parseTypeId
+  enumType <- parseType
   symbol "{"
-  enumeratedConstructors <- many do
+  enumConstructors <- many do
     constrId <- parseTermId
     lit <- parseLiteral
     return (constrId, lit)
   symbol "}"
   return . pure $
     toDeclaration
-      Enumerated
-        { enumeratedId,
-          enumeratedType,
-          enumeratedConstructors
+      Enum
+        { enumId,
+          enumType,
+          enumConstructors
         }
 
 parseAlias :: Parser [Declaration ()]

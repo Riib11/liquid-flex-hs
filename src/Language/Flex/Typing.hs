@@ -49,7 +49,7 @@ isNormalType = \case
       Just _ -> return False
   TypeFunction {} -> return True
   TypeStructure {} -> return True
-  TypeEnumerated {} -> return True
+  TypeEnum {} -> return True
   TypeVariant {} -> return True
   TypeNewtype {} -> return True
   TypeVariantConstuctor {} -> return True
@@ -80,6 +80,7 @@ isTypedTerm = \case
     PrimitiveAnd te te' -> isTypedTerm `all` [te, te']
     PrimitiveOr te te' -> isTypedTerm `all` [te, te']
     PrimitiveNot te -> isTypedTerm te
+    PrimitiveEq te te' -> isTypedTerm `all` [te, te']
   TermBlock (stmts, tm) _ -> all isTypedStatement stmts && isTypedTerm tm
   TermStructure _ fields _ -> isTypedTerm `all` (snd <$> fields)
   TermMember te _ _ -> isTypedTerm te
@@ -213,12 +214,12 @@ procDeclaration = \case
         { variantId,
           variantConstructors
         }
-  DeclarationEnumerated (Enumerated {..}) ->
+  DeclarationEnum (Enum {..}) ->
     return . toDeclaration $
-      Enumerated
-        { enumeratedId,
-          enumeratedType,
-          enumeratedConstructors
+      Enum
+        { enumId,
+          enumType,
+          enumConstructors
         }
   DeclarationAlias (Alias {..}) ->
     return . toDeclaration $
@@ -365,6 +366,11 @@ synthTerm term = case term of
     PrimitiveNot tm -> do
       tm' <- synthCheckTerm TypeBit tm
       return $ TermPrimitive (PrimitiveNot tm') (return TypeBit)
+    PrimitiveEq tm1 tm2 -> do
+      tm1' <- synthTerm tm1
+      ty <- inferTerm tm1'
+      tm2' <- synthCheckTerm' ty tm2
+      return $ TermPrimitive (PrimitiveEq tm1' tm2') ty
   TermBlock blk () -> synthBlock blk
   TermStructure tyId fields () -> do
     ty <- lookupTypeId tyId
@@ -468,7 +474,7 @@ synthNeutral term tmId mb_args mb_cxargs =
         -- check contextual args (can't have any)
         unless (isNothing mb_cxargs) $ throwTypingError "cannot give contextual argsuments to an enum constructor" (pure term)
         -- output type
-        let tyOut = return $ TypeEnumerated enum
+        let tyOut = return $ TypeEnum enum
         return $ TermNeutral tmId Nothing Nothing tyOut
       -- TypeNewtypeConstructor
       TypeNewtypeConstructor newty -> do
@@ -585,7 +591,7 @@ unify (TypeTuple tys1) (TypeTuple tys2) = uncurry unify `traverse_` (tys1 `zip` 
 unify (TypeOptional ty1) (TypeOptional ty2) = unify ty1 ty2
 unify (TypeFunction fun1) (TypeFunction fun2) | functionId fun1 == functionId fun2 = return ()
 unify (TypeStructure struct1) (TypeStructure struct2) | structureId struct1 == structureId struct2 = return ()
-unify (TypeEnumerated enum1) (TypeEnumerated enum2) | enumeratedId enum1 == enumeratedId enum2 = return ()
+unify (TypeEnum enum1) (TypeEnum enum2) | enumId enum1 == enumId enum2 = return ()
 unify (TypeVariant varnt1) (TypeVariant varnt2) | variantId varnt1 == variantId varnt2 = return ()
 unify (TypeNewtype newty1) (TypeNewtype newty2) | newtypeId newty1 == newtypeId newty2 = return ()
 -- invalid types
