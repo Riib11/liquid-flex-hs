@@ -14,3 +14,10 @@ To get refinement type checking working with at least base types (e.g. just `int
     - [x] literals
     - [x] simple applications (no implicit parameters)
 - [ ] setup golden file test suite style
+
+
+
+- syntax changes:
+    - enum and variant constructors are always prefixed by their enum/variant
+      name, and variant constructors always require parentheses (even if has no
+      params)

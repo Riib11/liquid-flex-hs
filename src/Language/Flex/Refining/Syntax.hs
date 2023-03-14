@@ -194,9 +194,9 @@ data Constant = Constant
 
 -- TODO: structure, member, construct enum, construct variant, match
 data Term
-  = TermNamed TermId
-  | TermLiteral !Literal
-  | TermPrimitive !Primitive
+  = TermNamed TermId BaseType
+  | TermLiteral !Literal BaseType
+  | TermPrimitive !Primitive BaseType
   deriving (Eq, Show)
 
 -- TODO: try, array, tuple, int ops
