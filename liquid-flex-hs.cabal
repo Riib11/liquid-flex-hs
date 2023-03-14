@@ -25,7 +25,6 @@ source-repository head
 
 library
   exposed-modules:
-      Language.Flex.Constants
       Language.Flex.FlexBug
       Language.Flex.FlexM
       Language.Flex.Lexing

@@ -171,6 +171,9 @@ lexeme = Token.lexeme lexer
 commaSep :: Parser a -> Parser [a]
 commaSep = Token.commaSep lexer
 
+commaSep1 :: Parser a -> Parser [a]
+commaSep1 = Token.commaSep1 lexer
+
 semiSep :: Parser a -> Parser [a]
 semiSep = Token.semiSep lexer
 

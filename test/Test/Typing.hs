@@ -2,7 +2,7 @@
 module Test.Typing where
 
 import Control.Monad (unless, when)
-import Language.Flex.FlexM (runFlexM)
+import Language.Flex.FlexM (runFlexM, defaultFlexOptions)
 import Language.Flex.Parsing (parseModuleFile)
 import Language.Flex.Typing (typeModule)
 import System.IO.Unsafe (unsafePerformIO)
@@ -38,7 +38,7 @@ makeTest_procModule pass fp =
             parseModuleFile fp >>= \case
               Left err -> assertFailure (show err)
               Right mdl -> return mdl
-          runFlexM (typeModule mdl) >>= \case
+          runFlexM defaultFlexOptions (typeModule mdl) >>= \case
             Left err -> when pass $ assertFailure (render . pPrint $ err)
             Right (_mdl', _env) -> unless pass $ assertFailure "expected typing to fail"
       )

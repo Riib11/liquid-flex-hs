@@ -253,8 +253,10 @@ instance Pretty (Function ann) where
                   Just cxparams -> "giving" <+> parameters cxparams
               )
           <+> "->"
-          <+> pPrint functionOutput,
-        nest 2 $ pPrint functionBody
+          <+> pPrint functionOutput
+          <+> text "{",
+        nest 2 $ pPrint functionBody,
+        text "}"
       ]
     where
       parameters :: (Pretty a, Pretty b) => [(a, b)] -> Doc

@@ -36,7 +36,6 @@ type T = Array<Array<int32>>
 type T = Array<Array<Array<int32>>>
 
 // Tuple<"type",*>
-type T = Tuple<>
 type T = Tuple<int32>
 type T = Tuple<int32, int32>
 type T = Tuple<int32, int32, int32>

@@ -216,7 +216,7 @@ parseFunction = do
     ty <- parseType
     return (tmId, ty)
   functionContextualParameters <- optionMaybe do
-    reserved "given"
+    try $ reserved "given"
     parens $ flip sepBy comma do
       tmId <- parseContextualParameterId
       colon
@@ -281,7 +281,7 @@ parseType =
         return $ TypeArray ty,
       do
         try $ reserved "Tuple"
-        tys <- angles (commaSep parseType)
+        tys <- angles (commaSep1 parseType)
         return $ TypeTuple tys,
       do
         try $ reserved "Optional"
@@ -410,8 +410,9 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
           -- starts with «TermId»
           try do
             termId <- try parseTermId
-            termMaybeArgs <- optionMaybe . parensTryOpen $ do
-              commaSep parseTerm
+            termMaybeArgs <-
+              optionMaybe . parensTryOpen $
+                commaSep parseTerm
             termMaybeCxargs <- optionMaybe do
               try $ reserved "giving"
               parens $ commaSep parseTerm
@@ -419,7 +420,7 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
               TermNeutral
                 { termId,
                   termMaybeArgs,
-                  termMaybeCxargs,
+                  termMaybeCxargs = Nothing,
                   termAnn = ()
                 }
         ]
