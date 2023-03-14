@@ -11,6 +11,29 @@ import Prelude hiding (Enum)
 
 -- * Syntax
 
+data Syntax ann
+  = SyntaxDeclaration (Declaration ann)
+  | SyntaxType Type
+  | SyntaxTerm (Term ann)
+
+instance Pretty (Syntax ann) where
+  pPrint = \case
+    SyntaxDeclaration de -> pPrint de
+    SyntaxType ty -> pPrint ty
+    SyntaxTerm te -> pPrint te
+
+class ToSyntax a ann where
+  toSyntax :: a -> Syntax ann
+
+instance ToSyntax (Declaration ann) ann where
+  toSyntax = SyntaxDeclaration
+
+instance ToSyntax Type ann where
+  toSyntax = SyntaxType
+
+instance ToSyntax (Term ann) ann where
+  toSyntax = SyntaxTerm
+
 -- ** Idents
 
 newtype ModuleId = ModuleId String
@@ -55,42 +78,15 @@ instance Pretty (Module ann) where
 -- ** Declarations
 
 data Declaration ann
-  = DeclarationStructure (Structure ann)
-  | DeclarationNewtype (Newtype ann)
-  | DeclarationVariant (Variant ann)
-  | DeclarationEnum (Enum ann)
-  | DeclarationAlias (Alias ann)
+  = DeclarationStructure Structure
+  | DeclarationNewtype (Newtype)
+  | DeclarationVariant (Variant)
+  | DeclarationEnum (Enum)
+  | DeclarationAlias (Alias)
   | DeclarationFunction (Function ann)
   | DeclarationConstant (Constant ann)
   | DeclarationRefinedType (RefinedType ann)
   deriving (Show)
-
-class ToDeclaration a where
-  toDeclaration :: a ann -> Declaration ann
-
-instance ToDeclaration Structure where
-  toDeclaration = DeclarationStructure
-
-instance ToDeclaration Newtype where
-  toDeclaration = DeclarationNewtype
-
-instance ToDeclaration Variant where
-  toDeclaration = DeclarationVariant
-
-instance ToDeclaration Enum where
-  toDeclaration = DeclarationEnum
-
-instance ToDeclaration Alias where
-  toDeclaration = DeclarationAlias
-
-instance ToDeclaration Function where
-  toDeclaration = DeclarationFunction
-
-instance ToDeclaration Constant where
-  toDeclaration = DeclarationConstant
-
-instance ToDeclaration RefinedType where
-  toDeclaration = DeclarationRefinedType
 
 instance Pretty (Declaration ann) where
   pPrint = \case
@@ -103,23 +99,50 @@ instance Pretty (Declaration ann) where
     DeclarationConstant con -> pPrint con
     DeclarationRefinedType refnStruct -> pPrint refnStruct
 
+class ToDeclaration a ann where
+  toDeclaration :: a -> Declaration ann
+
+instance ToDeclaration Structure ann where
+  toDeclaration = DeclarationStructure
+
+instance ToDeclaration Newtype ann where
+  toDeclaration = DeclarationNewtype
+
+instance ToDeclaration Variant ann where
+  toDeclaration = DeclarationVariant
+
+instance ToDeclaration Enum ann where
+  toDeclaration = DeclarationEnum
+
+instance ToDeclaration Alias ann where
+  toDeclaration = DeclarationAlias
+
+instance ToDeclaration (Function ann) ann where
+  toDeclaration = DeclarationFunction
+
+instance ToDeclaration (Constant ann) ann where
+  toDeclaration = DeclarationConstant
+
+instance ToDeclaration (RefinedType ann) ann where
+  toDeclaration = DeclarationRefinedType
+
 -- *** Structure
 
-data Structure ann = Structure
+data Structure = Structure
   { structureId :: TypeId,
     structureIsMessage :: Bool,
-    structureExtensionId :: Maybe TypeId,
+    structureMaybeExtensionId :: Maybe TypeId,
     structureFields :: [(FieldId, Type)]
   }
   deriving (Show)
 
-instance Pretty (Structure ann) where
+instance Pretty Structure where
   pPrint (Structure {..}) =
     hsep
       [ if structureIsMessage then "message" else mempty,
         "structure",
         pPrint structureId,
-        case structureExtensionId of
+        case structureMaybeExtensionId of
           Nothing -> mempty
           Just extId -> "extends" <+> pPrint extId,
         "{"
@@ -143,25 +166,25 @@ instance Pretty (RefinedType ann) where
 
 -- *** Newtype
 
-data Newtype ann = Newtype
+data Newtype = Newtype
   { newtypeId :: TypeId,
     newtypeFieldId :: FieldId,
     newtypeType :: Type
   }
   deriving (Show)
 
-instance Pretty (Newtype ann) where
+instance Pretty (Newtype) where
   pPrint (Newtype {..}) = pPrint newtypeId <+> "=" <+> pPrint newtypeType
 
 -- *** Variant
 
-data Variant ann = Variant
+data Variant = Variant
   { variantId :: TypeId,
     variantConstructors :: [(TermId, Maybe [Type])]
   }
   deriving (Show)
 
-instance Pretty (Variant ann) where
+instance Pretty (Variant) where
   pPrint (Variant {..}) =
     vcat
       [ pPrint variantId <+> "{",
@@ -176,14 +199,14 @@ instance Pretty (Variant ann) where
 
 -- *** Enum
 
-data Enum ann = Enum
+data Enum = Enum
   { enumId :: TypeId,
     enumType :: Type,
     enumConstructors :: [(TermId, Literal)]
   }
   deriving (Show)
 
-instance Pretty (Enum ann) where
+instance Pretty (Enum) where
   pPrint (Enum {..}) =
     vcat
       [ pPrint enumId <+> pPrint enumType <+> "{",
@@ -195,13 +218,13 @@ instance Pretty (Enum ann) where
 
 -- *** Alias
 
-data Alias ann = Alias
+data Alias = Alias
   { aliasId :: TypeId,
     aliasType :: Type
   }
   deriving (Show)
 
-instance Pretty (Alias ann) where
+instance Pretty (Alias) where
   pPrint (Alias {..}) = pPrint aliasId <+> "=" <+> pPrint aliasType
 
 -- *** Function
@@ -377,13 +400,13 @@ data Type
     -- introduced during typing
     TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
   | TypeFunction (Function Type)
-  | TypeStructure (Structure Type)
-  | TypeEnum (Enum Type)
-  | TypeVariant (Variant Type)
-  | TypeNewtype (Newtype Type)
-  | TypeVariantConstuctor (Variant Type) TermId (Maybe [Type])
-  | TypeEnumConstructor (Enum Type) TermId
-  | TypeNewtypeConstructor (Newtype Type)
+  | TypeStructure Structure
+  | TypeEnum (Enum)
+  | TypeVariant (Variant)
+  | TypeNewtype (Newtype)
+  | TypeVariantConstuctor (Variant) TermId (Maybe [Type])
+  | TypeEnumConstructor (Enum) TermId
+  | TypeNewtypeConstructor (Newtype)
   deriving (Show)
 
 instance Pretty Type where

@@ -78,7 +78,7 @@ parseStructure = do
           reserved "struct" $> False
         ]
   structureId <- parseTypeId
-  structureExtensionId <- optionMaybe (reserved "extends" *> parseTypeId)
+  structureMaybeExtensionId <- optionMaybe (reserved "extends" *> parseTypeId)
   symbol_ "{"
   (refinedTypeRefinement, structureFields) <-
     first andRefinements . partitionEithers
@@ -100,7 +100,7 @@ parseStructure = do
     [ toDeclaration
         Structure
           { structureId,
-            structureExtensionId,
+            structureMaybeExtensionId,
             structureIsMessage,
             structureFields
           },

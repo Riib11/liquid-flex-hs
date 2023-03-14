@@ -211,3 +211,6 @@ angles doc = "<" <> doc <> ">"
 
 foldr' :: Foldable t => (a -> b -> b) -> t a -> b -> b
 foldr' f ta b = foldr f b ta
+
+for :: Foldable t => t a -> b -> (a -> b -> b) -> b
+for ta b f = foldr f b ta

@@ -5,7 +5,7 @@
 module Language.Flex.Typing where
 
 import Control.Category ((>>>))
-import Control.Lens (At (at), makeLenses, modifying, to, (^.))
+import Control.Lens hiding (enum) -- (At (at), makeLenses, modifying, to, (^.))
 import Control.Monad (forM, join, unless, when)
 import Control.Monad.Except (ExceptT, MonadError (throwError))
 import Control.Monad.Reader (MonadReader (ask, local), MonadTrans (lift), ReaderT, asks, foldM)
@@ -19,7 +19,7 @@ import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexLog (FlexLog), FlexM)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Syntax
-import Text.PrettyPrint.HughesPJClass
+import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Text.Printf (printf)
 import Utility
 
@@ -118,7 +118,7 @@ data TypingEnv = TypingEnv
     _envFreshUnificationVarIndex :: Int
   }
 
-data TypingError = TypingError Doc (Maybe (Term ()))
+data TypingError = TypingError Doc (Maybe (Syntax ()))
 
 makeLenses 'TypingCtx
 makeLenses 'TypingEnv
@@ -165,8 +165,8 @@ lookupTermId tmId =
     Just mty -> return mty
     Nothing -> throwTypingError ("unknown term id" <+> ticks (pPrint tmId)) Nothing
 
-throwTypingError :: Doc -> Maybe (Term ()) -> TypingM b
-throwTypingError err mb_tm = throwError $ TypingError err mb_tm
+throwTypingError :: Doc -> Maybe (Syntax ()) -> TypingM b
+throwTypingError err mb_syn = throwError $ TypingError err mb_syn
 
 tellTypingLog :: Doc -> TypingM ()
 tellTypingLog body =
@@ -179,10 +179,46 @@ tellTypingLog body =
 -- ** Top TypingCtx and TypingEnv
 
 topTypingCtx :: Module () -> TypingCtx
-topTypingCtx = undefined
+topTypingCtx Module {..} =
+  for
+    moduleDeclarations
+    TypingCtx
+      { _ctxTypes = mempty,
+        _ctxTerms = mempty,
+        _ctxCxparamNewtypes = mempty,
+        _ctxCxparams = mempty
+      }
+    \case
+      DeclarationStructure struct@Structure {..} ->
+        -- ctxTypes %~ Map.insert structureId do
+        --   struct' <- extendStructure struct
+        --   return $ TypeStructure struct'
+        error "TODO"
+      DeclarationNewtype newty@Newtype {..} ->
+        comps
+          [ ctxTypes %~ Map.insert newtypeId (TypeNewtype newty),
+            ctxTerms %~ Map.insert (fromFieldIdToTermId newtypeFieldId) (return $ TypeNewtypeConstructor (error "TODO"))
+          ]
+      DeclarationVariant Variant {..} -> undefined
+      DeclarationEnum Enum {..} -> undefined
+      DeclarationAlias Alias {..} -> undefined
+      DeclarationFunction Function {..} -> undefined
+      DeclarationConstant Constant {..} -> undefined
+      DeclarationRefinedType RefinedType {..} -> undefined
 
 topTypingEnv :: Module () -> TypingEnv
-topTypingEnv = undefined
+topTypingEnv = error "TODO"
+
+-- | Fill structure fields with inherited fields
+extendStructure :: Structure -> TypingM Structure
+extendStructure struct = do
+  case structureMaybeExtensionId struct of
+    Nothing -> return struct
+    Just extId ->
+      lookupTypeId extId >>= \case
+        TypeStructure struct' ->
+          return struct {structureFields = structureFields struct <> structureFields struct'}
+        _ -> throwTypingError "cannot extend a structure by a non-structure" (pure $ toSyntax $ toDeclaration @_ @() $ struct)
 
 -- ** Processing
 
@@ -192,13 +228,13 @@ procModule (Module {..}) = do
   return $ Module {moduleId, moduleDeclarations = decls}
 
 procDeclaration :: Declaration () -> TypingM (Declaration Type)
-procDeclaration = \case
+procDeclaration decl = case decl of
   DeclarationStructure (Structure {..}) ->
     return . toDeclaration $
       Structure
         { structureId,
           structureIsMessage,
-          structureExtensionId,
+          structureMaybeExtensionId,
           structureFields
         }
   DeclarationNewtype (Newtype {..}) ->
@@ -271,8 +307,8 @@ procDeclaration = \case
             (fromFieldIdToTermId $ newtypeFieldId newty)
             (return $ newtypeType newty)
             m_rfn
-        ty -> throwTypingError ("cannot declare refinement for" <+> pPrint ty <+> "; can only refine structures and newtypes") Nothing
-    return . toDeclaration $
+        ty -> throwTypingError ("cannot declare refinement for" <+> pPrint ty <+> "; can only refine structures and newtypes") (pure . toSyntax $ decl)
+    return . DeclarationRefinedType $
       RefinedType
         { refinedTypeId,
           refinedTypeRefinement = rfn
@@ -376,20 +412,20 @@ synthTerm term = case term of
     ty <- lookupTypeId tyId
     struct <- case ty of
       TypeStructure struct -> return struct
-      _ -> throwTypingError ("expected" <+> ticks (pPrint tyId) <+> " to be a structure type id") (pure term)
+      _ -> throwTypingError ("expected" <+> ticks (pPrint tyId) <+> " to be a structure type id") (pure . toSyntax $ term)
     fields' <- forM fields \(fieldId, tm) ->
       case lookup fieldId (structureFields struct) of
-        Nothing -> throwTypingError ("unknown field" <+> pPrint fieldId <+> " of the structure" <+> ticks (pPrint tyId)) (pure term)
+        Nothing -> throwTypingError ("unknown field" <+> pPrint fieldId <+> " of the structure" <+> ticks (pPrint tyId)) (pure . toSyntax $ term)
         Just tyField -> (fieldId,) <$> synthCheckTerm tyField tm
-    return $ TermStructure tyId fields' (normType ty)
+    return $ TermStructure tyId fields' (return $ TypeStructure struct)
   TermMember tm fieldId () -> do
     tm' <- synthTerm tm
     struct <-
       inferTerm tm' >>>= \case
         TypeStructure struct -> return struct
-        _ -> throwTypingError ("in order to access the field" <+> pPrint fieldId <+> ", expected" <+> pPrint tm <+> " to have a structure type") (pure term)
+        _ -> throwTypingError ("in order to access the field" <+> pPrint fieldId <+> ", expected" <+> pPrint tm <+> " to have a structure type") (pure . toSyntax $ term)
     ty <- case fieldId `lookup` structureFields struct of
-      Nothing -> throwTypingError ("attempted to access the field" <+> pPrint fieldId <+> ", but it has structure type" <+> pPrint (structureId struct) <+> " which does not have that field") (pure term)
+      Nothing -> throwTypingError ("attempted to access the field" <+> pPrint fieldId <+> ", but it has structure type" <+> pPrint (structureId struct) <+> " which does not have that field") (pure . toSyntax $ term)
       Just ty -> return (normType ty)
     return $ TermMember tm' fieldId ty
   TermNeutral tmId mb_args mb_cxargs () -> synthNeutral term tmId mb_args mb_cxargs
@@ -403,7 +439,7 @@ synthNeutral term tmId mb_args mb_cxargs =
       -- TypeFunction
       TypeFunction func -> do
         args <- case mb_args of
-          Nothing -> throwTypingError "a function application must have arguments" (pure term)
+          Nothing -> throwTypingError "a function application must have arguments" (pure . toSyntax $ term)
           Just args -> return args
         -- check args
         mb_args' <- pure <$> uncurry synthCheckTerm `traverse` ((snd <$> functionParameters func) `zip` args)
@@ -419,18 +455,18 @@ synthNeutral term tmId mb_args mb_cxargs =
                 Just cxparams ->
                   fmap Just . forM cxparams $ \(tyIdCxparam, tmIdCxparam) ->
                     asks (^. ctxCxparams . at tyIdCxparam) >>= \case
-                      Nothing -> throwTypingError ("could not infer the implicit contextual argument" <+> ticks (pPrint tmIdCxparam)) (Just term)
+                      Nothing -> throwTypingError ("could not infer the implicit contextual argument" <+> ticks (pPrint tmIdCxparam)) (pure . toSyntax $ term)
                       Just tmIdCxarg -> return $ TermNeutral tmIdCxarg Nothing Nothing (normType $ TypeNamed tyIdCxparam)
             Just cxargs -> do
               case functionContextualParameters func of
                 -- actually, no cxparams!
-                Nothing -> throwTypingError "attempted to give explicit contextual arguments to a function that does not have contextual parameters" (pure term)
+                Nothing -> throwTypingError "attempted to give explicit contextual arguments to a function that does not have contextual parameters" (pure . toSyntax $ term)
                 Just cxparams -> do
                   cxargs1 <- synthTerm `traverse` cxargs
                   newtyIds_cxargs <- forM cxargs1 \tm ->
                     inferTerm tm >>>= \case
                       TypeNewtype newty -> return (newtypeId newty, tm)
-                      _ -> throwTypingError "each explicit contextual argument must be a newtype" (Just term)
+                      _ -> throwTypingError "each explicit contextual argument must be a newtype" (pure . toSyntax $ term)
                   -- cxargs' is in the same order as cxparams
                   cxargs' <-
                     reverse . snd
@@ -438,7 +474,7 @@ synthNeutral term tmId mb_args mb_cxargs =
                         ( \(newtyIds_cxargs1, cxargs') newtyId -> do
                             -- extract the cxarg that has the right newtype
                             case newtyId `lookup` newtyIds_cxargs1 of
-                              Nothing -> throwTypingError ("missing explicit contextual argument: " <+> pPrint newtyId) (pure term)
+                              Nothing -> throwTypingError ("missing explicit contextual argument: " <+> pPrint newtyId) (pure . toSyntax $ term)
                               Just cxarg -> return (newtyIds_cxargs, cxarg : cxargs')
                         )
                         (newtyIds_cxargs, [])
@@ -454,25 +490,25 @@ synthNeutral term tmId mb_args mb_cxargs =
           -- expects no arguments
           Nothing -> do
             case mb_args of
-              Just _ -> throwTypingError "the variant constructor expects no arguments, but some were given" (pure term)
+              Just _ -> throwTypingError "the variant constructor expects no arguments, but some were given" (pure . toSyntax $ term)
               Nothing -> return Nothing
           -- expects some arguments
           Just tyParams -> do
             case mb_args of
-              Nothing -> throwTypingError "the variant constructor expects some arguments, but none were given" (pure term)
+              Nothing -> throwTypingError "the variant constructor expects some arguments, but none were given" (pure . toSyntax $ term)
               Just args ->
                 pure <$> uncurry synthCheckTerm `traverse` (tyParams `zip` args)
         -- check contextual args (can't have any)
-        unless (isNothing mb_cxargs) $ throwTypingError "a variant constructor can't have contextual arguments" (pure term)
+        unless (isNothing mb_cxargs) $ throwTypingError "a variant constructor can't have contextual arguments" (pure . toSyntax $ term)
         -- output type
         let tyOut = return $ TypeVariant varnt
         return $ TermNeutral tmId mb_args' Nothing tyOut
       -- TypeEnumConstructor
       TypeEnumConstructor enum _constrId -> do
         -- check arguments (can't have any)
-        unless (isNothing mb_args) $ throwTypingError "cannot apply an enum constructor" (pure term)
+        unless (isNothing mb_args) $ throwTypingError "cannot apply an enum constructor" (pure . toSyntax $ term)
         -- check contextual args (can't have any)
-        unless (isNothing mb_cxargs) $ throwTypingError "cannot give contextual argsuments to an enum constructor" (pure term)
+        unless (isNothing mb_cxargs) $ throwTypingError "cannot give contextual argsuments to an enum constructor" (pure . toSyntax $ term)
         -- output type
         let tyOut = return $ TypeEnum enum
         return $ TermNeutral tmId Nothing Nothing tyOut
@@ -482,17 +518,17 @@ synthNeutral term tmId mb_args mb_cxargs =
         mb_args' <- case mb_args of
           Just [arg] ->
             pure . pure <$> synthCheckTerm (newtypeType newty) arg
-          Just _ -> throwTypingError "a newtype constructor requires exactly one argument" (Just term)
-          Nothing -> throwTypingError "a newtype constructor must be given an argument" (Just term)
-        unless (isNothing mb_cxargs) $ throwTypingError "a newtype constructor cannot be given contextual arguments" (pure term)
+          Just _ -> throwTypingError "a newtype constructor requires exactly one argument" (pure . toSyntax $ term)
+          Nothing -> throwTypingError "a newtype constructor must be given an argument" (pure . toSyntax $ term)
+        unless (isNothing mb_cxargs) $ throwTypingError "a newtype constructor cannot be given contextual arguments" (pure . toSyntax $ term)
         -- output type
         let tyOut = return $ TypeNewtype newty
         return $ TermNeutral tmId mb_args' Nothing tyOut
       -- non-functional type
       _ -> do
-        unless (isNothing mb_args) $ throwTypingError ("cannot give arguments to a term of type" <+> pPrint type_) (pure term)
+        unless (isNothing mb_args) $ throwTypingError ("cannot give arguments to a term of type" <+> pPrint type_) (pure . toSyntax $ term)
 
-        unless (isNothing mb_cxargs) $ throwTypingError ("cannot give contextual argument to a term of type" <+> pPrint type_) (pure term)
+        unless (isNothing mb_cxargs) $ throwTypingError ("cannot give contextual argument to a term of type" <+> pPrint type_) (pure . toSyntax $ term)
         return $ TermNeutral tmId Nothing Nothing mtype
 
 synthBlock :: Block () -> TypingM (Term TypeM)
@@ -537,7 +573,7 @@ normType type_ = case type_ of
   TypeArray ty -> TypeArray <$> normType ty
   TypeTuple tys -> TypeTuple <$> normType `traverse` tys
   TypeOptional ty -> TypeOptional <$> normType ty
-  TypeNamed tyId -> normType =<< lookupTypeId tyId
+  TypeNamed tyId -> lookupTypeId tyId
   TypeUnifyVar uv _ ->
     gets (^. envUnification . at uv) >>= \case
       Nothing -> return type_
