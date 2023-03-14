@@ -32,7 +32,9 @@ makeTest_parseModule fp =
   TestLabel
     ("parsing module file: " <> fp)
     . TestCase
-    $ ( parseModuleFile fp >>= \case
-          Left err -> assertFailure (show err)
-          Right _ -> return ()
+    $ ( do
+          putStrLn ""
+          parseModuleFile fp >>= \case
+            Left err -> assertFailure (show err)
+            Right _ -> return ()
       )

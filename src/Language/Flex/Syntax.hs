@@ -150,7 +150,7 @@ instance Pretty Structure where
           Just extId -> "extends" <+> pPrint extId,
         "{"
       ]
-      $$ ( nest 4 . vcat $
+      $$ ( nest 2 . vcat $
              structureFields <&> \(fieldId, ty) ->
                (pPrint fieldId <+> colon <+> pPrint ty) <> ";"
          )
@@ -191,7 +191,7 @@ instance Pretty Variant where
   pPrint (Variant {..}) =
     vcat
       [ pPrint variantId <+> "{",
-        nest 4 . vcat $
+        nest 2 . vcat $
           variantConstructors <&> \(tmId, mb_tys) ->
             pPrint tmId
               <> case mb_tys of
@@ -213,7 +213,7 @@ instance Pretty Enum where
   pPrint (Enum {..}) =
     vcat
       [ pPrint enumId <+> pPrint enumType <+> "{",
-        nest 4 . vcat $
+        nest 2 . vcat $
           enumConstructors <&> \(tmId, lit) ->
             pPrint tmId <+> "=" <+> pPrint lit,
         "}"
@@ -254,7 +254,7 @@ instance Pretty (Function ann) where
               )
           <+> "->"
           <+> pPrint functionOutput,
-        nest 4 $ pPrint functionBody
+        nest 2 $ pPrint functionBody
       ]
     where
       parameters :: (Pretty a, Pretty b) => [(a, b)] -> Doc
@@ -301,7 +301,7 @@ instance Pretty (Term ann) where
   pPrint = \case
     TermLiteral {termLiteral} -> pPrint termLiteral
     TermPrimitive {termPrimitive} -> pPrint termPrimitive
-    TermBlock {termBlock = (stmts, tm)} -> "{" $$ nest 4 (vcat $ (pPrint <$> stmts) ++ [pPrint tm]) $$ "}"
+    TermBlock {termBlock = (stmts, tm)} -> "{" $$ nest 2 (vcat $ (pPrint <$> stmts) ++ [pPrint tm]) $$ "}"
     TermStructure {termStructureId, termFields} ->
       pPrint termStructureId
         <> "{"
@@ -485,7 +485,7 @@ data UnifyVar = UnifyVar String Int
   deriving (Eq, Ord, Show)
 
 instance Pretty UnifyVar where
-  pPrint (UnifyVar str i) = "?" <> text str <> pPrint i
+  pPrint (UnifyVar str i) = "?" <> brackets (text str) <> text "#" <> pPrint i
 
 data UnifyConstraint
   = CastedFrom Type
@@ -511,7 +511,7 @@ instance Pretty Literal where
     LiteralFloat x -> pPrint x
     LiteralBit b -> pPrint b
     LiteralChar c -> quotes $ pPrint c
-    LiteralString s -> doubleQuotes $ pPrint s
+    LiteralString s -> doubleQuotes $ text s
 
 -- ** Refinement
 

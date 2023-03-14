@@ -12,8 +12,8 @@ assertRelationPretty label rel expect synth =
   unless (rel expect synth) do
     assertFailure . render $
       "the actual result is"
-        $$ nest 4 (pPrint synth)
+        $$ nest 2 (pPrint synth)
         $$ "which is not"
         <+> text label
         <+> "to the expected result:"
-        $$ nest 4 (pPrint expect)
+        $$ nest 2 (pPrint expect)

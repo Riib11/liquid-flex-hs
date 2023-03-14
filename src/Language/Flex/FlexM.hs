@@ -5,7 +5,7 @@ module Language.Flex.FlexM where
 import Control.Lens
 import Control.Monad.Writer (MonadWriter, WriterT (runWriterT))
 import qualified Control.Monad.Writer.Class as Writer
-import Text.PrettyPrint.HughesPJ
+import Text.PrettyPrint.HughesPJ hiding ((<>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 import Prelude hiding (log)
 
@@ -31,6 +31,5 @@ tell log = Writer.tell [log]
 
 instance Pretty FlexLog where
   pPrint FlexLog {..} =
-    text "[>]"
-      <+> logLabel
-      $$ nest 4 logBody
+    let str = render $ brackets logLabel
+     in text str $$ nest (length str + 1) logBody

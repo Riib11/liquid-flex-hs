@@ -123,9 +123,9 @@ data TypingError = TypingError Doc (Maybe (Syntax ()))
 
 instance Pretty TypingError where
   pPrint (TypingError msg mb_src) =
-    text "[!] typing error:"
+    text "typing error:"
       <+> msg
-      $$ maybe mempty (\src -> nest 4 $ pPrint src) mb_src
+      $$ maybe mempty (nest 2 . pPrint) mb_src
 
 makeLenses 'TypingCtx
 makeLenses 'TypingEnv
@@ -682,7 +682,10 @@ satisfiesUnifyConstraint ty = \case
     (TypeNumber numty1 _size1, TypeNumber numty2 _size2)
       | all (`elem` [TypeInt, TypeUInt]) [numty1, numty2] -> True
       | all (`elem` [TypeFloat]) [numty1, numty2] -> True
-    uc -> FlexBug.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
+    (TypeUnifyVar _ mb_uc, _) -> maybe True (satisfiesUnifyConstraint ty') mb_uc
+    _uc ->
+      -- FlexBug.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
+      False
 
 -- | <expected type> ~? <synthesized type>
 unify :: Type -> Type -> TypingM ()
@@ -721,7 +724,7 @@ substUnifyVar ty1 ty2 uv mb_uc ty = do
   case mb_uc of
     Nothing -> return ()
     -- check if ty satisfies the constraints uc
-    Just uc -> unless (ty `satisfiesUnifyConstraint` uc) $ throwUnifyError ty1 ty2 (Just $ "does not satisfy unification constraint:" <+> pPrint uc)
+    Just uc -> unless (ty `satisfiesUnifyConstraint` uc) $ throwUnifyError ty1 ty2 (Just $ "it does not satisfy unification constraint:" <+> pPrint uc)
   modifying (envUnification . at uv) \case
     Just ty' -> FlexBug.throw $ FlexLog "typing" $ "trying to substitute" <+> ticks (pPrint uv) <+> "for" <+> ticks (pPrint ty) <+> ", but it's already be substituted for" <+> pPrint ty'
     Nothing -> Just ty
@@ -730,9 +733,9 @@ throwUnifyError :: Type -> Type -> Maybe Doc -> TypingM a
 throwUnifyError tyExpect tySynth mb_msg =
   throwTypingError
     ( "failed to unify synthesized type"
-        $$ nest 4 (pPrint tySynth)
+        $$ nest 2 (pPrint tySynth)
         $$ "with expected type"
-        $$ nest 4 (pPrint tyExpect)
+        $$ nest 2 (pPrint tyExpect)
         $$ maybe mempty ("because" <+>) mb_msg
     )
     Nothing
