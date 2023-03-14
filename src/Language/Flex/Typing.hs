@@ -105,7 +105,7 @@ type TypeM = TypingM Type
 
 -- ** TypingM
 
-type TypingM = (StateT TypingEnv (ReaderT TypingCtx (ExceptT TypingError FlexM)))
+type TypingM = StateT TypingEnv (ReaderT TypingCtx (ExceptT TypingError FlexM))
 
 data TypingCtx = TypingCtx
   { _ctxTypes :: Map.Map TypeId TypeM,

@@ -29,6 +29,13 @@ library
       Language.Flex.FlexM
       Language.Flex.Lexing
       Language.Flex.Parsing
+      Language.Flex.Refining
+      Language.Flex.Refining.Constraint
+      Language.Flex.Refining.Embedding
+      Language.Flex.Refining.Query
+      Language.Flex.Refining.RefiningM
+      Language.Flex.Refining.Syntax
+      Language.Flex.Refining.Types
       Language.Flex.Syntax
       Language.Flex.Typing
       PrettyShow
@@ -57,6 +64,7 @@ library
       FlexibleContexts
       RecordWildCards
       BangPatterns
+      GeneralizedNewtypeDeriving
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports
   build-depends:
       HUnit
@@ -102,6 +110,7 @@ executable liquid-flex-hs-exe
       FlexibleContexts
       RecordWildCards
       BangPatterns
+      GeneralizedNewtypeDeriving
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
@@ -153,6 +162,7 @@ test-suite liquid-flex-hs-test
       FlexibleContexts
       RecordWildCards
       BangPatterns
+      GeneralizedNewtypeDeriving
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit

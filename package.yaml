@@ -70,6 +70,7 @@ default-extensions:
 - FlexibleContexts
 - RecordWildCards
 - BangPatterns
+- GeneralizedNewtypeDeriving
 
 library:
   source-dirs: src

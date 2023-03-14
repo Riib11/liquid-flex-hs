@@ -505,7 +505,7 @@ data Literal
   | LiteralBit Bool
   | LiteralChar Char
   | LiteralString String
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty Literal where
   pPrint = \case
