@@ -260,7 +260,7 @@ data Term ann
   | TermBlock {termBlock :: Block ann, termAnn :: ann}
   | TermStructure {termStructureId :: TypeId, termFields :: [(FieldId, Term ann)], termAnn :: ann}
   | TermMember {termTerm :: Term ann, termFieldId :: FieldId, termAnn :: ann}
-  | TermNeutral {termId :: TermId, termArgs :: Maybe [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
+  | TermNeutral {termId :: TermId, termMaybeArgs :: Maybe [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
   | TermAscribe {termTerm :: Term ann, termType :: Type, termAnn :: ann}
   | TermMatch {termTerm :: Term ann, termBranches :: Branches ann, termAnn :: ann}
   deriving (Show, Functor, Foldable, Traversable)
@@ -284,9 +284,9 @@ instance Pretty (Term ann) where
         <> "}"
     TermMember {termTerm, termFieldId} ->
       pPrint termTerm <> "." <> pPrint termFieldId
-    TermNeutral {termId, termArgs, termMaybeCxargs} ->
+    TermNeutral {termId, termMaybeArgs, termMaybeCxargs} ->
       ( pPrint termId
-          <> ( case termArgs of
+          <> ( case termMaybeArgs of
                  Nothing -> mempty
                  Just args -> parens . hsep . punctuate comma $ pPrint <$> args
              )
@@ -321,6 +321,7 @@ data Primitive ann
   | PrimitiveAnd (Term ann) (Term ann)
   | PrimitiveOr (Term ann) (Term ann)
   | PrimitiveNot (Term ann)
+  | PrimitiveEq (Term ann) (Term ann)
   deriving (Show, Functor, Foldable, Traversable)
 
 instance Pretty (Primitive ann) where
@@ -454,8 +455,8 @@ instance Pretty UnifyConstraint where
 
 data Literal
   = LiteralInteger Integer
-  | LiteralFloat Float
-  | LiteralBool Bool
+  | LiteralFloat Double
+  | LiteralBit Bool
   | LiteralChar Char
   | LiteralString String
   deriving (Show)
@@ -464,7 +465,7 @@ instance Pretty Literal where
   pPrint = \case
     LiteralInteger n -> pPrint n
     LiteralFloat x -> pPrint x
-    LiteralBool b -> pPrint b
+    LiteralBit b -> pPrint b
     LiteralChar c -> quotes $ pPrint c
     LiteralString s -> doubleQuotes $ pPrint s
 
@@ -474,7 +475,7 @@ newtype Refinement ann = Refinement (Term ann)
   deriving (Show, Functor, Traversable, Foldable)
 
 trueRefinement :: Refinement ()
-trueRefinement = Refinement (TermLiteral (LiteralBool True) ())
+trueRefinement = Refinement (TermLiteral (LiteralBit True) ())
 
 andRefinement :: Refinement () -> Refinement () -> Refinement ()
 andRefinement (Refinement tm1) (Refinement tm2) = Refinement (TermPrimitive (PrimitiveAnd tm1 tm2) ())

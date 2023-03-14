@@ -642,6 +642,6 @@ typeLiteral :: Literal -> TypingM TypeM
 typeLiteral = \case
   LiteralInteger _ -> freshTypeUnfiyVar "literal integer" . pure $ CastedFrom $ TypeNumber TypeInt 32
   LiteralFloat _ -> freshTypeUnfiyVar "literal float" . pure $ CastedFrom $ TypeNumber TypeFloat 64
-  LiteralBool _ -> return . return $ TypeBit
+  LiteralBit _ -> return . return $ TypeBit
   LiteralChar _ -> return . return $ TypeChar
   LiteralString _ -> return . return $ TypeArray TypeChar

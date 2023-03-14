@@ -7,6 +7,7 @@ import Control.Monad
 import Data.Text (Text, pack)
 import Text.Parsec
 import qualified Text.Parsec.Token as Token
+import Utility
 import Prelude hiding (lex)
 
 -- ** parser state
@@ -139,3 +140,13 @@ symbol_ = void . symbol
 
 lexeme :: Parser a -> Parser a
 lexeme = Token.lexeme lexer
+
+commaSep :: Parser a -> Parser [a]
+commaSep = Token.commaSep lexer
+
+bitLiteral :: Parser Bool
+bitLiteral =
+  choice
+    [ symbol_ "true" $> True,
+      symbol_ "false" $> False
+    ]
