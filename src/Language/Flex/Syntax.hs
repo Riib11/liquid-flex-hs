@@ -63,6 +63,9 @@ instance Pretty FieldId where
 fromFieldIdToTermId :: FieldId -> TermId
 fromFieldIdToTermId (FieldId x) = TermId x
 
+fromNewtypeIdToTermId :: TypeId -> TermId
+fromNewtypeIdToTermId (TypeId x) = TermId x
+
 -- ** Module
 
 data Module ann = Module
@@ -79,10 +82,10 @@ instance Pretty (Module ann) where
 
 data Declaration ann
   = DeclarationStructure Structure
-  | DeclarationNewtype (Newtype)
-  | DeclarationVariant (Variant)
-  | DeclarationEnum (Enum)
-  | DeclarationAlias (Alias)
+  | DeclarationNewtype Newtype
+  | DeclarationVariant Variant
+  | DeclarationEnum Enum
+  | DeclarationAlias Alias
   | DeclarationFunction (Function ann)
   | DeclarationConstant (Constant ann)
   | DeclarationRefinedType (RefinedType ann)
@@ -173,7 +176,7 @@ data Newtype = Newtype
   }
   deriving (Show)
 
-instance Pretty (Newtype) where
+instance Pretty Newtype where
   pPrint (Newtype {..}) = pPrint newtypeId <+> "=" <+> pPrint newtypeType
 
 -- *** Variant
@@ -184,7 +187,7 @@ data Variant = Variant
   }
   deriving (Show)
 
-instance Pretty (Variant) where
+instance Pretty Variant where
   pPrint (Variant {..}) =
     vcat
       [ pPrint variantId <+> "{",
@@ -206,7 +209,7 @@ data Enum = Enum
   }
   deriving (Show)
 
-instance Pretty (Enum) where
+instance Pretty Enum where
   pPrint (Enum {..}) =
     vcat
       [ pPrint enumId <+> pPrint enumType <+> "{",
@@ -224,7 +227,7 @@ data Alias = Alias
   }
   deriving (Show)
 
-instance Pretty (Alias) where
+instance Pretty Alias where
   pPrint (Alias {..}) = pPrint aliasId <+> "=" <+> pPrint aliasType
 
 -- *** Function
@@ -264,7 +267,8 @@ instance Pretty (Function ann) where
 
 data Constant ann = Constant
   { constantId :: TermId,
-    constantTerm :: Term ann
+    constantTerm :: Term ann,
+    constantType :: Type
   }
   deriving (Show)
 
@@ -399,14 +403,23 @@ data Type
   | -- the types below cannot be written directly by the user; they are only
     -- introduced during typing
     TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
-  | TypeFunction (Function Type)
+  | TypeFunction FunctionType
   | TypeStructure Structure
-  | TypeEnum (Enum)
-  | TypeVariant (Variant)
-  | TypeNewtype (Newtype)
-  | TypeVariantConstuctor (Variant) TermId (Maybe [Type])
-  | TypeEnumConstructor (Enum) TermId
-  | TypeNewtypeConstructor (Newtype)
+  | TypeEnum Enum
+  | TypeVariant Variant
+  | TypeNewtype Newtype
+  | TypeVariantConstuctor Variant TermId (Maybe [Type])
+  | TypeEnumConstructor Enum TermId
+  | TypeNewtypeConstructor Newtype
+  deriving (Show)
+
+data FunctionType = FunctionType
+  { functionTypeId :: TermId,
+    functionTypeIsTransform :: Bool,
+    functionTypeParameters :: [(TermId, Type)],
+    functionTypeContextualParameters :: Maybe [(TypeId, TermId)],
+    functionTypeOutput :: Type
+  }
   deriving (Show)
 
 instance Pretty Type where
@@ -421,15 +434,7 @@ instance Pretty Type where
     TypeUnifyVar uv mb_uc -> case mb_uc of
       Nothing -> pPrint uv
       Just uc -> pPrint uv <> "{" <> pPrint uc <> "}"
-    TypeFunction func ->
-      hsep
-        [ pPrint (functionId func),
-          if functionIsTransform func then "transform" else mempty,
-          parameters $ functionParameters func,
-          case functionContextualParameters func of
-            Nothing -> mempty
-            Just cxparams -> "given" <+> parameters cxparams
-        ]
+    TypeFunction funty -> pPrint funty
     TypeStructure struct -> pPrint (structureId struct)
     TypeEnum enum -> pPrint (enumId enum)
     TypeVariant varnt -> pPrint (variantId varnt)
@@ -443,6 +448,20 @@ instance Pretty Type where
       pPrint (enumId enum) <> "." <> pPrint constrId
     TypeNewtypeConstructor newty ->
       pPrint (newtypeId newty)
+    where
+      tuple :: [Doc] -> Doc
+      tuple = parens . hsep . punctuate comma
+
+instance Pretty FunctionType where
+  pPrint FunctionType {..} =
+    hsep
+      [ pPrint functionTypeId,
+        if functionTypeIsTransform then "transform" else mempty,
+        parameters $ functionTypeParameters,
+        case functionTypeContextualParameters of
+          Nothing -> mempty
+          Just cxparams -> "given" <+> parameters cxparams
+      ]
     where
       parameters :: (Pretty a, Pretty b) => [(a, b)] -> Doc
       parameters params = tuple $ params <&> \(a, b) -> pPrint a <+> colon <+> pPrint b

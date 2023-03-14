@@ -1,15 +1,16 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 {-# HLINT ignore "Use lambda-case" #-}
+{-# HLINT ignore "Use ++" #-}
 
 module Language.Flex.Typing where
 
 import Control.Category ((>>>))
-import Control.Lens hiding (enum) -- (At (at), makeLenses, modifying, to, (^.))
+import Control.Lens hiding (enum, (<&>)) -- (At (at), makeLenses, modifying, to, (^.))
 import Control.Monad (forM, join, unless, when)
-import Control.Monad.Except (ExceptT, MonadError (throwError))
-import Control.Monad.Reader (MonadReader (ask, local), MonadTrans (lift), ReaderT, asks, foldM)
-import Control.Monad.State (StateT, gets)
+import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
+import Control.Monad.Reader (MonadReader (ask, local), MonadTrans (lift), ReaderT (runReaderT), asks, foldM)
+import Control.Monad.State (StateT (runStateT), gets)
 import Data.Bifunctor (Bifunctor (second))
 import Data.Foldable (traverse_)
 import qualified Data.Map as Map
@@ -103,7 +104,7 @@ type TypeM = TypingM Type
 
 -- ** TypingM
 
-type TypingM = ExceptT TypingError (StateT TypingEnv (ReaderT TypingCtx FlexM))
+type TypingM = (StateT TypingEnv (ReaderT TypingCtx (ExceptT TypingError FlexM)))
 
 data TypingCtx = TypingCtx
   { _ctxTypes :: Map.Map TypeId Type,
@@ -119,6 +120,12 @@ data TypingEnv = TypingEnv
   }
 
 data TypingError = TypingError Doc (Maybe (Syntax ()))
+
+instance Pretty TypingError where
+  pPrint (TypingError msg mb_src) =
+    text "[!] typing error:"
+      <+> msg
+      $$ maybe mempty (\src -> nest 4 $ pPrint src) mb_src
 
 makeLenses 'TypingCtx
 makeLenses 'TypingEnv
@@ -165,7 +172,7 @@ lookupTermId tmId =
     Just mty -> return mty
     Nothing -> throwTypingError ("unknown term id" <+> ticks (pPrint tmId)) Nothing
 
-throwTypingError :: Doc -> Maybe (Syntax ()) -> TypingM b
+throwTypingError :: MonadError TypingError m => Doc -> Maybe (Syntax ()) -> m b
 throwTypingError err mb_syn = throwError $ TypingError err mb_syn
 
 tellTypingLog :: Doc -> TypingM ()
@@ -178,9 +185,10 @@ tellTypingLog body =
 
 -- ** Top TypingCtx and TypingEnv
 
-topTypingCtx :: Module () -> TypingCtx
-topTypingCtx Module {..} =
-  for
+topTypingCtx :: forall m. MonadError TypingError m => Module () -> m TypingCtx
+topTypingCtx Module {..} = do
+  let structs = undefined :: Map.Map TypeId Structure -- TODO:
+  foldlM'
     moduleDeclarations
     TypingCtx
       { _ctxTypes = mempty,
@@ -188,37 +196,99 @@ topTypingCtx Module {..} =
         _ctxCxparamNewtypes = mempty,
         _ctxCxparams = mempty
       }
-    \case
-      DeclarationStructure struct@Structure {..} ->
-        -- ctxTypes %~ Map.insert structureId do
-        --   struct' <- extendStructure struct
-        --   return $ TypeStructure struct'
-        error "TODO"
-      DeclarationNewtype newty@Newtype {..} ->
-        comps
-          [ ctxTypes %~ Map.insert newtypeId (TypeNewtype newty),
-            ctxTerms %~ Map.insert (fromFieldIdToTermId newtypeFieldId) (return $ TypeNewtypeConstructor (error "TODO"))
-          ]
-      DeclarationVariant Variant {..} -> undefined
-      DeclarationEnum Enum {..} -> undefined
-      DeclarationAlias Alias {..} -> undefined
-      DeclarationFunction Function {..} -> undefined
-      DeclarationConstant Constant {..} -> undefined
-      DeclarationRefinedType RefinedType {..} -> undefined
+    \ctx decl -> do
+      let addType :: TypeId -> Type -> TypingCtx -> m TypingCtx
+          addType tyId ty ctx' = case ctx' ^. ctxTypes . at tyId of
+            Just _ -> throwTypingError ("conflicting definitions of type:" <+> ticks (pPrint tyId)) (pure . toSyntax $ decl)
+            Nothing -> return $ ctx' & ctxTypes . at tyId ?~ ty
 
-topTypingEnv :: Module () -> TypingEnv
-topTypingEnv = error "TODO"
+      let addTerm :: TermId -> TypeM -> TypingCtx -> m TypingCtx
+          addTerm tmId ty ctx' = case ctx' ^. ctxTerms . at tmId of
+            Nothing -> return $ ctx' & ctxTerms . at tmId ?~ ty
+            Just _ -> throwTypingError ("conflicting definitions of term:" <+> ticks (pPrint tmId)) (pure . toSyntax $ decl)
+
+      case decl of
+        DeclarationStructure struct@Structure {..} -> do
+          struct' <- inlineStructureExtension structs [] struct
+          (ctx &) $
+            addType structureId (TypeStructure struct')
+        DeclarationNewtype newty@Newtype {..} ->
+          (ctx &) . compsM $
+            [ addType newtypeId (TypeNewtype newty),
+              addTerm (fromNewtypeIdToTermId newtypeId) (return (TypeNewtypeConstructor newty))
+            ]
+        DeclarationVariant varnt@Variant {..} ->
+          (ctx &) . compsM . concat $
+            [ [addType variantId (TypeVariant varnt)],
+              variantConstructors <&> \(constrId, mb_tyParams) ->
+                addTerm constrId (return (TypeVariantConstuctor varnt constrId mb_tyParams))
+            ]
+        DeclarationEnum enum@Enum {..} ->
+          (ctx &) . compsM . concat $
+            [ [addType enumId (TypeEnum enum)],
+              enumConstructors <&> \(constrId, _) ->
+                addTerm constrId (return (TypeEnumConstructor enum constrId))
+            ]
+        DeclarationAlias Alias {..} ->
+          (ctx &) $
+            addType aliasId aliasType
+        DeclarationFunction Function {..} -> do
+          let funty =
+                FunctionType
+                  { functionTypeId = functionId,
+                    functionTypeIsTransform = functionIsTransform,
+                    functionTypeParameters = functionParameters,
+                    functionTypeContextualParameters = functionContextualParameters,
+                    functionTypeOutput = functionOutput
+                  }
+          (ctx &) $
+            addTerm functionId (return (TypeFunction funty))
+        DeclarationConstant Constant {..} ->
+          (ctx &) $
+            addTerm constantId (return constantType)
+        DeclarationRefinedType RefinedType {} -> return ctx
+
+topTypingEnv :: MonadError TypingError m => Module () -> m TypingEnv
+topTypingEnv _mdl =
+  return
+    TypingEnv
+      { _envUnification = mempty,
+        _envFreshUnificationVarIndex = 0
+      }
 
 -- | Fill structure fields with inherited fields
-extendStructure :: Structure -> TypingM Structure
-extendStructure struct = do
+inlineStructureExtension :: MonadError TypingError m => Map.Map TypeId Structure -> [TypeId] -> Structure -> m Structure
+inlineStructureExtension structs extIdStack struct = do
+  when (structureId struct `elem` extIdStack) $
+    throwTypingError
+      ("structure extension cycle:" <+> hsep (punctuate (text "extends") (pPrint <$> extIdStack)))
+      (pure $ toSyntax $ toDeclaration @_ @() $ struct)
   case structureMaybeExtensionId struct of
     Nothing -> return struct
     Just extId ->
-      lookupTypeId extId >>= \case
-        TypeStructure struct' ->
-          return struct {structureFields = structureFields struct <> structureFields struct'}
-        _ -> throwTypingError "cannot extend a structure by a non-structure" (pure $ toSyntax $ toDeclaration @_ @() $ struct)
+      case Map.lookup extId structs of
+        Nothing -> throwTypingError ("unknown structure id" <+> ticks (pPrint extId)) (pure $ toSyntax $ toDeclaration @_ @() $ struct)
+        Just structExt -> do
+          structExt' <- inlineStructureExtension structs (structureId struct : extIdStack) structExt
+          -- merge fields
+          structureFields <-
+            foldM
+              ( \fields (fieldId, ty) ->
+                  case fieldId `lookup` fields of
+                    Nothing -> return $ fields @ (fieldId, ty)
+                    Just _ -> throwTypingError ("attempted to extend structure by another structure with conflicting field" <+> ticks (pPrint fieldId)) (pure $ toSyntax $ toDeclaration @_ @() $ struct)
+              )
+              (structureFields struct)
+              (structureFields structExt')
+          return struct {structureFields}
+
+typeModule :: Module () -> FlexM (Either TypingError (Module Type, TypingEnv))
+typeModule mdl = do
+  case topTypingCtx mdl of
+    Left err -> return . Left $ err
+    Right r -> case topTypingEnv mdl of
+      Left err -> return . Left $ err
+      Right s -> runExceptT $ runReaderT (runStateT (procModule mdl) s) r
 
 -- ** Processing
 
@@ -283,12 +353,14 @@ procDeclaration decl = case decl of
           functionBody = body
         }
   DeclarationConstant (Constant {..}) -> do
+    ty <- normType constantType
     body <-
       sequence
-        =<< synthTerm constantTerm
+        =<< synthCheckTerm ty constantTerm
     return . toDeclaration $
       Constant
         { constantId,
+          constantType = ty,
           constantTerm = body
         }
   DeclarationRefinedType (RefinedType {..}) -> do
@@ -442,13 +514,13 @@ synthNeutral term tmId mb_args mb_cxargs =
           Nothing -> throwTypingError "a function application must have arguments" (pure . toSyntax $ term)
           Just args -> return args
         -- check args
-        mb_args' <- pure <$> uncurry synthCheckTerm `traverse` ((snd <$> functionParameters func) `zip` args)
+        mb_args' <- pure <$> uncurry synthCheckTerm `traverse` ((snd <$> functionTypeParameters func) `zip` args)
         -- check cxargs
         mb_cxargs' <-
           case mb_cxargs of
             -- implicitly give, or no cxargs
             Nothing -> do
-              case functionContextualParameters func of
+              case functionTypeContextualParameters func of
                 -- no cxparams
                 Nothing -> return Nothing
                 -- implicit cxparams
@@ -458,7 +530,7 @@ synthNeutral term tmId mb_args mb_cxargs =
                       Nothing -> throwTypingError ("could not infer the implicit contextual argument" <+> ticks (pPrint tmIdCxparam)) (pure . toSyntax $ term)
                       Just tmIdCxarg -> return $ TermNeutral tmIdCxarg Nothing Nothing (normType $ TypeNamed tyIdCxparam)
             Just cxargs -> do
-              case functionContextualParameters func of
+              case functionTypeContextualParameters func of
                 -- actually, no cxparams!
                 Nothing -> throwTypingError "attempted to give explicit contextual arguments to a function that does not have contextual parameters" (pure . toSyntax $ term)
                 Just cxparams -> do
@@ -481,7 +553,7 @@ synthNeutral term tmId mb_args mb_cxargs =
                         (fst <$> cxparams)
                   return $ pure cxargs'
         -- output type
-        let tyOut = return $ functionOutput func
+        let tyOut = return $ functionTypeOutput func
         return $ TermNeutral tmId mb_args' mb_cxargs' tyOut
       -- TypeVariantConstuctor
       TypeVariantConstuctor varnt _constrId mb_tyParams -> do
@@ -625,7 +697,7 @@ unify TypeChar TypeChar = return ()
 unify (TypeArray ty1) (TypeArray ty2) = unify ty1 ty2
 unify (TypeTuple tys1) (TypeTuple tys2) = uncurry unify `traverse_` (tys1 `zip` tys2)
 unify (TypeOptional ty1) (TypeOptional ty2) = unify ty1 ty2
-unify (TypeFunction fun1) (TypeFunction fun2) | functionId fun1 == functionId fun2 = return ()
+unify (TypeFunction fun1) (TypeFunction fun2) | functionTypeId fun1 == functionTypeId fun2 = return ()
 unify (TypeStructure struct1) (TypeStructure struct2) | structureId struct1 == structureId struct2 = return ()
 unify (TypeEnum enum1) (TypeEnum enum2) | enumId enum1 == enumId enum2 = return ()
 unify (TypeVariant varnt1) (TypeVariant varnt2) | variantId varnt1 == variantId varnt2 = return ()

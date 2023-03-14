@@ -179,6 +179,12 @@ mapFromKeyedList toKey = Map.fromList . fmap (\v -> (toKey v, v))
 justs :: [Maybe a] -> [a]
 justs = concatMap (maybe [] pure)
 
+foldrM' :: (Foldable t, Monad m) => t a -> b -> (a -> b -> m b) -> m b
+foldrM' ta b f = foldM (flip f) b ta
+
+foldlM' :: (Foldable t, Monad m) => t a -> b -> (b -> a -> m b) -> m b
+foldlM' ta b f = foldM f b ta
+
 unlessM :: Monad m => m Bool -> m () -> m ()
 unlessM mb m =
   mb >>= \case
@@ -202,6 +208,9 @@ xs @ x = xs <> [x]
 
 comps :: [a -> a] -> a -> a
 comps fs a = foldr ($) a fs
+
+compsM :: Monad m => [a -> m a] -> a -> m a
+compsM ks a = foldM (flip ($)) a ks
 
 ticks :: Doc -> Doc
 ticks doc = "`" <> doc <> "`"
