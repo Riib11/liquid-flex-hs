@@ -481,13 +481,14 @@ parseStatement =
         pat <- parsePattern
         choice
           [ do
-              colon
+              try colon
               ty <- parseType
               equals
               tm <- parseTerm
+              semi
               return $ StatementLet pat (TermAscribe tm ty ()),
             do
-              equals
+              try equals
               tm <- parseTerm
               semi
               return $ StatementLet pat tm

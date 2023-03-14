@@ -57,6 +57,11 @@ const x: bit = {
     let _ = {{{ x }}};
     let _ = { assert(x); x };
     let _ = { assert({{ x }}); x };
+    let _ = { 
+        let x: int32 = 1;
+        let y: bit = true;
+        x
+    };
     
     // pattern
     let _ = { let x = y; x };
