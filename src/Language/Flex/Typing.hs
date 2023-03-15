@@ -85,6 +85,7 @@ isTypedTerm = \case
     PrimitiveOr te te' -> isTypedTerm `all` [te, te']
     PrimitiveNot te -> isTypedTerm te
     PrimitiveEq te te' -> isTypedTerm `all` [te, te']
+    PrimitiveAdd te te' -> isTypedTerm `all` [te, te']
   TermBlock (stmts, tm) _ -> all isTypedStatement stmts && isTypedTerm tm
   TermStructure _ fields _ -> isTypedTerm `all` (snd <$> fields)
   TermMember te _ _ -> isTypedTerm te
@@ -468,62 +469,8 @@ checkPattern ty = \case
 synthTerm :: Term () -> TypingM (Term TypeM)
 synthTerm term = case term of
   TermLiteral lit () -> TermLiteral lit <$> typeLiteral lit
-  TermPrimitive prim () -> case prim of
-    PrimitiveTry tm -> do
-      -- synth type of arg, alpha
-      tm' <- synthTerm tm
-      -- output type is Optional alpha
-      ty <- TypeOptional <$$> inferTerm tm'
-      return $ TermPrimitive (PrimitiveTry tm') ty
-    PrimitiveCast tm -> do
-      -- synth type of arg, alpha
-      tm' <- synthTerm tm
-      -- output type is a fresh type unification var, with constraint that it
-      -- was casted from an alpha
-      ty <- freshTypeUnfiyVar "cast" . pure . CastedFrom =<<< inferTerm tm'
-      -- sets the top term ann to be the result type of casting, which unwraps
-      -- the cast; unwraps the cast
-      return $ mapTopAnnTerm (const ty) tm'
-    PrimitiveTuple tms -> do
-      -- synth type of each term, alphas
-      tms' <- synthTerm `traverse` tms
-      -- output type is Tuple alphas
-      tys <- inferTerm `traverse` tms'
-      return $ TermPrimitive (PrimitiveTuple tms') (TypeTuple <$> sequence tys)
-    -- TODO: actually, just iterate through array after introducing new type
-    -- var, and make sure all unfiy with it
-    PrimitiveArray tms -> do
-      -- array elem type as unification var
-      ty <- freshTypeUnfiyVar "primitive array" Nothing
-      -- unify each elem of array with array elem type var, which will
-      -- substitute it appropriately
-      tms' <- synthCheckTerm' ty `traverse` tms
-      return $ TermPrimitive (PrimitiveArray tms') (TypeArray <$> ty)
-    PrimitiveIf tm tm1 tm2 -> do
-      tm' <- synthCheckTerm TypeBit tm
-      -- synthesize type of first branch
-      tm1' <- synthTerm tm1
-      ty <- inferTerm tm1'
-      -- check other branch against that type
-      tm2' <- synthCheckTerm' ty tm2
-      return $ TermPrimitive (PrimitiveIf tm' tm1' tm2') ty
-    PrimitiveAnd tm1 tm2 -> do
-      tm1' <- synthCheckTerm TypeBit tm1
-      tm2' <- synthCheckTerm TypeBit tm2
-      return $ TermPrimitive (PrimitiveAnd tm1' tm2') (normType TypeBit)
-    PrimitiveOr tm1 tm2 -> do
-      tm1' <- synthCheckTerm TypeBit tm1
-      tm2' <- synthCheckTerm TypeBit tm2
-      return $ TermPrimitive (PrimitiveOr tm1' tm2') (normType TypeBit)
-    PrimitiveNot tm -> do
-      tm' <- synthCheckTerm TypeBit tm
-      return $ TermPrimitive (PrimitiveNot tm') (normType TypeBit)
-    PrimitiveEq tm1 tm2 -> do
-      tm1' <- synthTerm tm1
-      ty <- inferTerm tm1'
-      tm2' <- synthCheckTerm' ty tm2
-      return $ TermPrimitive (PrimitiveEq tm1' tm2') (normType TypeBit)
-  TermBlock blk () -> synthBlock blk
+  TermPrimitive prim () -> synthPrimitive term prim
+  TermBlock block () -> synthBlock block
   TermStructure tyId fields () -> do
     struct <-
       lookupType tyId >>>= \case
@@ -547,6 +494,69 @@ synthTerm term = case term of
   TermNeutral app mb_args mb_cxargs () -> synthNeutral term app mb_args mb_cxargs
   TermAscribe tm ty () -> synthCheckTerm' (normType ty) tm
   TermMatch tm branches () -> synthMatch tm branches
+
+synthPrimitive :: Term () -> Primitive () -> TypingM (Term TypeM)
+synthPrimitive _term prim = case prim of
+  PrimitiveTry tm -> do
+    -- synth type of arg, alpha
+    tm' <- synthTerm tm
+    -- output type is Optional alpha
+    ty <- TypeOptional <$$> inferTerm tm'
+    return $ TermPrimitive (PrimitiveTry tm') ty
+  PrimitiveCast tm -> do
+    -- synth type of arg, alpha
+    tm' <- synthTerm tm
+    -- output type is a fresh type unification var, with constraint that it
+    -- was casted from an alpha
+    ty <- freshTypeUnfiyVar "cast" . pure . UnifyConstraintCasted =<<< inferTerm tm'
+    -- sets the top term ann to be the result type of casting, which unwraps
+    -- the cast; unwraps the cast
+    return $ mapTopAnnTerm (const ty) tm'
+  PrimitiveTuple tms -> do
+    -- synth type of each term, alphas
+    tms' <- synthTerm `traverse` tms
+    -- output type is Tuple alphas
+    tys <- inferTerm `traverse` tms'
+    return $ TermPrimitive (PrimitiveTuple tms') (TypeTuple <$> sequence tys)
+  -- TODO: actually, just iterate through array after introducing new type
+  -- var, and make sure all unfiy with it
+  PrimitiveArray tms -> do
+    -- array elem type as unification var
+    ty <- freshTypeUnfiyVar "primitive array" Nothing
+    -- unify each elem of array with array elem type var, which will
+    -- substitute it appropriately
+    tms' <- synthCheckTerm' ty `traverse` tms
+    return $ TermPrimitive (PrimitiveArray tms') (TypeArray <$> ty)
+  PrimitiveIf tm tm1 tm2 -> do
+    tm' <- synthCheckTerm TypeBit tm
+    -- synthesize type of first branch
+    tm1' <- synthTerm tm1
+    ty <- inferTerm tm1'
+    -- check other branch against that type
+    tm2' <- synthCheckTerm' ty tm2
+    return $ TermPrimitive (PrimitiveIf tm' tm1' tm2') ty
+  PrimitiveAnd tm1 tm2 -> do
+    tm1' <- synthCheckTerm TypeBit tm1
+    tm2' <- synthCheckTerm TypeBit tm2
+    return $ TermPrimitive (PrimitiveAnd tm1' tm2') (normType TypeBit)
+  PrimitiveOr tm1 tm2 -> do
+    tm1' <- synthCheckTerm TypeBit tm1
+    tm2' <- synthCheckTerm TypeBit tm2
+    return $ TermPrimitive (PrimitiveOr tm1' tm2') (normType TypeBit)
+  PrimitiveNot tm -> do
+    tm' <- synthCheckTerm TypeBit tm
+    return $ TermPrimitive (PrimitiveNot tm') (normType TypeBit)
+  PrimitiveEq tm1 tm2 -> do
+    tm1' <- synthTerm tm1
+    ty <- inferTerm tm1'
+    tm2' <- synthCheckTerm' ty tm2
+    return $ TermPrimitive (PrimitiveEq tm1' tm2') (normType TypeBit)
+  PrimitiveAdd tm1 tm2 -> do
+    tyM <- freshTypeUnfiyVar "add" (Just UnifyConstraintNumeric)
+    tm1' <- synthCheckTerm' tyM tm1
+    tm2' <- synthCheckTerm' tyM tm2
+    join $ unify' <$> inferTerm tm1' <*> inferTerm tm2'
+    return $ TermPrimitive (PrimitiveAdd tm1' tm2') tyM
 
 synthNeutral :: Term () -> Applicant -> Maybe [Term ()] -> Maybe [Term ()] -> TypingM (Term TypeM)
 -- function application / newtype constructor
@@ -895,14 +905,16 @@ unifyVarOccursInType uv = \case
 
 satisfiesUnifyConstraint :: Type -> UnifyConstraint -> Bool
 satisfiesUnifyConstraint ty = \case
-  CastedFrom ty' -> case (ty, ty') of
+  UnifyConstraintCasted ty' -> case (ty, ty') of
     (TypeNumber numty1 _size1, TypeNumber numty2 _size2)
       | all (`elem` [TypeInt, TypeUInt]) [numty1, numty2] -> True
       | all (`elem` [TypeFloat]) [numty1, numty2] -> True
     (TypeUnifyVar _ mb_uc, _) -> maybe True (satisfiesUnifyConstraint ty') mb_uc
-    _uc ->
-      -- FlexBug.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
-      False
+    -- FlexBug.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
+    _uc -> False
+  UnifyConstraintNumeric -> case ty of
+    TypeNumber _ _ -> True
+    _ -> False
 
 -- | <expected type> ~? <synthesized type>
 unify :: Type -> Type -> TypingM ()
@@ -976,8 +988,8 @@ inferTerm =
 -- get the type of a literal
 typeLiteral :: Literal -> TypingM TypeM
 typeLiteral = \case
-  LiteralInteger _ -> freshTypeUnfiyVar "literal integer" . pure $ CastedFrom $ TypeNumber TypeInt 32
-  LiteralFloat _ -> freshTypeUnfiyVar "literal float" . pure $ CastedFrom $ TypeNumber TypeFloat 64
+  LiteralInteger _ -> freshTypeUnfiyVar "literal integer" . pure $ UnifyConstraintCasted $ TypeNumber TypeInt 32
+  LiteralFloat _ -> freshTypeUnfiyVar "literal float" . pure $ UnifyConstraintCasted $ TypeNumber TypeFloat 64
   LiteralBit _ -> return . normType $ TypeBit
   LiteralChar _ -> return . normType $ TypeChar
   LiteralString _ -> return . normType $ TypeArray TypeChar

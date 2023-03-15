@@ -31,7 +31,7 @@ transLiteral lit ty = case lit of
       return $
         TermLiteral
           lit
-          ( mapTopBaseType
+          ( mapTopType
               ( \(F.Reft (x, p)) ->
                   F.Reft
                     ( x,
@@ -60,11 +60,7 @@ transLiteral lit ty = case lit of
           F.PAtom F.Lt (F.expr x) (F.expr nMax)
         ]
 
-{-
-
--}
-
-transType :: Base.Type -> RefiningM BaseType
+transType :: Base.Type -> RefiningM Type
 transType type_ = case type_ of
   Base.TypeNumber numty n -> do
     x <- freshSymbol (render $ pPrint type_)
@@ -90,12 +86,12 @@ transType type_ = case type_ of
   Base.TypeBit -> return $ TypeAtomic TypeBit F.trueReft
   Base.TypeChar -> return $ TypeAtomic TypeChar F.trueReft
   Base.TypeArray ty -> error "transType TypeArray"
-  Base.TypeTuple tys -> error "transType xxx"
-  Base.TypeOptional ty -> error "transType xxx"
-  Base.TypeNamed ti -> error "transType xxx"
-  Base.TypeStructure struc -> error "transType xxx"
-  Base.TypeEnum en -> error "transType xxx"
-  Base.TypeVariant vari -> error "transType xxx"
-  Base.TypeNewtype new -> error "transType xxx"
+  Base.TypeTuple tys -> error "transType TODO"
+  Base.TypeOptional ty -> error "transType TODO"
+  Base.TypeNamed ti -> error "transType TODO"
+  Base.TypeStructure struc -> error "transType TODO"
+  Base.TypeEnum en -> error "transType TODO"
+  Base.TypeVariant vari -> error "transType TODO"
+  Base.TypeNewtype new -> error "transType TODO"
   -- invalid
   Base.TypeUnifyVar _ _ -> FlexBug.throw $ FlexLog "refining" $ "type unification variable should not appear in normalized type:" <+> pPrint type_

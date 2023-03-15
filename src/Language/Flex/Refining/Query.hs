@@ -12,13 +12,15 @@ import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Types
 import qualified Text.PrettyPrint.HughesPJ as PJ
 
--- makeConstraintQuery :: Cstr
+makeQuery :: Cstr -> RefiningM Query
+makeQuery cstr = return $ H.Query [] [] cstr mempty mempty mempty mempty mempty
 
 -- | Submit query to LH backend, which checks for validity
 submitQuery :: Query -> RefiningM Result
 submitQuery q = do
   fp <- liftFlexM . asks $ sourceFilePath
-  liftIO (checkValidWithConfig fp fpConfig q) >>= undefined
+  liftIO (checkValidWithConfig fp fpConfig q)
+    >>= error "TODO: handle result"
 
 fpConfig :: FC.Config
 fpConfig =

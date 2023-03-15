@@ -373,6 +373,7 @@ data Primitive ann
   | PrimitiveOr (Term ann) (Term ann)
   | PrimitiveNot (Term ann)
   | PrimitiveEq (Term ann) (Term ann)
+  | PrimitiveAdd (Term ann) (Term ann)
   deriving (Show, Functor, Foldable, Traversable)
 
 instance Pretty (Primitive ann) where
@@ -386,6 +387,7 @@ instance Pretty (Primitive ann) where
     PrimitiveOr tm1 tm2 -> parens $ hsep [pPrint tm1, "||", pPrint tm2]
     PrimitiveNot tm -> "!" <> pPrint tm
     PrimitiveEq tm1 tm2 -> parens $ pPrint tm1 <+> "==" <+> pPrint tm2
+    PrimitiveAdd tm1 tm2 -> parens $ pPrint tm1 <+> "+" <+> pPrint tm2
 
 -- ** Statement
 
@@ -497,12 +499,14 @@ instance Pretty UnifyVar where
   pPrint (UnifyVar str i) = "?" <> brackets (text str) <> text "#" <> pPrint i
 
 data UnifyConstraint
-  = CastedFrom Type
+  = UnifyConstraintCasted Type
+  | UnifyConstraintNumeric
   deriving (Show)
 
 instance Pretty UnifyConstraint where
   pPrint = \case
-    CastedFrom ty -> "CastedFrom" <> parens (pPrint ty)
+    UnifyConstraintCasted ty -> "UnifyConstraintCasted" <> parens (pPrint ty)
+    UnifyConstraintNumeric -> "UnifyConstraintNumeric"
 
 -- ** Literal
 

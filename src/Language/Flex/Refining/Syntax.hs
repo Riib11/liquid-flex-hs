@@ -39,23 +39,16 @@ reflect _everything_ from Flex, such as statements a-normal types, etc.
 
 -- ** Type
 
---
 -- Size constraints for numeric types are included in refinement info. In basic
 -- Flex, function types have contextual parameters as well, but by the time we
 -- are doing refinement-type checking, we already know that everything is
 -- well-typed, so we can just have normal function types that have already
 -- combined the arguments and contextual arguments into the appropriate list of
 -- types.
+
+-- ** Type
+
 type Type = Type_ F.Reft
-
-data Type_ r
-  = TypeBaseType (BaseType_ r)
-  | TypeFunType (FunType_ r)
-  deriving (Eq, Show)
-
--- ** BaseType
-
-type BaseType = BaseType_ F.Reft
 
 -- TODO: handle more advanced types
 
@@ -66,12 +59,12 @@ type BaseType = BaseType_ F.Reft
 -- | TypeEnumerated Enumerated r
 -- | TypeVariant Variant r
 -- | TypeNewtype NewType_ r
-data BaseType_ r
+data Type_ r
   = TypeAtomic AtomicType r
   deriving
     (Eq, Show, Functor)
 
-baseTypeReft :: BaseType -> F.Reft
+baseTypeReft :: Type -> F.Reft
 baseTypeReft = \case
   TypeAtomic _ r -> r
 
@@ -83,58 +76,46 @@ data AtomicType
   | TypeString
   deriving (Eq, Show)
 
-trueBaseType :: BaseType
-trueBaseType = bitBaseType F.trueReft
+trueType :: Type
+trueType = bitType F.trueReft
 
-falseBaseType :: BaseType
-falseBaseType = bitBaseType F.falseReft
+falseType :: Type
+falseType = bitType F.falseReft
 
-intBaseType :: F.Reft -> BaseType
-intBaseType = TypeAtomic TypeInt
+intType :: F.Reft -> Type
+intType = TypeAtomic TypeInt
 
-bitBaseType :: F.Reft -> BaseType
-bitBaseType = TypeAtomic TypeBit
+bitType :: F.Reft -> Type
+bitType = TypeAtomic TypeBit
 
-charBaseType :: F.Reft -> BaseType
-charBaseType = TypeAtomic TypeChar
+charType :: F.Reft -> Type
+charType = TypeAtomic TypeChar
 
-stringBaseType :: F.Reft -> BaseType
-stringBaseType = TypeAtomic TypeString
+stringType :: F.Reft -> Type
+stringType = TypeAtomic TypeString
 
-mapTopBaseType :: (r -> r) -> BaseType_ r -> BaseType_ r
-mapTopBaseType f = \case
+mapTopType :: (r -> r) -> Type_ r -> Type_ r
+mapTopType f = \case
   TypeAtomic at r -> TypeAtomic at (f r)
 
-getRefinement :: BaseType_ r -> r
+getRefinement :: Type_ r -> r
 getRefinement = \case
   TypeAtomic _ r -> r
 
--- ** FunType
+-- ** FunctionType
 
--- | Liquid Flex's function types are simple in that the they cannot express
+-- Liquid Flex's function types are simple in that the they cannot express
 -- dependency of one type's refinement on a preceeding parameter's value.
-type FunType = FunType_ F.Reft
+type FunctionType = FunctionType_ F.Reft
 
-data FunType_ r
-  = FunType ![BaseType_ r] !(BaseType_ r)
+data FunctionType_ r = FunctionType
+  { functionTypeParameters :: ![Type_ r],
+    functionTypeOutput :: !(Type_ r)
+  }
   deriving (Eq, Show)
 
 -- | Subable (Subtypeable)
 instance F.Subable r => F.Subable (Type_ r) where
-  syms = \case
-    TypeBaseType baseTy -> F.syms baseTy
-    TypeFunType funTy -> F.syms funTy
-  substa f = \case
-    TypeBaseType baseTy -> TypeBaseType $ F.substa f baseTy
-    TypeFunType funTy -> TypeFunType $ F.substa f funTy
-  substf f = \case
-    TypeBaseType baseTy -> TypeBaseType $ F.substf f baseTy
-    TypeFunType funTy -> TypeFunType $ F.substf f funTy
-  subst f = \case
-    TypeBaseType baseTy -> TypeBaseType $ F.subst f baseTy
-    TypeFunType funTy -> TypeFunType $ F.subst f funTy
-
-instance F.Subable r => F.Subable (BaseType_ r) where
   syms = \case
     TypeAtomic _ r -> F.syms r
   substa f = \case
@@ -144,11 +125,11 @@ instance F.Subable r => F.Subable (BaseType_ r) where
   subst f = \case
     TypeAtomic at r -> TypeAtomic at (F.subst f r)
 
-instance F.Subable r => F.Subable (FunType_ r) where
-  syms (FunType _params outTy) = F.syms outTy
-  substa f (FunType params outTy) = FunType params (F.substa f outTy)
-  substf f (FunType params outTy) = FunType params (F.substf f outTy)
-  subst f (FunType params outTy) = FunType params (F.subst f outTy)
+instance F.Subable r => F.Subable (FunctionType_ r) where
+  syms (FunctionType _params outTy) = F.syms outTy
+  substa f (FunctionType params outTy) = FunctionType params (F.substa f outTy)
+  substf f (FunctionType params outTy) = FunctionType params (F.substf f outTy)
+  subst f (FunctionType params outTy) = FunctionType params (F.subst f outTy)
 
 -- ** Structure
 
@@ -156,7 +137,7 @@ data Structure = Structure
   { structureId :: TypeId,
     structureIsMessage :: Bool,
     structureMaybeExtensionId :: Maybe TypeId,
-    structureFields :: [(FieldId, BaseType)],
+    structureFields :: [(FieldId, Type)],
     structureRefinement :: F.Expr
   }
   deriving (Eq, Show)
@@ -165,7 +146,7 @@ data Structure = Structure
 
 data Variant = Variant
   { variantId :: TypeId,
-    variantConstructors :: [(TermId, Maybe [BaseType])]
+    variantConstructors :: [(TermId, Maybe [Type])]
   }
   deriving (Eq, Show)
 
@@ -183,8 +164,8 @@ data Enum = Enum
 data Function = Function
   { functionId :: TermId,
     functionIsTransform :: Bool,
-    functionParameters :: [(TermId, BaseType)],
-    functionOutput :: BaseType,
+    functionParameters :: [(TermId, Type)],
+    functionOutput :: Type,
     functionBody :: Term
   }
   deriving (Eq, Show)
@@ -194,7 +175,7 @@ data Function = Function
 data Constant = Constant
   { constantId :: TermId,
     constantTerm :: Term,
-    constantType :: BaseType
+    constantType :: Type
   }
   deriving (Eq, Show)
 
@@ -202,9 +183,9 @@ data Constant = Constant
 
 -- TODO: structure, member, construct enum, construct variant, match
 data Term
-  = TermNamed TermId BaseType
-  | TermLiteral !Literal BaseType
-  | TermPrimitive !Primitive BaseType
+  = TermNamed TermId Type
+  | TermLiteral !Literal Type
+  | TermPrimitive !Primitive Type
   deriving (Eq, Show)
 
 -- TODO: try, array, tuple, int ops
