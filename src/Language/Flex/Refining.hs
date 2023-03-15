@@ -11,9 +11,7 @@ import Text.PrettyPrint.HughesPJ (Doc)
 
 refineModule :: Module Type -> RefiningM ()
 refineModule Module {..} = do
-  forM_
-    moduleDeclarations
-    refineDeclaration
+  forM_ moduleDeclarations refineDeclaration
 
 refineDeclaration :: Declaration Type -> RefiningM ()
 refineDeclaration = \case
