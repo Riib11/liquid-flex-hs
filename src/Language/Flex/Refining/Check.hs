@@ -14,7 +14,7 @@ import Language.Flex.Refining.Translating (transType)
 import Language.Flex.Refining.Types
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
-import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), parens, render, text, (<+>))
+import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), parens, render, text, ($$), (<+>))
 import Utility (ticks)
 
 type CheckingM = WriterT CstrMonoid RefiningM
@@ -133,7 +133,7 @@ checkSubtype :: Type -> Type -> CheckingM ()
 checkSubtype tySynth tyExpect = case (tySynth, tyExpect) of
   (TypeAtomic at1 r1, TypeAtomic at2 r2)
     | at1 == at2 -> do
-        lift $ FlexM.tell $ FlexM.FlexLog "refining" ("[checkSubType]" <+> pPrint tySynth <+> text "<:" <+> pPrint tyExpect)
+        lift $ FlexM.tell $ FlexM.FlexLog "refining" ("[checkSubType]" $$ pPrint tySynth <+> text "<:" $$ pPrint tyExpect)
         --    forall x : T, p x ==> (p' x')[x' := x]
         --  ----------------------------------------------
         --    {x : T | p x} <: {x' : T | p' y'}
