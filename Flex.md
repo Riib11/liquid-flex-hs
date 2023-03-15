@@ -43,7 +43,7 @@ newtype PositiveInt32 {
   assert(0 <= x);
 }
 
-constant p = PositiveInt32(10)
+constant p: PositiveInt32 = PositiveInt32(10)
 ```
 
 ### Variant
@@ -60,6 +60,8 @@ variant Nat {
   Zero;
   Suc(n: Nat);
 }
+
+constant myZero: Nat = Nat.Zero
 ```
 
 ### Enumerated Type
@@ -75,6 +77,8 @@ enum Day string {
   Tuesday = "Tuesday";
   ...
 }
+
+constant today: Day = Day.Monday
 ```
 
 ### Type Alias
