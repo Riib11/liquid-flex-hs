@@ -23,6 +23,7 @@ import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Utils.Files as Files
 import Language.Flex.Syntax (FieldId, Literal (..), TermId, TypeId)
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
+import Text.PrettyPrint.HughesPJClass
 import Text.Printf (printf)
 import Utility
 
@@ -64,6 +65,17 @@ data Type_ r
   deriving
     (Eq, Show, Functor)
 
+instance Pretty (Type_ F.Reft) where
+  pPrint = \case
+    TypeAtomic at r -> case at of
+      TypeInt -> go "int"
+      TypeFloat -> go "float"
+      TypeBit -> go "bit"
+      TypeChar -> go "char"
+      TypeString -> go "string"
+      where
+        go str = braces $ braces $ F.pprint (F.reftBind r) <+> colon <+> str <+> "|" <+> F.pprint (F.reftPred r)
+
 baseTypeReft :: Type -> F.Reft
 baseTypeReft = \case
   TypeAtomic _ r -> r
@@ -94,9 +106,13 @@ charType = TypeAtomic TypeChar
 stringType :: F.Reft -> Type
 stringType = TypeAtomic TypeString
 
-mapTopType :: (r -> r) -> Type_ r -> Type_ r
-mapTopType f = \case
+mapTypeTopR :: (r -> r) -> Type_ r -> Type_ r
+mapTypeTopR f = \case
   TypeAtomic at r -> TypeAtomic at (f r)
+
+mapMTypeTopR :: Monad m => (r -> m r) -> Type_ r -> m (Type_ r)
+mapMTypeTopR k = \case
+  TypeAtomic at r -> TypeAtomic at <$> k r
 
 getRefinement :: Type_ r -> r
 getRefinement = \case
@@ -179,6 +195,18 @@ data Constant r = Constant
   }
   deriving (Eq, Show)
 
+data Primitive r
+  = PrimitiveTry (Term r)
+  | PrimitiveTuple [Term r]
+  | PrimitiveArray [Term r]
+  | PrimitiveIf (Term r) (Term r) (Term r)
+  | PrimitiveAnd (Term r) (Term r)
+  | PrimitiveOr (Term r) (Term r)
+  | PrimitiveNot (Term r)
+  | PrimitiveEq (Term r) (Term r)
+  | PrimitiveAdd (Term r) (Term r)
+  deriving (Eq, Show)
+
 -- ** Term
 
 -- TODO: structure, member, construct enum, construct variant, match
@@ -186,16 +214,22 @@ data Term r
   = TermNamed TermId r
   | TermLiteral !Literal r
   | TermPrimitive !(Primitive r) r
+  | TermAssert (Term r) (Term r) r
   deriving (Eq, Show)
 
--- TODO: try, array, tuple, int ops
-data Primitive r
-  = PrimitiveIf (Term r) (Term r) (Term r)
-  | PrimitiveAnd (Term r) (Term r)
-  | PrimitiveOr (Term r) (Term r)
-  | PrimitiveNot (Term r)
-  | PrimitiveEq (Term r) (Term r)
-  deriving (Eq, Show)
+mapTermTopR :: (r -> r) -> Term r -> Term r
+mapTermTopR f = \case
+  TermNamed ti r -> TermNamed ti (f r)
+  TermLiteral lit r -> TermLiteral lit (f r)
+  TermPrimitive prim r -> TermPrimitive prim (f r)
+  TermAssert tm1 tm2 r -> TermAssert tm1 tm2 (f r)
+
+mapMTermTopR :: Monad m => (r -> m r) -> Term r -> m (Term r)
+mapMTermTopR k = \case
+  TermNamed ti r -> TermNamed ti <$> k r
+  TermLiteral lit r -> TermLiteral lit <$> k r
+  TermPrimitive prim r -> TermPrimitive prim <$> k r
+  TermAssert tm1 tm2 r -> TermAssert tm1 tm2 <$> k r
 
 -- ** Substitution
 

@@ -94,7 +94,7 @@ data Declaration ann
   | DeclarationFunction (Function ann)
   | DeclarationConstant (Constant ann)
   | DeclarationRefinedType (RefinedType ann)
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty (Declaration ann) where
   pPrint = \case
@@ -142,7 +142,7 @@ data Structure = Structure
     structureMaybeExtensionId :: Maybe TypeId,
     structureFields :: [(FieldId, Type)]
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty Structure where
   pPrint (Structure {..}) =
@@ -166,7 +166,7 @@ data RefinedType ann = RefinedType
   { refinedTypeId :: TypeId,
     refinedTypeRefinement :: Refinement ann
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty (RefinedType ann) where
   pPrint (RefinedType {..}) =
@@ -180,7 +180,7 @@ data Newtype = Newtype
     newtypeFieldId :: FieldId,
     newtypeType :: Type
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty Newtype where
   pPrint (Newtype {..}) = pPrint newtypeId <+> "=" <+> pPrint newtypeType
@@ -191,7 +191,7 @@ data Variant = Variant
   { variantId :: TypeId,
     variantConstructors :: [(TermId, [Type])]
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty Variant where
   pPrint (Variant {..}) =
@@ -210,7 +210,7 @@ data Enum = Enum
     enumType :: Type,
     enumConstructors :: [(TermId, Literal)]
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty Enum where
   pPrint (Enum {..}) =
@@ -228,7 +228,7 @@ data Alias = Alias
   { aliasId :: TypeId,
     aliasType :: Type
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty Alias where
   pPrint (Alias {..}) = pPrint aliasId <+> "=" <+> pPrint aliasType
@@ -245,7 +245,7 @@ data Function ann = Function
     functionOutput :: Type,
     functionBody :: Term ann
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty (Function ann) where
   pPrint (Function {..}) =
@@ -275,7 +275,7 @@ data Constant ann = Constant
     constantTerm :: Term ann,
     constantType :: Type
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty (Constant ann) where
   pPrint (Constant {..}) =
@@ -296,7 +296,7 @@ data Term ann
   | TermNeutral {termApplicant :: Applicant, termMaybeArgs :: Maybe [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
   | TermAscribe {termTerm :: Term ann, termType :: Type, termAnn :: ann}
   | TermMatch {termTerm :: Term ann, termBranches :: Branches ann, termAnn :: ann}
-  deriving (Show, Functor, Foldable, Traversable)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
 newtype Applicant = Applicant (Maybe TypeId, TermId)
   deriving (Eq, Ord, Show)
@@ -374,7 +374,7 @@ data Primitive ann
   | PrimitiveNot (Term ann)
   | PrimitiveEq (Term ann) (Term ann)
   | PrimitiveAdd (Term ann) (Term ann)
-  deriving (Show, Functor, Foldable, Traversable)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Primitive ann) where
   pPrint = \case
@@ -394,7 +394,7 @@ instance Pretty (Primitive ann) where
 data Statement ann
   = StatementLet (Pattern ann) (Term ann)
   | StatementAssert (Term ann)
-  deriving (Show, Functor, Foldable, Traversable)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Statement ann) where
   pPrint = \case
@@ -407,7 +407,7 @@ data Pattern ann
   = PatternNamed TermId ann
   | PatternLiteral Literal ann
   | PatternDiscard ann
-  deriving (Show, Functor, Foldable, Traversable)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Pattern ann) where
   pPrint = \case
@@ -432,7 +432,7 @@ data Type
   | TypeEnum Enum
   | TypeVariant Variant
   | TypeNewtype Newtype
-  deriving (Show)
+  deriving (Eq, Show)
 
 data FunctionType = FunctionType
   { functionTypeId :: TermId,
@@ -441,7 +441,7 @@ data FunctionType = FunctionType
     functionTypeContextualParameters :: Maybe [(TypeId, TermId)],
     functionTypeOutput :: Type
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty Type where
   pPrint = \case
@@ -501,7 +501,7 @@ instance Pretty UnifyVar where
 data UnifyConstraint
   = UnifyConstraintCasted Type
   | UnifyConstraintNumeric
-  deriving (Show)
+  deriving (Eq, Show)
 
 instance Pretty UnifyConstraint where
   pPrint = \case
@@ -529,7 +529,7 @@ instance Pretty Literal where
 -- ** Refinement
 
 newtype Refinement ann = Refinement (Term ann)
-  deriving (Show, Functor, Traversable, Foldable)
+  deriving (Eq, Show, Functor, Traversable, Foldable)
 
 trueRefinement :: Refinement ()
 trueRefinement = Refinement (TermLiteral (LiteralBit True) ())

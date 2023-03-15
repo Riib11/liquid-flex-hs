@@ -5,6 +5,7 @@ module Language.Flex.Refining.RefiningM where
 
 import Control.DeepSeq (NFData)
 import Control.Lens
+import Control.Monad
 import Control.Monad.Except (ExceptT, MonadError (throwError), MonadTrans (lift))
 import Control.Monad.Reader (ReaderT, asks)
 import Control.Monad.State (StateT, gets, modify)
@@ -47,7 +48,9 @@ instance F.PPrint RefiningError where
 throwRefiningError :: Doc -> RefiningM a
 throwRefiningError msg = throwError $ RefiningError msg
 
-data RefiningCtx = RefiningCtx {}
+data RefiningCtx = RefiningCtx
+  { _ctxTermVars :: Map.Map TermId Type
+  }
 
 data RefiningEnv = RefiningEnv
   { _freshSymbolIndex :: Int
@@ -57,14 +60,24 @@ makeLenses ''RefiningCtx
 makeLenses ''RefiningEnv
 
 topRefiningCtx :: Module Type -> Either RefiningError RefiningCtx
-topRefiningCtx mdl =
+topRefiningCtx _mdl =
   -- TODO: gather up all the RefinedTypes and make the map from their tyIds
   error "TODO"
 
 topRefiningEnv :: Module Type -> Either RefiningError RefiningCtx
-topRefiningEnv mdl = error "TODO"
+topRefiningEnv _mdl = error "topRefiningEnv"
 
 -- ** Utilities
+
+lookupTermId :: TermId -> RefiningM Type
+lookupTermId tmId =
+  asks (^. ctxTermVars . at tmId)
+    >>= \case
+      Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown term symbol:" <+> pPrint tmId
+      Just ty -> return ty
+
+fromTermIdToSymbol :: TermId -> RefiningM F.Symbol
+fromTermIdToSymbol = error "fromTermIdToSymbol"
 
 freshSymbol :: String -> RefiningM F.Symbol
 freshSymbol str = do
