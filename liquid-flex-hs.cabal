@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Language.Flex.DefaultFlexOptions
       Language.Flex.FlexBug
       Language.Flex.FlexM
       Language.Flex.Lexing

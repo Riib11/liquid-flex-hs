@@ -2,7 +2,8 @@
 module Test.Typing where
 
 import Control.Monad (unless, when)
-import Language.Flex.FlexM (runFlexM, defaultFlexOptions)
+import Language.Flex.FlexM (runFlexM)
+import Language.Flex.DefaultFlexOptions (defaultFlexOptions)
 import Language.Flex.Parsing (parseModuleFile)
 import Language.Flex.Typing (typeModule)
 import System.IO.Unsafe (unsafePerformIO)

@@ -120,6 +120,9 @@ identifierTextMaybe =
 dot :: Parser String
 dot = Token.dot lexer
 
+hash :: Parser String
+hash = string "#"
+
 reservedOp :: String -> Parser ()
 reservedOp = Token.reservedOp lexer
 

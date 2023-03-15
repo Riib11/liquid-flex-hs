@@ -171,6 +171,7 @@ instance Pretty (RefinedType ann) where
 
 data Newtype = Newtype
   { newtypeId :: TypeId,
+    newtypeConstructorId :: TermId,
     newtypeFieldId :: FieldId,
     newtypeType :: Type
   }
@@ -183,7 +184,7 @@ instance Pretty Newtype where
 
 data Variant = Variant
   { variantId :: TypeId,
-    variantConstructors :: [(TermId, Maybe [Type])]
+    variantConstructors :: [(TermId, [Type])]
   }
   deriving (Show)
 
@@ -192,11 +193,8 @@ instance Pretty Variant where
     vcat
       [ pPrint variantId <+> "{",
         nest 2 . vcat $
-          variantConstructors <&> \(tmId, mb_tys) ->
-            pPrint tmId
-              <> case mb_tys of
-                Nothing -> mempty
-                Just tys -> hsep . punctuate comma $ pPrint <$> tys,
+          variantConstructors <&> \(tmId, tys) ->
+            pPrint tmId <> (hsep . punctuate comma $ pPrint <$> tys),
         "}"
       ]
 
@@ -290,10 +288,17 @@ data Term ann
   | TermBlock {termBlock :: Block ann, termAnn :: ann}
   | TermStructure {termStructureId :: TypeId, termFields :: [(FieldId, Term ann)], termAnn :: ann}
   | TermMember {termTerm :: Term ann, termFieldId :: FieldId, termAnn :: ann}
-  | TermNeutral {termId :: TermId, termMaybeArgs :: Maybe [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
+  | TermNeutral {termApplicant :: Applicant, termMaybeArgs :: Maybe [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
   | TermAscribe {termTerm :: Term ann, termType :: Type, termAnn :: ann}
   | TermMatch {termTerm :: Term ann, termBranches :: Branches ann, termAnn :: ann}
   deriving (Show, Functor, Foldable, Traversable)
+
+newtype Applicant = Applicant (Maybe TypeId, TermId)
+  deriving (Eq, Ord, Show)
+
+instance Pretty Applicant where
+  pPrint (Applicant (Just tyId, tmId)) = pPrint tyId <> "." <> pPrint tmId
+  pPrint (Applicant (Nothing, tmId)) = pPrint tmId
 
 type Block ann = ([Statement ann], Term ann)
 
@@ -314,8 +319,19 @@ instance Pretty (Term ann) where
         <> "}"
     TermMember {termTerm, termFieldId} ->
       pPrint termTerm <> "." <> pPrint termFieldId
-    TermNeutral {termId, termMaybeArgs, termMaybeCxargs} ->
+    TermNeutral {termApplicant = Applicant (Nothing, termId), termMaybeArgs, termMaybeCxargs} ->
       ( pPrint termId
+          <> ( case termMaybeArgs of
+                 Nothing -> mempty
+                 Just args -> parens . hsep . punctuate comma $ pPrint <$> args
+             )
+      )
+        <+> ( case termMaybeCxargs of
+                Nothing -> mempty
+                Just cxargs -> "giving" <+> (parens . hsep . punctuate comma $ pPrint <$> cxargs)
+            )
+    TermNeutral {termApplicant = Applicant (Just typeId, termId), termMaybeArgs, termMaybeCxargs} ->
+      ( (pPrint typeId <> "#" <> pPrint termId)
           <> ( case termMaybeArgs of
                  Nothing -> mempty
                  Just args -> parens . hsep . punctuate comma $ pPrint <$> args
@@ -405,15 +421,16 @@ data Type
   | -- the types below cannot be written directly by the user; they are only
     -- introduced during typing
     TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
-  | TypeFunction FunctionType
   | TypeStructure Structure
   | TypeEnum Enum
   | TypeVariant Variant
   | TypeNewtype Newtype
-  | TypeVariantConstuctor Variant TermId (Maybe [Type])
-  | TypeEnumConstructor Enum TermId
-  | TypeNewtypeConstructor Newtype
   deriving (Show)
+
+-- \| TypeFunction FunctionType
+-- \| TypeVariantConstuctor Variant TermId (Maybe [Type])
+-- \| TypeEnumConstructor Enum TermId
+-- \| TypeNewtypeConstructor Newtype
 
 data FunctionType = FunctionType
   { functionTypeId :: TermId,
@@ -436,20 +453,18 @@ instance Pretty Type where
     TypeUnifyVar uv mb_uc -> case mb_uc of
       Nothing -> pPrint uv
       Just uc -> pPrint uv <> "{" <> pPrint uc <> "}"
-    TypeFunction funty -> pPrint funty
     TypeStructure struct -> pPrint (structureId struct)
     TypeEnum enum -> pPrint (enumId enum)
     TypeVariant varnt -> pPrint (variantId varnt)
     TypeNewtype newty -> pPrint (newtypeId newty)
-    TypeVariantConstuctor varnt constrId mb_tyParams ->
-      (pPrint (variantId varnt) <> "." <> pPrint constrId)
-        <> case mb_tyParams of
-          Nothing -> mempty
-          Just tys -> tuple $ pPrint <$> tys
-    TypeEnumConstructor enum constrId ->
-      pPrint (enumId enum) <> "." <> pPrint constrId
-    TypeNewtypeConstructor newty ->
-      pPrint (newtypeId newty)
+    -- TypeFunction funty -> pPrint funty
+    -- TypeVariantConstuctor varnt constrId mb_tyParams ->
+    --   (pPrint (variantId varnt) <> "." <> pPrint constrId)
+    --     <> case mb_tyParams of
+    --       Nothing -> mempty
+    --       Just tys -> tuple $ pPrint <$> tys
+    -- TypeEnumConstructor enum constrId -> pPrint (enumId enum) <> "." <> pPrint constrId
+    -- TypeNewtypeConstructor newty -> pPrint (newtypeId newty)
     where
       tuple :: [Doc] -> Doc
       tuple = parens . hsep . punctuate comma
@@ -459,7 +474,7 @@ instance Pretty FunctionType where
     hsep
       [ pPrint functionTypeId,
         if functionTypeIsTransform then "transform" else mempty,
-        parameters $ functionTypeParameters,
+        parameters functionTypeParameters,
         case functionTypeContextualParameters of
           Nothing -> mempty
           Just cxparams -> "given" <+> parameters cxparams

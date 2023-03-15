@@ -115,6 +115,7 @@ parseNewtype :: Parser [Declaration ()]
 parseNewtype = do
   try $ reserved "newtype"
   newtypeId <- parseTypeId
+  let newtypeConstructorId = fromNewtypeIdToTermId newtypeId
   symbol "{"
   (refinedTypeRefinement, newtypeFields) <-
     first andRefinements . partitionEithers
@@ -139,6 +140,7 @@ parseNewtype = do
     [ toDeclaration
         Newtype
           { newtypeId,
+            newtypeConstructorId,
             newtypeFieldId,
             newtypeType
           },
@@ -158,7 +160,7 @@ parseVariant = do
     tmId <- parseTermId
     mb_tyParams <- optionMaybe $ parens $ parseType `sepBy` comma
     semi
-    return (tmId, mb_tyParams)
+    return (tmId, fromMaybe [] mb_tyParams)
   symbol "}"
   return . pure $
     toDeclaration
@@ -305,7 +307,8 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
     k_term0 tm = do
       choice
         [ do
-            fieldId <- try (dot *> parseFieldId)
+            try dot
+            fieldId <- try parseFieldId
             k_term0 $ TermMember tm fieldId (),
           do
             try colon
@@ -394,13 +397,17 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
                   termAnn = ()
                 },
           -- starts with «TypeId»
-          try do
-            termStructureId <- try parseTypeId
-            termFields <- bracesTryOpen $ semiSep do
+          do
+            termStructureId <- try do
+              termStructureId <- parseTypeId
+              symbol_ "{"
+              return termStructureId
+            termFields <- semiSep do
               tmId <- parseFieldId
               equals
               tm <- parseTerm
               return (tmId, tm)
+            symbol "}"
             return $
               TermStructure
                 { termStructureId,
@@ -408,8 +415,20 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
                   termAnn = ()
                 },
           -- starts with «TermId»
-          try do
-            termId <- try parseTermId
+          do
+            termApplicant <-
+              choice
+                [ do
+                    tmId <- try do
+                      tmId <- parseTypeId
+                      hash
+                      return tmId
+                    tyId <- parseTermId
+                    return $ Applicant (Just tmId, tyId),
+                  do
+                    tmId <- parseTermId
+                    return $ Applicant (Nothing, tmId)
+                ]
             termMaybeArgs <-
               optionMaybe . parensTryOpen $
                 commaSep parseTerm
@@ -418,9 +437,9 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
               parens $ commaSep parseTerm
             return $
               TermNeutral
-                { termId,
+                { termApplicant,
                   termMaybeArgs,
-                  termMaybeCxargs = Nothing,
+                  termMaybeCxargs = termMaybeCxargs,
                   termAnn = ()
                 }
         ]

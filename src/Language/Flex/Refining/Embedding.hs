@@ -12,15 +12,15 @@ import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
 
 embedTerm :: Term -> RefiningM F.Expr
 embedTerm = \case
-  TermLiteral lit -> embedLiteral lit
-  TermPrimitive prim -> embedPrimitive prim
-  TermNamed x -> F.eVar <$> embedTermId x
+  TermLiteral lit _ -> embedLiteral lit
+  TermPrimitive prim _ -> embedPrimitive prim
+  TermNamed x _ -> F.eVar <$> embedTermId x
 
 embedLiteral :: Literal -> RefiningM F.Expr
 embedLiteral =
   return . \case
     Base.LiteralInteger n -> F.expr n
-    Base.LiteralFloat x -> error "TODO: embed float literal"
+    Base.LiteralFloat _x -> error "TODO: embed float literal"
     Base.LiteralBit b -> if b then F.PTrue else F.PFalse
     Base.LiteralChar c -> F.expr (pack [c])
     Base.LiteralString s -> F.expr (pack s)

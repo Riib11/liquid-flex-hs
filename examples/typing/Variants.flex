@@ -6,7 +6,7 @@ variant Bool {
 }
 
 function main() -> bit {
-    let _: Bool = True;
-    let _: Bool = False;
+    let _: Bool = Bool#True();
+    let _: Bool = Bool#False();
     true
 }

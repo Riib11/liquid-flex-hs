@@ -24,6 +24,7 @@ import Language.Flex.Syntax
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Text.Printf (printf)
 import Utility
+import Prelude hiding (Enum)
 
 -- * Typing
 
@@ -49,14 +50,15 @@ isNormalType = \case
     gets (^. to _envUnification . at uv) >>= \case
       Nothing -> return True
       Just _ -> return False
-  TypeFunction {} -> return True
   TypeStructure {} -> return True
   TypeEnum {} -> return True
   TypeVariant {} -> return True
   TypeNewtype {} -> return True
-  TypeVariantConstuctor {} -> return True
-  TypeEnumConstructor {} -> return True
-  TypeNewtypeConstructor {} -> return True
+
+-- TypeFunction {} -> return True
+-- TypeVariantConstuctor {} -> return True
+-- TypeEnumConstructor {} -> return True
+-- TypeNewtypeConstructor {} -> return True
 
 -- | A concrete type has no type unifications variables left
 isConcreteType :: Type -> Bool
@@ -86,7 +88,7 @@ isTypedTerm = \case
   TermBlock (stmts, tm) _ -> all isTypedStatement stmts && isTypedTerm tm
   TermStructure _ fields _ -> isTypedTerm `all` (snd <$> fields)
   TermMember te _ _ -> isTypedTerm te
-  TermNeutral _ m_tes m_te's _ -> maybe True (isTypedTerm `all`) m_tes && maybe True (isTypedTerm `all`) m_te's
+  TermNeutral _app m_tes m_te's _ -> maybe True (isTypedTerm `all`) m_tes && maybe True (isTypedTerm `all`) m_te's
   TermAscribe {} -> False
   TermMatch te branches _ -> isTypedTerm te && isTypedTerm `all` (snd <$> branches)
 
@@ -109,10 +111,17 @@ type TypingM = StateT TypingEnv (ReaderT TypingCtx (ExceptT TypingError FlexM))
 
 data TypingCtx = TypingCtx
   { _ctxTypes :: Map.Map TypeId TypeM,
-    _ctxTerms :: Map.Map TermId TypeM,
+    _ctxApplicants :: Map.Map Applicant ApplicantTypeM,
     _ctxCxparamNewtypes :: Map.Map TermId TypeId,
     _ctxCxparams :: Map.Map TypeId TermId
   }
+
+data ApplicantTypeM
+  = ApplicantTypeFunction (TypingM FunctionType)
+  | ApplicantTypeEnumConstructor Enum TermId
+  | ApplicantTypeVariantConstructor (TypingM Variant) TermId [TypeM]
+  | ApplicantTypeNewtypeConstructor (TypingM Newtype)
+  | ApplicantType TypeM
 
 data TypingEnv = TypingEnv
   { -- | unifying substitution
@@ -135,8 +144,8 @@ makeLenses 'TypingEnv
 
 introTerm :: TermId -> TypeM -> TypingM a -> TypingM a
 introTerm tmId tyM =
-  locallyM (ctxTerms . at tmId) \case
-    Nothing -> return $ pure tyM
+  locallyM (ctxApplicants . at (Applicant (Nothing, tmId))) \case
+    Nothing -> return . pure . ApplicantType $ tyM
     Just _ -> throwTypingError ("attempted to introduce two terms with the same name:" <+> ticks (pPrint tmId)) Nothing
 
 introCxparam :: Maybe (Syntax ()) -> TypeId -> TermId -> TypingM a -> TypingM a
@@ -151,18 +160,18 @@ introCxparam mb_syn tyId tmId =
         Just _ -> throwTypingError ("attempted to introduce two contextual parameters with the same type:" <+> ticks (pPrint tyId)) mb_syn
     ]
 
-lookupTypeId :: TypeId -> TypingM TypeM
-lookupTypeId tyId =
+lookupApplicant :: Applicant -> TypingM ApplicantTypeM
+lookupApplicant app =
+  asks (^. ctxApplicants . at app) >>= \case
+    Nothing -> throwTypingError ("unknown applicant:" <+> ticks (pPrint app)) Nothing
+    Just appTyM -> return appTyM
+
+lookupType :: TypeId -> TypingM TypeM
+lookupType tyId =
   asks (^. ctxTypes . at tyId)
     >>= \case
-      Just tyM -> return tyM
       Nothing -> throwTypingError ("unknown type id" <+> ticks (pPrint tyId)) Nothing
-
-lookupTermId :: TermId -> TypingM TypeM
-lookupTermId tmId =
-  asks (^. ctxTerms . at tmId) >>= \case
-    Just tyM -> return tyM
-    Nothing -> throwTypingError ("unknown term id" <+> ticks (pPrint tmId)) Nothing
+      Just tyM -> return tyM
 
 throwTypingError :: MonadError TypingError m => Doc -> Maybe (Syntax ()) -> m b
 throwTypingError err mb_syn = throwError $ TypingError err mb_syn
@@ -184,7 +193,7 @@ topTypingCtx Module {..} = do
     moduleDeclarations
     TypingCtx
       { _ctxTypes = mempty,
-        _ctxTerms = mempty,
+        _ctxApplicants = mempty,
         _ctxCxparamNewtypes = mempty,
         _ctxCxparams = mempty
       }
@@ -194,50 +203,79 @@ topTypingCtx Module {..} = do
             Just _ -> throwTypingError ("conflicting definitions of type:" <+> ticks (pPrint tyId)) (pure . toSyntax $ decl)
             Nothing -> return $ ctx' & ctxTypes . at tyId ?~ tyM
 
-      let addTerm :: TermId -> TypeM -> TypingCtx -> m TypingCtx
-          addTerm tmId ty ctx' = case ctx' ^. ctxTerms . at tmId of
-            Nothing -> return $ ctx' & ctxTerms . at tmId ?~ ty
-            Just _ -> throwTypingError ("conflicting definitions of term:" <+> ticks (pPrint tmId)) (pure . toSyntax $ decl)
+      -- let addTerm :: TermId -> TypeM -> TypingCtx -> m TypingCtx
+      --     addTerm tmId ty ctx' = case ctx' ^. ctxApplicant . at tmId of
+      --       Nothing -> return $ ctx' & ctxTerms . at tmId ?~ ty
+      --       Just _ -> throwTypingError ("conflicting definitions of term:" <+> ticks (pPrint tmId)) (pure . toSyntax $ decl)
+
+      let addApplicant :: Applicant -> ApplicantTypeM -> TypingCtx -> m TypingCtx
+          addApplicant app appTy ctx' = case ctx' ^. ctxApplicants . at app of
+            Nothing -> return $ ctx' & ctxApplicants . at app ?~ appTy
+            Just _ -> throwTypingError ("conflicting definitions of:" <+> ticks (pPrint app)) (pure . toSyntax $ decl)
 
       case decl of
         DeclarationStructure struct@Structure {..} -> do
           struct' <- inlineStructureExtension structs [] struct
           (ctx &) $
             addType structureId (normType $ TypeStructure struct')
-        DeclarationNewtype newty@Newtype {..} ->
+        DeclarationNewtype newty@Newtype {..} -> do
+          let normedNewtype = do
+                newtypeType' <- normType newtypeType
+                return (newty {newtypeType = newtypeType'})
           (ctx &) . compsM $
             [ addType newtypeId (normType $ TypeNewtype newty),
-              addTerm (fromNewtypeIdToTermId newtypeId) (normType (TypeNewtypeConstructor newty))
+              addApplicant
+                (Applicant (Nothing, newtypeConstructorId))
+                (ApplicantTypeNewtypeConstructor normedNewtype)
             ]
         DeclarationVariant varnt@Variant {..} ->
-          (ctx &) . compsM . concat $
-            [ [addType variantId (normType $ TypeVariant varnt)],
-              variantConstructors <&> \(constrId, mb_tyParams) ->
-                addTerm constrId (normType (TypeVariantConstuctor varnt constrId mb_tyParams))
-            ]
+          let normedVariant :: TypingM Variant
+              normedVariant = do
+                variantConstructors' <- secondM (normType `traverse`) `traverse` variantConstructors
+                return varnt {variantConstructors = variantConstructors'}
+           in (ctx &) . compsM . concat $
+                [ [addType variantId (normType $ TypeVariant varnt)],
+                  variantConstructors <&> \(constrId, tyParams) ->
+                    addApplicant
+                      (Applicant (Just variantId, constrId))
+                      ( ApplicantTypeVariantConstructor
+                          normedVariant
+                          constrId
+                          (normType <$> tyParams)
+                      )
+                ]
         DeclarationEnum enum@Enum {..} ->
           (ctx &) . compsM . concat $
             [ [addType enumId (normType $ TypeEnum enum)],
               enumConstructors <&> \(constrId, _) ->
-                addTerm constrId (normType (TypeEnumConstructor enum constrId))
+                addApplicant
+                  (Applicant (Just enumId, constrId))
+                  (ApplicantTypeEnumConstructor enum constrId)
             ]
         DeclarationAlias Alias {..} ->
           (ctx &) $
             addType aliasId (normType aliasType)
         DeclarationFunction Function {..} -> do
-          let funty =
-                FunctionType
-                  { functionTypeId = functionId,
-                    functionTypeIsTransform = functionIsTransform,
-                    functionTypeParameters = functionParameters,
-                    functionTypeContextualParameters = functionContextualParameters,
-                    functionTypeOutput = functionOutput
-                  }
+          let normedFunTy = do
+                functionTypeParameters <- secondM normType `traverse` functionParameters
+                functionTypeOutput <- normType functionOutput
+                return
+                  FunctionType
+                    { functionTypeId = functionId,
+                      functionTypeIsTransform = functionIsTransform,
+                      functionTypeParameters,
+                      functionTypeContextualParameters = functionContextualParameters,
+                      functionTypeOutput
+                    }
           (ctx &) $
-            addTerm functionId (normType (TypeFunction funty))
+            addApplicant
+              (Applicant (Nothing, functionId))
+              (ApplicantTypeFunction normedFunTy)
         DeclarationConstant Constant {..} ->
           (ctx &) $
-            addTerm constantId (normType constantType)
+            addApplicant
+              (Applicant (Nothing, constantId))
+              (ApplicantType $ normType constantType)
         DeclarationRefinedType RefinedType {} ->
           return ctx
 
@@ -304,6 +342,7 @@ procDeclaration decl = case decl of
     return . toDeclaration $
       Newtype
         { newtypeId,
+          newtypeConstructorId,
           newtypeFieldId,
           newtypeType
         }
@@ -371,7 +410,7 @@ procDeclaration decl = case decl of
   DeclarationRefinedType (RefinedType {..}) -> do
     let m_rfn = sequence =<< synthRefinement refinedTypeRefinement
     rfn <-
-      lookupTypeId refinedTypeId >>>= \case
+      lookupType refinedTypeId >>>= \case
         TypeStructure struct ->
           foldr'
             ( \(fieldId, ty) ->
@@ -487,7 +526,7 @@ synthTerm term = case term of
   TermBlock blk () -> synthBlock blk
   TermStructure tyId fields () -> do
     struct <-
-      lookupTypeId tyId >>>= \case
+      lookupType tyId >>>= \case
         TypeStructure struct -> return struct
         _ -> throwTypingError ("expected" <+> ticks (pPrint tyId) <+> " to be a structure type id") (pure . toSyntax $ term)
     fields' <- forM fields \(fieldId, tm) ->
@@ -505,16 +544,20 @@ synthTerm term = case term of
       Nothing -> throwTypingError ("attempted to access the field" <+> pPrint fieldId <+> ", but it has structure type" <+> pPrint (structureId struct) <+> " which does not have that field") (pure . toSyntax $ term)
       Just ty -> return (normType ty)
     return $ TermMember tm' fieldId ty
-  TermNeutral tmId mb_args mb_cxargs () -> synthNeutral term tmId mb_args mb_cxargs
+  TermNeutral app mb_args mb_cxargs () -> synthNeutral term app mb_args mb_cxargs
   TermAscribe tm ty () -> synthCheckTerm' (normType ty) tm
   TermMatch tm branches () -> synthMatch tm branches
 
-synthNeutral :: Term () -> TermId -> Maybe [Term ()] -> Maybe [Term ()] -> TypingM (Term TypeM)
-synthNeutral term tmId mb_args mb_cxargs =
-  lookupTermId tmId >>= \tyM ->
-    tyM >>= \type_ -> case type_ of
-      -- TypeFunction
-      TypeFunction FunctionType {..} -> do
+synthNeutral :: Term () -> Applicant -> Maybe [Term ()] -> Maybe [Term ()] -> TypingM (Term TypeM)
+-- function application / newtype constructor
+-- newtype constructor
+-- variant constructor
+-- enum constructor
+synthNeutral term app mb_args mb_cxargs =
+  lookupApplicant app >>= \case
+    -- TypeFunction
+    ApplicantTypeFunction funTyM ->
+      funTyM >>= \FunctionType {..} -> do
         args <- case mb_args of
           Nothing -> throwTypingError "a function application must have arguments" (pure . toSyntax $ term)
           Just args -> return args
@@ -534,7 +577,7 @@ synthNeutral term tmId mb_args mb_cxargs =
                   fmap Just . forM cxparams $ \(tyIdCxparam, tmIdCxparam) ->
                     asks (^. ctxCxparams . at tyIdCxparam) >>= \case
                       Nothing -> throwTypingError ("could not infer the implicit contextual argument" <+> ticks (pPrint tmIdCxparam)) (pure . toSyntax $ term)
-                      Just tmIdCxarg -> return $ TermNeutral tmIdCxarg Nothing Nothing (normType $ TypeNamed tyIdCxparam)
+                      Just tmIdCxarg -> return $ TermNeutral (Applicant (Nothing, tmIdCxarg)) Nothing Nothing (normType $ TypeNamed tyIdCxparam)
             Just cxargs -> do
               case functionTypeContextualParameters of
                 -- actually, no cxparams!
@@ -560,7 +603,155 @@ synthNeutral term tmId mb_args mb_cxargs =
                   return $ pure cxargs'
         -- output type
         let tyOut = return functionTypeOutput
-        return $ TermNeutral tmId mb_args' mb_cxargs' tyOut
+        return $ TermNeutral app mb_args' mb_cxargs' tyOut
+    -- TypeVariantConstuctor
+    ApplicantTypeVariantConstructor varntM _constrId tyParamsM -> do
+      -- check arguments
+      mb_args' <-
+        case mb_args of
+          Nothing -> throwTypingError "the variant constructor expects some arguments, but none were given" (pure . toSyntax $ term)
+          Just args -> do
+            tyParams <- sequence tyParamsM
+            pure <$> uncurry synthCheckTerm `traverse` (tyParams `zip` args)
+      -- check contextual args (can't have any)
+      unless (isNothing mb_cxargs) $ throwTypingError "a variant constructor can't have contextual arguments" (pure . toSyntax $ term)
+      -- output type
+      let tyOut = normType . TypeVariant =<< varntM
+      return $ TermNeutral app mb_args' Nothing tyOut
+    -- TypeEnumConstructor
+    ApplicantTypeEnumConstructor enum _constrId -> do
+      -- check arguments (can't have any)
+      unless (isNothing mb_args) $ throwTypingError "cannot apply an enum constructor" (pure . toSyntax $ term)
+      -- check contextual args (can't have any)
+      unless (isNothing mb_cxargs) $ throwTypingError "cannot give contextual argsuments to an enum constructor" (pure . toSyntax $ term)
+      -- output type
+      let tyOut = normType $ TypeEnum enum
+      return $ TermNeutral app Nothing Nothing tyOut
+    -- TypeNewtypeConstructor
+    ApplicantTypeNewtypeConstructor newtyM -> do
+      newty <- newtyM
+      -- check argument (must have exactly 1)
+      mb_args' <- case mb_args of
+        Just [arg] ->
+          pure . pure <$> synthCheckTerm (newtypeType newty) arg
+        Just _ -> throwTypingError "a newtype constructor requires exactly one argument" (pure . toSyntax $ term)
+        Nothing -> throwTypingError "a newtype constructor must be given an argument" (pure . toSyntax $ term)
+      unless (isNothing mb_cxargs) $ throwTypingError "a newtype constructor cannot be given contextual arguments" (pure . toSyntax $ term)
+      -- output type
+      let tyOut = normType $ TypeNewtype newty
+      return $ TermNeutral app mb_args' Nothing tyOut
+    ApplicantType tyM -> do
+      -- check arguments (must have 0)
+      -- check contextual arguments (must have 0)
+      unless (isNothing mb_args) $ throwTypingError "cannot apply a constant" (pure . toSyntax $ term)
+      unless (isNothing mb_args) $ throwTypingError "cannot give contextual arguments to a constant" (pure . toSyntax $ term)
+      return $ TermNeutral app Nothing Nothing tyM
+
+{-
+synthNeutral term (Nothing, tmId) mb_args mb_cxargs =
+  lookupTermId tmId >>= \tyM ->
+    tyM >>= \type_ -> case type_ of
+      -- TypeFunction
+      TypeFunction FunctionType {..} -> do
+        args <- case mb_args of
+          Nothing -> throwTypingError "a function application must have arguments" (pure . toSyntax $ term)
+          Just args -> return args
+        -- check args
+        -- mb_args' <- pure <$> uncurry synthCheckTerm `traverse` ((snd <$> functionTypeParameters func) `zip` args)
+        mb_args' <- Just <$> forM ((snd <$> functionTypeParameters) `zip` args) (uncurry synthCheckTerm)
+        -- check cxargs
+        mb_cxargs' <-
+          case mb_cxargs of
+            -- implicitly give, or no cxargs
+            Nothing -> do
+              case functionTypeContextualParameters of
+                -- no cxparams
+                Nothing -> return Nothing
+                -- implicit cxparams, which need to be inferred
+                Just cxparams ->
+                  fmap Just . forM cxparams $ \(tyIdCxparam, tmIdCxparam) ->
+                    asks (^. ctxCxparams . at tyIdCxparam) >>= \case
+                      Nothing -> throwTypingError ("could not infer the implicit contextual argument" <+> ticks (pPrint tmIdCxparam)) (pure . toSyntax $ term)
+                      Just tmIdCxarg -> return $ TermNeutral (ApplicantConstructor tyIdCxparam tmIdCxarg) Nothing Nothing (normType $ TypeNamed tyIdCxparam)
+            Just cxargs -> do
+              case functionTypeContextualParameters of
+                -- actually, no cxparams!
+                Nothing -> throwTypingError "attempted to give explicit contextual arguments to a function that does not have contextual parameters" (pure . toSyntax $ term)
+                Just cxparams -> do
+                  cxargs1 <- synthTerm `traverse` cxargs
+                  newtyIds_cxargs <- forM cxargs1 \tm ->
+                    inferTerm tm >>>= \case
+                      TypeNewtype newty -> return (newtypeId newty, tm)
+                      _ -> throwTypingError "each explicit contextual argument must be a newtype" (pure . toSyntax $ term)
+                  -- cxargs' is in the same order as cxparams
+                  cxargs' <-
+                    reverse . snd
+                      <$> foldM
+                        ( \(newtyIds_cxargs1, cxargs') newtyId -> do
+                            -- extract the cxarg that has the right newtype
+                            case newtyId `lookup` newtyIds_cxargs1 of
+                              Nothing -> throwTypingError ("missing explicit contextual argument: " <+> pPrint newtyId) (pure . toSyntax $ term)
+                              Just cxarg -> return (newtyIds_cxargs, cxarg : cxargs')
+                        )
+                        (newtyIds_cxargs, [])
+                        (fst <$> cxparams)
+                  return $ pure cxargs'
+        -- output type
+        let tyOut = return functionTypeOutput
+        return $ TermNeutral (ApplicantTermId tmId) mb_args' mb_cxargs' tyOut
+      _ -> error "TODO"
+-}
+{-
+  lookupTermId tmId >>= \tyM ->
+    tyM >>= \type_ -> case type_ of
+      -- TypeFunction
+      TypeFunction FunctionType {..} -> do
+        args <- case mb_args of
+          Nothing -> throwTypingError "a function application must have arguments" (pure . toSyntax $ term)
+          Just args -> return args
+        -- check args
+        -- mb_args' <- pure <$> uncurry synthCheckTerm `traverse` ((snd <$> functionTypeParameters func) `zip` args)
+        mb_args' <- Just <$> forM ((snd <$> functionTypeParameters) `zip` args) (uncurry synthCheckTerm)
+        -- check cxargs
+        mb_cxargs' <-
+          case mb_cxargs of
+            -- implicitly give, or no cxargs
+            Nothing -> do
+              case functionTypeContextualParameters of
+                -- no cxparams
+                Nothing -> return Nothing
+                -- implicit cxparams
+                Just cxparams ->
+                  fmap Just . forM cxparams $ \(tyIdCxparam, tmIdCxparam) ->
+                    asks (^. ctxCxparams . at tyIdCxparam) >>= \case
+                      Nothing -> throwTypingError ("could not infer the implicit contextual argument" <+> ticks (pPrint tmIdCxparam)) (pure . toSyntax $ term)
+                      Just tmIdCxarg -> return $ TermNeutral Nothing tmIdCxarg Nothing Nothing (normType $ TypeNamed tyIdCxparam)
+            Just cxargs -> do
+              case functionTypeContextualParameters of
+                -- actually, no cxparams!
+                Nothing -> throwTypingError "attempted to give explicit contextual arguments to a function that does not have contextual parameters" (pure . toSyntax $ term)
+                Just cxparams -> do
+                  cxargs1 <- synthTerm `traverse` cxargs
+                  newtyIds_cxargs <- forM cxargs1 \tm ->
+                    inferTerm tm >>>= \case
+                      TypeNewtype newty -> return (newtypeId newty, tm)
+                      _ -> throwTypingError "each explicit contextual argument must be a newtype" (pure . toSyntax $ term)
+                  -- cxargs' is in the same order as cxparams
+                  cxargs' <-
+                    reverse . snd
+                      <$> foldM
+                        ( \(newtyIds_cxargs1, cxargs') newtyId -> do
+                            -- extract the cxarg that has the right newtype
+                            case newtyId `lookup` newtyIds_cxargs1 of
+                              Nothing -> throwTypingError ("missing explicit contextual argument: " <+> pPrint newtyId) (pure . toSyntax $ term)
+                              Just cxarg -> return (newtyIds_cxargs, cxarg : cxargs')
+                        )
+                        (newtyIds_cxargs, [])
+                        (fst <$> cxparams)
+                  return $ pure cxargs'
+        -- output type
+        let tyOut = return functionTypeOutput
+        return $ TermNeutral Nothing tmId mb_args' mb_cxargs' tyOut
       -- TypeVariantConstuctor
       TypeVariantConstuctor varnt _constrId mb_tyParams -> do
         -- check arguments
@@ -580,7 +771,7 @@ synthNeutral term tmId mb_args mb_cxargs =
         unless (isNothing mb_cxargs) $ throwTypingError "a variant constructor can't have contextual arguments" (pure . toSyntax $ term)
         -- output type
         let tyOut = normType $ TypeVariant varnt
-        return $ TermNeutral tmId mb_args' Nothing tyOut
+        return $ TermNeutral mb_tyId tmId mb_args' Nothing tyOut
       -- TypeEnumConstructor
       TypeEnumConstructor enum _constrId -> do
         -- check arguments (can't have any)
@@ -589,7 +780,7 @@ synthNeutral term tmId mb_args mb_cxargs =
         unless (isNothing mb_cxargs) $ throwTypingError "cannot give contextual argsuments to an enum constructor" (pure . toSyntax $ term)
         -- output type
         let tyOut = normType $ TypeEnum enum
-        return $ TermNeutral tmId Nothing Nothing tyOut
+        return $ TermNeutral mb_tyId tmId Nothing Nothing tyOut
       -- TypeNewtypeConstructor
       TypeNewtypeConstructor newty -> do
         -- check argument (must have exactly 1)
@@ -601,12 +792,13 @@ synthNeutral term tmId mb_args mb_cxargs =
         unless (isNothing mb_cxargs) $ throwTypingError "a newtype constructor cannot be given contextual arguments" (pure . toSyntax $ term)
         -- output type
         let tyOut = normType $ TypeNewtype newty
-        return $ TermNeutral tmId mb_args' Nothing tyOut
+        return $ TermNeutral _ tmId mb_args' Nothing tyOut
       -- non-functional type
       _ -> do
         unless (isNothing mb_args) $ throwTypingError ("cannot give arguments to a term of type" <+> pPrint type_) (pure . toSyntax $ term)
         unless (isNothing mb_cxargs) $ throwTypingError ("cannot give contextual argument to a term of type" <+> pPrint type_) (pure . toSyntax $ term)
-        return $ TermNeutral tmId Nothing Nothing tyM
+        return $ TermNeutral _ tmId Nothing Nothing tyM
+-}
 
 synthBlock :: Block () -> TypingM (Term TypeM)
 synthBlock (stmts, tm) = do
@@ -650,31 +842,31 @@ normType type_ = case type_ of
   TypeArray ty -> TypeArray <$> normType ty
   TypeTuple tys -> TypeTuple <$> normType `traverse` tys
   TypeOptional ty -> TypeOptional <$> normType ty
-  TypeNamed tyId -> join $ lookupTypeId tyId
+  TypeNamed tyId -> join $ lookupType tyId
   TypeUnifyVar uv _ ->
     gets (^. envUnification . at uv) >>= \case
       Nothing -> return type_
       Just ty -> normType ty
-  TypeFunction fun -> do
-    functionTypeParameters <- secondM normType `traverse` functionTypeParameters fun
-    functionTypeOutput <- normType $ functionTypeOutput fun
-    return $ TypeFunction fun {functionTypeParameters, functionTypeOutput}
   TypeStructure struct -> do
     structureFields <- secondM normType `traverse` structureFields struct
     return $ TypeStructure struct {structureFields}
   TypeVariant varnt -> do
-    variantConstructors <- secondM (traverse (traverse normType)) `traverse` variantConstructors varnt
+    variantConstructors <- secondM (traverse normType) `traverse` variantConstructors varnt
     return $ TypeVariant varnt {variantConstructors}
   TypeNewtype newty -> do
     newtypeType <- normType (newtypeType newty)
     return $ TypeNewtype newty {newtypeType}
-  TypeVariantConstuctor varnt constrId mb_args -> do
-    variantConstructors <- secondM (traverse (traverse normType)) `traverse` variantConstructors varnt
-    mb_args' <- traverse (traverse normType) mb_args
-    return $ TypeVariantConstuctor varnt {variantConstructors} constrId mb_args'
-  TypeNewtypeConstructor newty -> do
-    newtypeType <- normType (newtypeType newty)
-    return $ TypeNewtypeConstructor newty {newtypeType}
+  -- TypeFunction fun -> do
+  --   functionTypeParameters <- secondM normType `traverse` functionTypeParameters fun
+  --   functionTypeOutput <- normType $ functionTypeOutput fun
+  --   return $ TypeFunction fun {functionTypeParameters, functionTypeOutput}
+  -- TypeVariantConstuctor varnt constrId mb_args -> do
+  --   variantConstructors <- secondM (traverse (traverse normType)) `traverse` variantConstructors varnt
+  --   mb_args' <- traverse (traverse normType) mb_args
+  --   return $ TypeVariantConstuctor varnt {variantConstructors} constrId mb_args'
+  -- TypeNewtypeConstructor newty -> do
+  --   newtypeType <- normType (newtypeType newty)
+  --   return $ TypeNewtypeConstructor newty {newtypeType}
   _ -> return type_
 
 -- ** TypeUnifVar
@@ -725,18 +917,20 @@ unify TypeChar TypeChar = return ()
 unify (TypeArray ty1) (TypeArray ty2) = unify ty1 ty2
 unify (TypeTuple tys1) (TypeTuple tys2) = uncurry unify `traverse_` (tys1 `zip` tys2)
 unify (TypeOptional ty1) (TypeOptional ty2) = unify ty1 ty2
-unify (TypeFunction fun1) (TypeFunction fun2) | functionTypeId fun1 == functionTypeId fun2 = return ()
 unify (TypeStructure struct1) (TypeStructure struct2) | structureId struct1 == structureId struct2 = return ()
 unify (TypeEnum enum1) (TypeEnum enum2) | enumId enum1 == enumId enum2 = return ()
 unify (TypeVariant varnt1) (TypeVariant varnt2) | variantId varnt1 == variantId varnt2 = return ()
 unify (TypeNewtype newty1) (TypeNewtype newty2) | newtypeId newty1 == newtypeId newty2 = return ()
 -- invalid types
-unify ty@TypeVariantConstuctor {} _ = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeVariantConstructor`:" <+> ticks (pPrint ty)
-unify _ ty@TypeVariantConstuctor {} = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeVariantConstructor`:" <+> ticks (pPrint ty)
-unify ty@TypeEnumConstructor {} _ = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeEnumConstructor`:" <+> ticks (pPrint ty)
-unify _ ty@TypeEnumConstructor {} = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeEnumConstructor`:" <+> ticks (pPrint ty)
-unify ty@TypeNewtypeConstructor {} _ = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeNewtypeConstructor`:" <+> ticks (pPrint ty)
-unify _ ty@TypeNewtypeConstructor {} = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeNewtypeConstructor`:" <+> ticks (pPrint ty)
+-- TODO: remove when confirm deletions of Type*Constructor types
+-- unify ty@(TypeFunction {}) _ = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeFunction`:" <+> ticks (pPrint ty)
+-- unify _ ty@(TypeFunction {}) = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeFunction`:" <+> ticks (pPrint ty)
+-- unify ty@TypeVariantConstuctor {} _ = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeVariantConstructor`:" <+> ticks (pPrint ty)
+-- unify _ ty@TypeVariantConstuctor {} = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeVariantConstructor`:" <+> ticks (pPrint ty)
+-- unify ty@TypeEnumConstructor {} _ = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeEnumConstructor`:" <+> ticks (pPrint ty)
+-- unify _ ty@TypeEnumConstructor {} = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeEnumConstructor`:" <+> ticks (pPrint ty)
+-- unify ty@TypeNewtypeConstructor {} _ = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeNewtypeConstructor`:" <+> ticks (pPrint ty)
+-- unify _ ty@TypeNewtypeConstructor {} = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeNewtypeConstructor`:" <+> ticks (pPrint ty)
 unify ty@TypeNamed {} _ = FlexBug.throw $ FlexLog "typing" $ "`TypeNamed` should never appear in a normalized type:" <+> ticks (pPrint ty)
 unify _ ty@TypeNamed {} = FlexBug.throw $ FlexLog "typing" $ "`TypeNamed` should never appear in a normalized type:" <+> ticks (pPrint ty)
 -- non-unifiable types

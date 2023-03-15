@@ -6,8 +6,8 @@ enum Bit int1 {
 }
 
 function main() -> bit {
-    let _: Bit = zero;
-    let _: Bit = one;
-    let _: bit = zero == one;
+    let _: Bit = Bit#zero;
+    let _: Bit = Bit#one;
+    let _: bit = Bit#zero == Bit#one;
     true
 }

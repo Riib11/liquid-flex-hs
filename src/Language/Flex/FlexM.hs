@@ -32,13 +32,6 @@ data FlexOptions = FlexOptions
     sourceFilePath :: FilePath
   }
 
-defaultFlexOptions :: FlexOptions
-defaultFlexOptions =
-  FlexOptions
-    { flexVerbose = True,
-      sourceFilePath = "<empty>"
-    }
-
 runFlexM :: FlexOptions -> FlexM a -> IO a
 runFlexM opts@FlexOptions {..} m = do
   (a, logs) <- runWriterT (runReaderT m opts)

@@ -23,6 +23,7 @@ newtype N {
     assert(b == b || !b);
 }
 
+// no parameters `V3()` is the same as empty parameters `V4`
 variant V {
     V1(bit);
     V2(int32, int64, int128);
