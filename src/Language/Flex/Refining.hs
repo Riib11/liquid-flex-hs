@@ -35,9 +35,11 @@ checkModule Base.Module {..} = do
 checkDeclaration :: Base.Declaration Base.Type -> RefiningM ()
 checkDeclaration decl = case decl of
   Base.DeclarationFunction Base.Function {..} -> do
-    lift $ FlexM.tell $ FlexM.FlexLog "refining" ("check function:" $$ text (show functionBody))
+    lift $ FlexM.tell $ FlexM.FlexLog "refining" ("check function body:" $$ text (show functionBody))
     foldr (uncurry introTerm) (check label functionBody functionOutput) functionParameters
-  Base.DeclarationConstant Base.Constant {..} -> check label constantTerm constantType
+  Base.DeclarationConstant Base.Constant {..} -> do
+    lift $ FlexM.tell $ FlexM.FlexLog "refining" ("check constant body:" $$ text (show constantBody))
+    check label constantBody constantType
   _ -> return ()
   where
     label = pPrint decl

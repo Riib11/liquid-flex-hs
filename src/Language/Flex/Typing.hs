@@ -335,12 +335,12 @@ procDeclaration decl = case decl of
         }
   DeclarationConstant (Constant {..}) -> do
     ty <- normType constantType
-    body <- sequence =<< synthCheckTerm ty constantTerm
+    body <- sequence =<< synthCheckTerm ty constantBody
     return . toDeclaration $
       Constant
         { constantId,
           constantType = ty,
-          constantTerm = body
+          constantBody = body
         }
   DeclarationRefinedType (RefinedType {..}) -> do
     let m_rfn = sequence =<< synthRefinement refinedTypeRefinement
@@ -865,7 +865,7 @@ isTypedModule Module {..} =
         (DeclarationEnum {}) -> True
         (DeclarationAlias {}) -> True
         (DeclarationFunction Function {..}) -> isTypedTerm functionBody
-        (DeclarationConstant Constant {..}) -> isTypedTerm constantTerm
+        (DeclarationConstant Constant {..}) -> isTypedTerm constantBody
         (DeclarationRefinedType {}) -> True
     )
     moduleDeclarations

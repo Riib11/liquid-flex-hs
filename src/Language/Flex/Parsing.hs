@@ -245,13 +245,13 @@ parseConstant = do
   colon
   ty <- parseType
   equals
-  constantTerm <- parseTerm
+  constantBody <- parseTerm
   return . pure $
     toDeclaration
       Constant
         { constantId,
           constantType = ty,
-          constantTerm
+          constantBody
         }
 
 -- ** Type

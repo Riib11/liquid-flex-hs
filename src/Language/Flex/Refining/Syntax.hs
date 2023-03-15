@@ -190,7 +190,7 @@ data Function r = Function
 
 data Constant r = Constant
   { constantId :: TermId,
-    constantTerm :: Term r,
+    constantBody :: Term r,
     constantType :: Type
   }
   deriving (Eq, Show)

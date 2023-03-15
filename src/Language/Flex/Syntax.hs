@@ -274,7 +274,7 @@ instance Pretty (Function ann) where
 
 data Constant ann = Constant
   { constantId :: TermId,
-    constantTerm :: Term ann,
+    constantBody :: Term ann,
     constantType :: Type
   }
   deriving (Eq, Functor, Foldable, Traversable, Show)
@@ -284,7 +284,7 @@ instance Pretty (Constant ann) where
     "constant"
       <+> pPrint constantId
       <+> "="
-      <+> pPrint constantTerm
+      <+> pPrint constantBody
 
 -- ** Term
 
