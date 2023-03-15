@@ -11,7 +11,38 @@ import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render, (<+>))
 
 transTerm :: Base.Term Base.Type -> RefiningM (Term Base.Type)
-transTerm = error "TODO"
+transTerm term = case term of
+  Base.TermLiteral lit ty -> return $ TermLiteral lit ty
+  Base.TermPrimitive prim ty ->
+    TermPrimitive
+      <$> case prim of
+        Base.PrimitiveTry te -> PrimitiveTry <$> transTerm te
+        Base.PrimitiveCast _ -> FlexBug.throw $ FlexLog "refining" $ "PrimitiveCast should not appear in typed term:" <+> pPrint term
+        Base.PrimitiveTuple tes -> PrimitiveTuple <$> transTerm `traverse` tes
+        Base.PrimitiveArray tes -> PrimitiveArray <$> transTerm `traverse` tes
+        Base.PrimitiveIf te te' te3 -> PrimitiveIf <$> transTerm te <*> transTerm te' <*> transTerm te3
+        Base.PrimitiveAnd te te' -> PrimitiveAnd <$> transTerm te <*> transTerm te'
+        Base.PrimitiveOr te te' -> PrimitiveOr <$> transTerm te <*> transTerm te'
+        Base.PrimitiveNot te -> PrimitiveNot <$> transTerm te
+        Base.PrimitiveEq te te' -> PrimitiveEq <$> transTerm te <*> transTerm te'
+        Base.PrimitiveAdd te te' -> PrimitiveAdd <$> transTerm te <*> transTerm te'
+      <*> return ty
+  Base.TermBlock (stmts, tm) _ty -> go stmts
+    where
+      go :: [Base.Statement Base.Type] -> RefiningM (Term Base.Type)
+      go [] = transTerm tm
+      go ((Base.StatementLet (Base.PatternNamed ti _ty') te) : stmts') = substTerm ti <$> transTerm te <*> go stmts'
+      go ((Base.StatementLet (Base.PatternDiscard _ty') _te) : stmts') = go stmts'
+      go ((Base.StatementAssert te) : stmts') = do
+        te' <- transTerm te
+        body' <- go stmts'
+        return $ TermAssert te' body' (getTermR body')
+  Base.TermStructure _ti _x0 _ty -> error "transTerm"
+  Base.TermMember _te _fi _ty -> error "transTerm"
+  Base.TermNeutral _ap _m_tes _ma _ty -> error "transTerm"
+  Base.TermMatch _te _x0 _ty -> error "transTerm"
+  -- invalid
+  Base.TermAscribe _te _ty _ty' -> FlexBug.throw $ FlexLog "refining" $ "term ascribe should not appear in typed term:" <+> pPrint term
 
 transType :: Base.Type -> RefiningM Type
 transType type_ = case type_ of

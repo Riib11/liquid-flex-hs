@@ -484,9 +484,6 @@ parsePattern =
         reserved "_"
         return $ PatternDiscard (),
       do
-        lit <- parseLiteral
-        return $ PatternLiteral lit (),
-      do
         tmId <- parseTermId
         return $ PatternNamed tmId ()
     ]

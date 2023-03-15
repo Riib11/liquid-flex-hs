@@ -459,9 +459,6 @@ checkPattern' tyM pat = do
 checkPattern :: Type -> Pattern () -> TypingM (Pattern TypeM)
 checkPattern ty = \case
   PatternNamed tmId () -> return $ PatternNamed tmId (normType ty)
-  PatternLiteral lit () -> do
-    unify ty =<<< typeLiteral lit
-    return $ PatternLiteral lit (normType ty)
   PatternDiscard () -> return $ PatternDiscard (normType ty)
 
 -- ** Synthesizing

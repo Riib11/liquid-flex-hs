@@ -5,6 +5,7 @@
 
 module Language.Flex.Syntax where
 
+import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.List (intercalate)
 import qualified Data.Map as Map
 import Text.PrettyPrint.HughesPJClass (Doc, Pretty (pPrint), braces, brackets, colon, comma, doubleQuotes, hsep, nest, parens, punctuate, quotes, text, vcat, ($$), (<+>))
@@ -405,14 +406,12 @@ instance Pretty (Statement ann) where
 
 data Pattern ann
   = PatternNamed TermId ann
-  | PatternLiteral Literal ann
   | PatternDiscard ann
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Pattern ann) where
   pPrint = \case
     PatternNamed tmId _ -> pPrint tmId
-    PatternLiteral lit _ -> pPrint lit
     PatternDiscard _ -> "_"
 
 -- ** Type
@@ -544,3 +543,21 @@ andRefinements (rfn : rfns) = foldr andRefinement rfn rfns
 
 instance Pretty (Refinement ann) where
   pPrint tm = "assert" <> parens (pPrint tm)
+
+-- -- substTerm x a b = b[x := a]
+-- substTerm :: TermId -> Term r -> Term r -> Term r
+-- substTerm tmId tm' = go
+--   where
+--     go term = case term of
+--       TermLiteral _lit _r -> term
+--       TermPrimitive _prim _r -> term
+--       TermBlock block r -> TermBlock (bimap (goStatement <$>) go block) r
+--       TermStructure ti fields r -> TermStructure ti (second go <$> fields) r
+--       TermMember te fi r -> TermMember (go te) fi r
+--       TermNeutral (Applicant (Nothing, tmId')) Nothing Nothing _r | tmId == tmId' -> tm'
+--       TermNeutral ap m_tes m_te's r -> TermNeutral ap (go <$$> m_tes) (go <$$> m_te's) r
+--       TermAscribe te ty r -> TermAscribe (go te) ty r
+--       TermMatch te branches r -> TermMatch (go te) (second go <$> branches) r
+--     goStatement = \case
+--       StatementLet pat te -> StatementLet pat (go te)
+--       StatementAssert te -> StatementAssert (go te)

@@ -217,6 +217,13 @@ data Term r
   | TermAssert (Term r) (Term r) r
   deriving (Eq, Show)
 
+getTermR :: Term r -> r
+getTermR = \case
+  TermNamed _ti r -> r
+  TermLiteral _lit r -> r
+  TermPrimitive _prim r -> r
+  TermAssert _te _te' r -> r
+
 mapTermTopR :: (r -> r) -> Term r -> Term r
 mapTermTopR f = \case
   TermNamed ti r -> TermNamed ti (f r)
@@ -244,14 +251,21 @@ subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
 --   where
 --     sigma = F.mkSubst [(x, embedVar y)]
 
--- substTerm :: Map.Map TermId Term -> Term -> Term
--- substTerm sigma term = case term of
---   TermLiteral {} -> term
---   TermPrimitive prim -> TermPrimitive case prim of
---     PrimitiveIf te te' te3 -> PrimitiveIf (go te) (go te') (go te3)
---     PrimitiveAnd te te' -> PrimitiveAnd (go te) (go te')
---     PrimitiveOr te te' -> PrimitiveOr (go te) (go te')
---     PrimitiveNot te -> PrimitiveNot (go te)
---     PrimitiveEq te -> PrimitiveEq (go te)
---   where
---     go = substTerm sigma
+substTerm :: TermId -> Term r -> Term r -> Term r
+substTerm tmId tm' term = case term of
+  TermLiteral {} -> term
+  TermNamed tmId' _ | tmId' == tmId -> tm'
+  TermNamed {} -> term
+  TermPrimitive prim r -> flip TermPrimitive r case prim of
+    PrimitiveTry te -> PrimitiveTry (go te)
+    PrimitiveTuple tes -> PrimitiveTuple (go <$> tes)
+    PrimitiveArray tes -> PrimitiveArray (go <$> tes)
+    PrimitiveIf te te' te3 -> PrimitiveIf (go te) (go te') (go te3)
+    PrimitiveAnd te te' -> PrimitiveAnd (go te) (go te')
+    PrimitiveOr te te' -> PrimitiveOr (go te) (go te')
+    PrimitiveNot te -> PrimitiveNot (go te)
+    PrimitiveEq te te' -> PrimitiveEq (go te) (go te')
+    PrimitiveAdd te te' -> PrimitiveAdd (go te) (go te')
+  TermAssert te te' r -> TermAssert (go te) (go te') r
+  where
+    go = substTerm tmId tm'

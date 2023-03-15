@@ -59,12 +59,12 @@ data RefiningEnv = RefiningEnv
 makeLenses ''RefiningCtx
 makeLenses ''RefiningEnv
 
-topRefiningCtx :: Module Type -> Either RefiningError RefiningCtx
+topRefiningCtx :: Module Type -> ExceptT RefiningError FlexM RefiningCtx
 topRefiningCtx _mdl =
   -- TODO: gather up all the RefinedTypes and make the map from their tyIds
   error "TODO"
 
-topRefiningEnv :: Module Type -> Either RefiningError RefiningCtx
+topRefiningEnv :: Module Type -> ExceptT RefiningError FlexM RefiningCtx
 topRefiningEnv _mdl = error "topRefiningEnv"
 
 -- ** Utilities

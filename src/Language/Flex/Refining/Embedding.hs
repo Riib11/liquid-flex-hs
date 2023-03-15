@@ -15,6 +15,7 @@ embedTerm = \case
   TermLiteral lit _ -> embedLiteral lit
   TermPrimitive prim _ -> embedPrimitive prim
   TermNamed x _ -> F.eVar <$> embedTermId x
+  TermAssert _ tm _ -> embedTerm tm
 
 embedLiteral :: Literal -> RefiningM F.Expr
 embedLiteral =
@@ -27,11 +28,15 @@ embedLiteral =
 
 embedPrimitive :: Primitive r -> RefiningM F.Expr
 embedPrimitive = \case
+  PrimitiveTry _ -> error "embedPrimitive Try"
+  PrimitiveTuple _ -> error "embedPrimitive Tuple"
+  PrimitiveArray _ -> error "embedPrimitive Array"
   PrimitiveIf te te' te2 -> F.EIte <$> embedTerm te <*> embedTerm te' <*> embedTerm te2
   PrimitiveAnd te te' -> F.PAnd <$> embedTerm `traverse` [te, te']
   PrimitiveOr te te' -> F.POr <$> embedTerm `traverse` [te, te']
   PrimitiveNot te -> F.PNot <$> embedTerm te
   PrimitiveEq te te' -> F.PAtom F.Eq <$> embedTerm te <*> embedTerm te'
+  PrimitiveAdd te te' -> F.EBin F.Plus <$> embedTerm te <*> embedTerm te'
 
 embedTermId :: Base.TermId -> RefiningM F.Symbol
 embedTermId tmId = return $ fromString (render . pPrint $ tmId)

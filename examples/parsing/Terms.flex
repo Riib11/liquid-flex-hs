@@ -66,7 +66,7 @@ const x: bit = {
     // pattern
     let _ = { let x = y; x };
     let _ = { let _ = x; x };
-    let _ = { let 1 = x; x };
+    // let _ = { let 1 = x; x };
 
     // result of block
     true

@@ -20,7 +20,7 @@ refineDeclaration = \case
   _ -> return ()
 
 refineFunction :: Function Type -> RefiningM ()
-refineFunction fun = undefined
+refineFunction _fun = undefined
 
 refineConstant :: Constant Type -> RefiningM ()
-refineConstant con = undefined
+refineConstant _con = undefined
