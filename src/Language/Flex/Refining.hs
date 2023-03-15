@@ -2,7 +2,7 @@ module Language.Flex.Refining where
 
 import Control.Lens (locally)
 import Control.Monad
-import Control.Monad.Except (ExceptT, runExceptT)
+import Control.Monad.Except (ExceptT, MonadTrans (lift), runExceptT)
 import Control.Monad.Reader (ReaderT (runReaderT))
 import Control.Monad.State (StateT (runStateT))
 import Data.Foldable (foldrM)
@@ -20,7 +20,7 @@ import Text.PrettyPrint.HughesPJ
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 
 refineModule :: Base.Module Base.Type -> FlexM (Either RefiningError ((), RefiningEnv))
-refineModule mdl =
+refineModule mdl = do
   runExceptT
     ((,) <$> topRefiningCtx mdl <*> topRefiningEnv mdl)
     >>= \case
@@ -34,7 +34,8 @@ checkModule Base.Module {..} = do
 
 checkDeclaration :: Base.Declaration Base.Type -> RefiningM ()
 checkDeclaration decl = case decl of
-  Base.DeclarationFunction Base.Function {..} ->
+  Base.DeclarationFunction Base.Function {..} -> do
+    lift $ FlexM.tell $ FlexM.FlexLog "refining" ("check function:" $$ text (show functionBody))
     foldr (uncurry introTerm) (check label functionBody functionOutput) functionParameters
   Base.DeclarationConstant Base.Constant {..} -> check label constantTerm constantType
   _ -> return ()

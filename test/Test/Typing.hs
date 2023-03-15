@@ -42,4 +42,4 @@ makeTest_procModule pass fp =
           Right mdl -> return mdl
       runFlexM defaultFlexOptions (typeModule mdl) >>= \case
         Left err -> when pass $ assertFailure (render . pPrint $ err)
-        Right (mdl', _env) -> do unless pass $ assertFailure "expected typing to fail"
+        Right (_mdl', _env) -> do unless pass $ assertFailure "expected typing to fail"

@@ -254,8 +254,9 @@ typeModule mdl = do
       Right s -> do
         runExceptT $ flip runReaderT r $ flip runStateT s $ do
           mdl' <- procModule mdl
-          assertNormalModule mdl'
-          return mdl'
+          mdl'' <- defaultType `traverse` mdl'
+          assertNormalModule mdl''
+          return mdl''
 
 -- ** Processing
 
@@ -600,7 +601,7 @@ synthBlock (stmts, tm) = do
         StatementLet pat _te -> case pat of
           (PatternNamed ti tyM) -> introTerm ti tyM $ go stmts'
           (PatternDiscard _st) -> go stmts'
-        StatementAssert te -> go stmts'
+        StatementAssert _te -> go stmts'
       return (stmt' : stmts'', tm')
 
 synthStatement :: Statement () -> TypingM (Statement TypeM)
@@ -868,3 +869,25 @@ isTypedModule Module {..} =
         (DeclarationRefinedType {}) -> True
     )
     moduleDeclarations
+
+defaultType :: Type -> TypingM Type
+defaultType type_ = case type_ of
+  TypeArray ty -> TypeArray <$> defaultType ty
+  TypeTuple tys -> TypeTuple <$> defaultType `traverse` tys
+  TypeOptional ty -> TypeOptional <$> defaultType ty
+  TypeUnifyVar _uv m_uc -> case m_uc of
+    Nothing -> throwTypingError ("can't default unconstrained unification type variable:" <+> pPrint type_) Nothing
+    Just uc -> case uc of
+      UnifyConstraintCasted ty -> return ty
+      -- TODO: maybe you want a different default number type?
+      UnifyConstraintNumeric -> return $ TypeNumber TypeInt 32
+  TypeStructure struct@Structure {..} -> do
+    fields <- secondM defaultType `traverse` structureFields
+    return $ TypeStructure struct {structureFields = fields}
+  TypeVariant varnt@Variant {..} -> do
+    constrs <- secondM (defaultType `traverse`) `traverse` variantConstructors
+    return $ TypeVariant varnt {variantConstructors = constrs}
+  TypeNewtype newty@Newtype {..} -> do
+    ty <- defaultType newtypeType
+    return $ TypeNewtype newty {newtypeType = ty}
+  ty -> return ty
