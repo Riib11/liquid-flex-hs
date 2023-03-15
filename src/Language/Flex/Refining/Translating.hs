@@ -38,7 +38,8 @@ transType type_ = case type_ of
     return $ TypeAtomic at (F.reft x p)
   Base.TypeBit -> return $ TypeAtomic TypeBit F.trueReft
   Base.TypeChar -> return $ TypeAtomic TypeChar F.trueReft
-  Base.TypeArray _ty -> error "transType TypeArray"
+  Base.TypeArray Base.TypeChar -> return $ TypeAtomic TypeString F.trueReft
+  Base.TypeArray _ty -> error "transType TODO"
   Base.TypeTuple _tys -> error "transType TODO"
   Base.TypeOptional _ty -> error "transType TODO"
   Base.TypeNamed _ti -> error "transType TODO"

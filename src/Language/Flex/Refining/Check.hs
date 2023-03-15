@@ -63,9 +63,9 @@ synthTerm term = case term of
 synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term Type)
 synthPrimitive term ty prim =
   case prim of
-    PrimitiveTry tm -> error "synthPrimitive: PrimitiveTry"
-    PrimitiveTuple tms -> error "synthPrimitive: PrimitiveTuple"
-    PrimitiveArray tms -> error "synthPrimitive: PrimitiveArray"
+    PrimitiveTry _tm -> error "synthPrimitive: PrimitiveTry"
+    PrimitiveTuple _tms -> error "synthPrimitive: PrimitiveTuple"
+    PrimitiveArray _tms -> error "synthPrimitive: PrimitiveArray"
     PrimitiveIf tm1 tm2 tm3 -> go3 PrimitiveIf tm1 tm2 tm3
     PrimitiveAnd tm1 tm2 -> go2 PrimitiveAnd tm1 tm2
     PrimitiveOr tm1 tm2 -> go2 PrimitiveOr tm1 tm2
