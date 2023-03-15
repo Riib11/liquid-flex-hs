@@ -101,6 +101,14 @@ charBaseType = TypeAtomic TypeChar
 stringBaseType :: F.Reft -> BaseType
 stringBaseType = TypeAtomic TypeString
 
+mapTopBaseType :: (r -> r) -> BaseType_ r -> BaseType_ r
+mapTopBaseType f = \case
+  TypeAtomic at r -> TypeAtomic at (f r)
+
+getRefinement :: BaseType_ r -> r
+getRefinement = \case
+  TypeAtomic _ r -> r
+
 -- ** FunType
 
 -- | Liquid Flex's function types are simple in that the they cannot express

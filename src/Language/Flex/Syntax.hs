@@ -1,6 +1,8 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE RecordWildCards #-}
 
+{-# HLINT ignore "Use newtype instead of data" #-}
+
 module Language.Flex.Syntax where
 
 import Data.List (intercalate)
@@ -430,11 +432,6 @@ data Type
   | TypeNewtype Newtype
   deriving (Show)
 
--- \| TypeFunction FunctionType
--- \| TypeVariantConstuctor Variant TermId (Maybe [Type])
--- \| TypeEnumConstructor Enum TermId
--- \| TypeNewtypeConstructor Newtype
-
 data FunctionType = FunctionType
   { functionTypeId :: TermId,
     functionTypeIsTransform :: Bool,
@@ -460,14 +457,6 @@ instance Pretty Type where
     TypeEnum enum -> pPrint (enumId enum)
     TypeVariant varnt -> pPrint (variantId varnt)
     TypeNewtype newty -> pPrint (newtypeId newty)
-    -- TypeFunction funty -> pPrint funty
-    -- TypeVariantConstuctor varnt constrId mb_tyParams ->
-    --   (pPrint (variantId varnt) <> "." <> pPrint constrId)
-    --     <> case mb_tyParams of
-    --       Nothing -> mempty
-    --       Just tys -> tuple $ pPrint <$> tys
-    -- TypeEnumConstructor enum constrId -> pPrint (enumId enum) <> "." <> pPrint constrId
-    -- TypeNewtypeConstructor newty -> pPrint (newtypeId newty)
     where
       tuple :: [Doc] -> Doc
       tuple = parens . hsep . punctuate comma

@@ -1,14 +1,16 @@
 {-# HLINT ignore "Use newtype instead of data" #-}
+{-# LANGUAGE TemplateHaskell #-}
+
 module Language.Flex.Refining.RefiningM where
 
--- import Language.Fixpoint.Types.PrettyPrint
-
 import Control.DeepSeq (NFData)
-import Control.Monad.Except (ExceptT, MonadTrans (lift))
+import Control.Lens
+import Control.Monad.Except (ExceptT, MonadError (throwError), MonadTrans (lift))
 import Control.Monad.Reader (ReaderT, asks)
-import Control.Monad.State (StateT)
+import Control.Monad.State (StateT, gets, modify)
 import qualified Data.Map as Map
 import GHC.Generics
+import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
 import Language.Fixpoint.Types.PrettyPrint (pprint)
 import qualified Language.Flex.FlexBug as FlexBug
@@ -42,21 +44,36 @@ instance F.Loc RefiningError where
 instance F.PPrint RefiningError where
   pprintTidy _ = text . render . pPrint
 
+throwRefiningError :: Doc -> RefiningM a
+throwRefiningError msg = throwError $ RefiningError msg
+
 data RefiningCtx = RefiningCtx {}
+
+data RefiningEnv = RefiningEnv
+  { _freshSymbolIndex :: Int
+  }
+
+makeLenses ''RefiningCtx
+makeLenses ''RefiningEnv
 
 topRefiningCtx :: Module Type -> Either RefiningError RefiningCtx
 topRefiningCtx mdl =
   -- TODO: gather up all the RefinedTypes and make the map from their tyIds
   error "TODO"
 
-data RefiningEnv = RefiningEnv {}
-
 topRefiningEnv :: Module Type -> Either RefiningError RefiningCtx
 topRefiningEnv mdl = error "TODO"
 
--- | Utilities
--- lookupFunction :: TermId -> RefiningM (Function Type)
--- lookupFunction funId =
---   asks (Map.lookup funId . ctxFunctions) >>= \case
---     Nothing -> FlexBug.throw $ FlexLog "refining" ("unknown function id" <+> pPrint funId)
---     Just fun -> return fun
+-- ** Utilities
+
+freshSymbol :: String -> RefiningM F.Symbol
+freshSymbol str = do
+  i <- gets (^. freshSymbolIndex)
+  modifying freshSymbolIndex (1 +)
+  return $ parseSymbol (str <> "#" <> show i)
+
+parseSymbol :: String -> F.Symbol
+parseSymbol str = FP.doParse' FP.lowerIdP ("parseSymbol: " <> str) str
+
+parsePred :: String -> F.Pred
+parsePred = FP.doParse' FP.predP "parsePred"
