@@ -38,10 +38,12 @@ message struct Bounded {
 
 Example:
 ```
-newtype Positiveint32 {
+newtype PositiveInt32 {
   x: int32;
   assert(0 <= x);
 }
+
+constant p = PositiveInt32(10)
 ```
 
 ### Variant

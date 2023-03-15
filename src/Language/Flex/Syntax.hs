@@ -42,6 +42,9 @@ newtype ModuleId = ModuleId String
 instance Pretty ModuleId where
   pPrint (ModuleId x) = text x
 
+-- TODO: although I originally tried to separate these, they actually kinda all
+-- live in the same namespace, so I should probably just merge them
+
 newtype TypeId = TypeId String
   deriving (Eq, Ord, Show)
 
