@@ -140,6 +140,7 @@ test-suite liquid-flex-hs-test
   other-modules:
       Test.FilePaths
       Test.Parsing
+      Test.Refining
       Test.Typing
       Test.Utility
       Paths_liquid_flex_hs

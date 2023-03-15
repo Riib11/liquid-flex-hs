@@ -13,6 +13,7 @@ import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
 embedTerm :: Term r -> RefiningM F.Expr
 embedTerm = \case
   TermLiteral lit _ -> embedLiteral lit
+  TermSymbol sym _ -> return $ F.eVar sym
   TermPrimitive prim _ -> embedPrimitive prim
   TermNamed x _ -> F.eVar <$> embedTermId x
   TermAssert _ tm _ -> embedTerm tm

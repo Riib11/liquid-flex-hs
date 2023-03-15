@@ -205,21 +205,23 @@ data Primitive r
   | PrimitiveNot (Term r)
   | PrimitiveEq (Term r) (Term r)
   | PrimitiveAdd (Term r) (Term r)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Functor)
 
 -- ** Term
 
 -- TODO: structure, member, construct enum, construct variant, match
 data Term r
   = TermNamed TermId r
+  | TermSymbol F.Symbol r
   | TermLiteral !Literal r
   | TermPrimitive !(Primitive r) r
   | TermAssert (Term r) (Term r) r
-  deriving (Eq, Show)
+  deriving (Eq, Show, Functor)
 
 getTermR :: Term r -> r
 getTermR = \case
   TermNamed _ti r -> r
+  TermSymbol _ r -> r
   TermLiteral _lit r -> r
   TermPrimitive _prim r -> r
   TermAssert _te _te' r -> r
@@ -227,6 +229,7 @@ getTermR = \case
 mapTermTopR :: (r -> r) -> Term r -> Term r
 mapTermTopR f = \case
   TermNamed ti r -> TermNamed ti (f r)
+  TermSymbol sym r -> TermSymbol sym (f r)
   TermLiteral lit r -> TermLiteral lit (f r)
   TermPrimitive prim r -> TermPrimitive prim (f r)
   TermAssert tm1 tm2 r -> TermAssert tm1 tm2 (f r)
@@ -234,6 +237,7 @@ mapTermTopR f = \case
 mapMTermTopR :: Monad m => (r -> m r) -> Term r -> m (Term r)
 mapMTermTopR k = \case
   TermNamed ti r -> TermNamed ti <$> k r
+  TermSymbol sym r -> TermSymbol sym <$> k r
   TermLiteral lit r -> TermLiteral lit <$> k r
   TermPrimitive prim r -> TermPrimitive prim <$> k r
   TermAssert tm1 tm2 r -> TermAssert tm1 tm2 <$> k r
@@ -254,6 +258,7 @@ subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
 substTerm :: TermId -> Term r -> Term r -> Term r
 substTerm tmId tm' term = case term of
   TermLiteral {} -> term
+  TermSymbol {} -> term
   TermNamed tmId' _ | tmId' == tmId -> tm'
   TermNamed {} -> term
   TermPrimitive prim r -> flip TermPrimitive r case prim of

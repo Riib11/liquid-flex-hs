@@ -78,6 +78,7 @@ data Module ann = Module
   { moduleId :: ModuleId,
     moduleDeclarations :: [Declaration ann]
   }
+  deriving (Eq, Functor, Foldable, Traversable, Show)
 
 instance Pretty (Module ann) where
   pPrint (Module {..}) =
@@ -95,7 +96,7 @@ data Declaration ann
   | DeclarationFunction (Function ann)
   | DeclarationConstant (Constant ann)
   | DeclarationRefinedType (RefinedType ann)
-  deriving (Eq, Show)
+  deriving (Eq, Functor, Foldable, Traversable, Show)
 
 instance Pretty (Declaration ann) where
   pPrint = \case
@@ -167,7 +168,7 @@ data RefinedType ann = RefinedType
   { refinedTypeId :: TypeId,
     refinedTypeRefinement :: Refinement ann
   }
-  deriving (Eq, Show)
+  deriving (Eq, Functor, Foldable, Traversable, Show)
 
 instance Pretty (RefinedType ann) where
   pPrint (RefinedType {..}) =
@@ -246,7 +247,7 @@ data Function ann = Function
     functionOutput :: Type,
     functionBody :: Term ann
   }
-  deriving (Eq, Show)
+  deriving (Eq, Functor, Foldable, Traversable, Show)
 
 instance Pretty (Function ann) where
   pPrint (Function {..}) =
@@ -276,7 +277,7 @@ data Constant ann = Constant
     constantTerm :: Term ann,
     constantType :: Type
   }
-  deriving (Eq, Show)
+  deriving (Eq, Functor, Foldable, Traversable, Show)
 
 instance Pretty (Constant ann) where
   pPrint (Constant {..}) =

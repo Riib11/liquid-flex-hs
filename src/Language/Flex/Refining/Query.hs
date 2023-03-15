@@ -20,7 +20,6 @@ submitQuery :: Query -> RefiningM Result
 submitQuery q = do
   fp <- liftFlexM . asks $ sourceFilePath
   liftIO (checkValidWithConfig fp fpConfig q)
-    >>= error "TODO: handle result"
 
 fpConfig :: FC.Config
 fpConfig =

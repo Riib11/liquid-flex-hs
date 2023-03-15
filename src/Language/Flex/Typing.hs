@@ -8,7 +8,8 @@ module Language.Flex.Typing where
 
 import Control.Category ((>>>))
 import Control.Lens hiding (enum, (<&>)) -- (At (at), makeLenses, modifying, to, (^.))
-import Control.Monad (forM, join, unless, when)
+-- (At (at), makeLenses, modifying, to, (^.))
+import Control.Monad (forM, join, unless, void, when)
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.Reader (MonadReader (ask, local), MonadTrans (lift), ReaderT (runReaderT), asks, foldM)
 import Control.Monad.State (StateT (runStateT), gets)
@@ -27,76 +28,6 @@ import Utility
 import Prelude hiding (Enum)
 
 -- * Typing
-
--- | After typing, the valid syntax for types and terms is more specific. In
--- particular, types must be normal and a few term constructors are unwrapped.
--- These properties are specified by the following predicates.
-
--- | Forms that are not allowed in normal types are:
--- - TypeNamed
--- - TypeUnifyVar that has already been substited by current unifying
---   substitution
-isNormalType :: Type -> TypingM Bool
-isNormalType = \case
-  TypeNumber _nt _n -> return True
-  TypeBit -> return True
-  TypeChar -> return True
-  TypeArray ty -> isNormalType ty
-  TypeTuple tys -> and <$> isNormalType `traverse` tys
-  TypeOptional ty -> isNormalType ty
-  TypeNamed {} -> return False
-  TypeUnifyVar uv _ ->
-    -- a unification variable is only normal if it hasn't been substituted yet
-    gets (^. to _envUnification . at uv) >>= \case
-      Nothing -> return True
-      Just _ -> return False
-  TypeStructure {} -> return True
-  TypeEnum {} -> return True
-  TypeVariant {} -> return True
-  TypeNewtype {} -> return True
-
--- TypeFunction {} -> return True
--- TypeVariantConstuctor {} -> return True
--- TypeEnumConstructor {} -> return True
--- TypeNewtypeConstructor {} -> return True
-
--- | A concrete type has no type unifications variables left
-isConcreteType :: Type -> Bool
-isConcreteType = \case
-  TypeArray ty -> isConcreteType ty
-  TypeTuple tys -> isConcreteType `all` tys
-  TypeOptional ty -> isConcreteType ty
-  TypeUnifyVar {} -> False
-  _ -> True
-
--- | Forms that are not allowed in typed terms are:
--- - PrimitiveCast (unwrapped)
--- - TermAscribe (unwrapped)
-isTypedTerm :: Term a -> Bool
-isTypedTerm = \case
-  TermLiteral {} -> True
-  TermPrimitive prim _ -> case prim of
-    PrimitiveTry te -> isTypedTerm te
-    PrimitiveCast {} -> False
-    PrimitiveTuple tes -> isTypedTerm `all` tes
-    PrimitiveArray tes -> isTypedTerm `all` tes
-    PrimitiveIf te te1 te2 -> isTypedTerm `all` [te, te1, te2]
-    PrimitiveAnd te te' -> isTypedTerm `all` [te, te']
-    PrimitiveOr te te' -> isTypedTerm `all` [te, te']
-    PrimitiveNot te -> isTypedTerm te
-    PrimitiveEq te te' -> isTypedTerm `all` [te, te']
-    PrimitiveAdd te te' -> isTypedTerm `all` [te, te']
-  TermBlock (stmts, tm) _ -> all isTypedStatement stmts && isTypedTerm tm
-  TermStructure _ fields _ -> isTypedTerm `all` (snd <$> fields)
-  TermMember te _ _ -> isTypedTerm te
-  TermNeutral _app m_tes m_te's _ -> maybe True (isTypedTerm `all`) m_tes && maybe True (isTypedTerm `all`) m_te's
-  TermAscribe {} -> False
-  TermMatch te branches _ -> isTypedTerm te && isTypedTerm `all` (snd <$> branches)
-
-isTypedStatement :: Statement a -> Bool
-isTypedStatement = \case
-  StatementLet _pat te -> isTypedTerm te
-  StatementAssert te -> isTypedTerm te
 
 -- ** Utility Types
 
@@ -320,7 +251,11 @@ typeModule mdl = do
     Left err -> return . Left $ err
     Right r -> case topTypingEnv mdl of
       Left err -> return . Left $ err
-      Right s -> runExceptT $ runReaderT (runStateT (procModule mdl) s) r
+      Right s -> do
+        runExceptT $ flip runReaderT r $ flip runStateT s $ do
+          mdl' <- procModule mdl
+          assertNormalModule mdl'
+          return mdl'
 
 -- ** Processing
 
@@ -399,9 +334,7 @@ procDeclaration decl = case decl of
         }
   DeclarationConstant (Constant {..}) -> do
     ty <- normType constantType
-    body <-
-      sequence
-        =<< synthCheckTerm ty constantTerm
+    body <- sequence =<< synthCheckTerm ty constantTerm
     return . toDeclaration $
       Constant
         { constantId,
@@ -654,169 +587,20 @@ synthNeutral term app mb_args mb_cxargs =
       unless (isNothing mb_args) $ throwTypingError "cannot give contextual arguments to a constant" (pure . toSyntax $ term)
       return $ TermNeutral app Nothing Nothing tyM
 
-{-
-synthNeutral term (Nothing, tmId) mb_args mb_cxargs =
-  lookupTermId tmId >>= \tyM ->
-    tyM >>= \type_ -> case type_ of
-      -- TypeFunction
-      TypeFunction FunctionType {..} -> do
-        args <- case mb_args of
-          Nothing -> throwTypingError "a function application must have arguments" (pure . toSyntax $ term)
-          Just args -> return args
-        -- check args
-        -- mb_args' <- pure <$> uncurry synthCheckTerm `traverse` ((snd <$> functionTypeParameters func) `zip` args)
-        mb_args' <- Just <$> forM ((snd <$> functionTypeParameters) `zip` args) (uncurry synthCheckTerm)
-        -- check cxargs
-        mb_cxargs' <-
-          case mb_cxargs of
-            -- implicitly give, or no cxargs
-            Nothing -> do
-              case functionTypeContextualParameters of
-                -- no cxparams
-                Nothing -> return Nothing
-                -- implicit cxparams, which need to be inferred
-                Just cxparams ->
-                  fmap Just . forM cxparams $ \(tyIdCxparam, tmIdCxparam) ->
-                    asks (^. ctxCxparams . at tyIdCxparam) >>= \case
-                      Nothing -> throwTypingError ("could not infer the implicit contextual argument" <+> ticks (pPrint tmIdCxparam)) (pure . toSyntax $ term)
-                      Just tmIdCxarg -> return $ TermNeutral (ApplicantConstructor tyIdCxparam tmIdCxarg) Nothing Nothing (normType $ TypeNamed tyIdCxparam)
-            Just cxargs -> do
-              case functionTypeContextualParameters of
-                -- actually, no cxparams!
-                Nothing -> throwTypingError "attempted to give explicit contextual arguments to a function that does not have contextual parameters" (pure . toSyntax $ term)
-                Just cxparams -> do
-                  cxargs1 <- synthTerm `traverse` cxargs
-                  newtyIds_cxargs <- forM cxargs1 \tm ->
-                    inferTerm tm >>>= \case
-                      TypeNewtype newty -> return (newtypeId newty, tm)
-                      _ -> throwTypingError "each explicit contextual argument must be a newtype" (pure . toSyntax $ term)
-                  -- cxargs' is in the same order as cxparams
-                  cxargs' <-
-                    reverse . snd
-                      <$> foldM
-                        ( \(newtyIds_cxargs1, cxargs') newtyId -> do
-                            -- extract the cxarg that has the right newtype
-                            case newtyId `lookup` newtyIds_cxargs1 of
-                              Nothing -> throwTypingError ("missing explicit contextual argument: " <+> pPrint newtyId) (pure . toSyntax $ term)
-                              Just cxarg -> return (newtyIds_cxargs, cxarg : cxargs')
-                        )
-                        (newtyIds_cxargs, [])
-                        (fst <$> cxparams)
-                  return $ pure cxargs'
-        -- output type
-        let tyOut = return functionTypeOutput
-        return $ TermNeutral (ApplicantTermId tmId) mb_args' mb_cxargs' tyOut
-      _ -> error "TODO"
--}
-{-
-  lookupTermId tmId >>= \tyM ->
-    tyM >>= \type_ -> case type_ of
-      -- TypeFunction
-      TypeFunction FunctionType {..} -> do
-        args <- case mb_args of
-          Nothing -> throwTypingError "a function application must have arguments" (pure . toSyntax $ term)
-          Just args -> return args
-        -- check args
-        -- mb_args' <- pure <$> uncurry synthCheckTerm `traverse` ((snd <$> functionTypeParameters func) `zip` args)
-        mb_args' <- Just <$> forM ((snd <$> functionTypeParameters) `zip` args) (uncurry synthCheckTerm)
-        -- check cxargs
-        mb_cxargs' <-
-          case mb_cxargs of
-            -- implicitly give, or no cxargs
-            Nothing -> do
-              case functionTypeContextualParameters of
-                -- no cxparams
-                Nothing -> return Nothing
-                -- implicit cxparams
-                Just cxparams ->
-                  fmap Just . forM cxparams $ \(tyIdCxparam, tmIdCxparam) ->
-                    asks (^. ctxCxparams . at tyIdCxparam) >>= \case
-                      Nothing -> throwTypingError ("could not infer the implicit contextual argument" <+> ticks (pPrint tmIdCxparam)) (pure . toSyntax $ term)
-                      Just tmIdCxarg -> return $ TermNeutral Nothing tmIdCxarg Nothing Nothing (normType $ TypeNamed tyIdCxparam)
-            Just cxargs -> do
-              case functionTypeContextualParameters of
-                -- actually, no cxparams!
-                Nothing -> throwTypingError "attempted to give explicit contextual arguments to a function that does not have contextual parameters" (pure . toSyntax $ term)
-                Just cxparams -> do
-                  cxargs1 <- synthTerm `traverse` cxargs
-                  newtyIds_cxargs <- forM cxargs1 \tm ->
-                    inferTerm tm >>>= \case
-                      TypeNewtype newty -> return (newtypeId newty, tm)
-                      _ -> throwTypingError "each explicit contextual argument must be a newtype" (pure . toSyntax $ term)
-                  -- cxargs' is in the same order as cxparams
-                  cxargs' <-
-                    reverse . snd
-                      <$> foldM
-                        ( \(newtyIds_cxargs1, cxargs') newtyId -> do
-                            -- extract the cxarg that has the right newtype
-                            case newtyId `lookup` newtyIds_cxargs1 of
-                              Nothing -> throwTypingError ("missing explicit contextual argument: " <+> pPrint newtyId) (pure . toSyntax $ term)
-                              Just cxarg -> return (newtyIds_cxargs, cxarg : cxargs')
-                        )
-                        (newtyIds_cxargs, [])
-                        (fst <$> cxparams)
-                  return $ pure cxargs'
-        -- output type
-        let tyOut = return functionTypeOutput
-        return $ TermNeutral Nothing tmId mb_args' mb_cxargs' tyOut
-      -- TypeVariantConstuctor
-      TypeVariantConstuctor varnt _constrId mb_tyParams -> do
-        -- check arguments
-        mb_args' <- case mb_tyParams of
-          -- expects no arguments
-          Nothing -> do
-            case mb_args of
-              Just _ -> throwTypingError "the variant constructor expects no arguments, but some were given" (pure . toSyntax $ term)
-              Nothing -> return Nothing
-          -- expects some arguments
-          Just tyParams -> do
-            case mb_args of
-              Nothing -> throwTypingError "the variant constructor expects some arguments, but none were given" (pure . toSyntax $ term)
-              Just args ->
-                pure <$> uncurry synthCheckTerm `traverse` (tyParams `zip` args)
-        -- check contextual args (can't have any)
-        unless (isNothing mb_cxargs) $ throwTypingError "a variant constructor can't have contextual arguments" (pure . toSyntax $ term)
-        -- output type
-        let tyOut = normType $ TypeVariant varnt
-        return $ TermNeutral mb_tyId tmId mb_args' Nothing tyOut
-      -- TypeEnumConstructor
-      TypeEnumConstructor enum _constrId -> do
-        -- check arguments (can't have any)
-        unless (isNothing mb_args) $ throwTypingError "cannot apply an enum constructor" (pure . toSyntax $ term)
-        -- check contextual args (can't have any)
-        unless (isNothing mb_cxargs) $ throwTypingError "cannot give contextual argsuments to an enum constructor" (pure . toSyntax $ term)
-        -- output type
-        let tyOut = normType $ TypeEnum enum
-        return $ TermNeutral mb_tyId tmId Nothing Nothing tyOut
-      -- TypeNewtypeConstructor
-      TypeNewtypeConstructor newty -> do
-        -- check argument (must have exactly 1)
-        mb_args' <- case mb_args of
-          Just [arg] ->
-            pure . pure <$> synthCheckTerm (newtypeType newty) arg
-          Just _ -> throwTypingError "a newtype constructor requires exactly one argument" (pure . toSyntax $ term)
-          Nothing -> throwTypingError "a newtype constructor must be given an argument" (pure . toSyntax $ term)
-        unless (isNothing mb_cxargs) $ throwTypingError "a newtype constructor cannot be given contextual arguments" (pure . toSyntax $ term)
-        -- output type
-        let tyOut = normType $ TypeNewtype newty
-        return $ TermNeutral _ tmId mb_args' Nothing tyOut
-      -- non-functional type
-      _ -> do
-        unless (isNothing mb_args) $ throwTypingError ("cannot give arguments to a term of type" <+> pPrint type_) (pure . toSyntax $ term)
-        unless (isNothing mb_cxargs) $ throwTypingError ("cannot give contextual argument to a term of type" <+> pPrint type_) (pure . toSyntax $ term)
-        return $ TermNeutral _ tmId Nothing Nothing tyM
--}
-
 synthBlock :: Block () -> TypingM (Term TypeM)
 synthBlock (stmts, tm) = do
   (stmts', tm') <- go stmts
   TermBlock (stmts', tm') <$> inferTerm tm'
   where
-    go :: [Statement ()] -> TypingM ([Statement TypeM], Term TypeM) -- TypingM (Term TypeM)
+    go :: [Statement ()] -> TypingM ([Statement TypeM], Term TypeM)
     go [] = ([],) <$> synthTerm tm
     go (stmt : stmts') = do
       stmt' <- synthStatement stmt
-      (stmts'', tm') <- go stmts'
+      (stmts'', tm') <- case stmt' of
+        StatementLet pat _te -> case pat of
+          (PatternNamed ti tyM) -> introTerm ti tyM $ go stmts'
+          (PatternDiscard _st) -> go stmts'
+        StatementAssert te -> go stmts'
       return (stmt' : stmts'', tm')
 
 synthStatement :: Statement () -> TypingM (Statement TypeM)
@@ -990,3 +774,97 @@ typeLiteral = \case
   LiteralBit _ -> return . normType $ TypeBit
   LiteralChar _ -> return . normType $ TypeChar
   LiteralString _ -> return . normType $ TypeArray TypeChar
+
+-- ** Specification of Typing
+
+-- | After typing, the valid syntax for types and terms is more specific. In
+-- particular, types must be normal and a few term constructors are unwrapped.
+-- These properties are specified by the following predicates.
+
+-- | Forms that are not allowed in normal types are:
+-- - TypeNamed
+-- - TypeUnifyVar that has already been substited by current unifying
+--   substitution
+isNormalType :: Type -> TypingM Bool
+isNormalType = \case
+  TypeNumber _nt _n -> return True
+  TypeBit -> return True
+  TypeChar -> return True
+  TypeArray ty -> isNormalType ty
+  TypeTuple tys -> and <$> isNormalType `traverse` tys
+  TypeOptional ty -> isNormalType ty
+  TypeNamed {} -> return False
+  TypeUnifyVar uv _ ->
+    -- a unification variable is only normal if it hasn't been substituted yet
+    gets (^. to _envUnification . at uv) >>= \case
+      Nothing -> return True
+      Just _ -> return False
+  TypeStructure {} -> return True
+  TypeEnum {} -> return True
+  TypeVariant {} -> return True
+  TypeNewtype {} -> return True
+
+-- TypeFunction {} -> return True
+-- TypeVariantConstuctor {} -> return True
+-- TypeEnumConstructor {} -> return True
+-- TypeNewtypeConstructor {} -> return True
+
+-- | A concrete type has no type unifications variables left
+isConcreteType :: Type -> Bool
+isConcreteType = \case
+  TypeArray ty -> isConcreteType ty
+  TypeTuple tys -> isConcreteType `all` tys
+  TypeOptional ty -> isConcreteType ty
+  TypeUnifyVar {} -> False
+  _ -> True
+
+-- | Forms that are not allowed in typed terms are:
+-- - PrimitiveCast (unwrapped)
+-- - TermAscribe (unwrapped)
+isTypedTerm :: Term a -> Bool
+isTypedTerm = \case
+  TermLiteral {} -> True
+  TermPrimitive prim _ -> case prim of
+    PrimitiveTry te -> isTypedTerm te
+    PrimitiveCast {} -> False
+    PrimitiveTuple tes -> isTypedTerm `all` tes
+    PrimitiveArray tes -> isTypedTerm `all` tes
+    PrimitiveIf te te1 te2 -> isTypedTerm `all` [te, te1, te2]
+    PrimitiveAnd te te' -> isTypedTerm `all` [te, te']
+    PrimitiveOr te te' -> isTypedTerm `all` [te, te']
+    PrimitiveNot te -> isTypedTerm te
+    PrimitiveEq te te' -> isTypedTerm `all` [te, te']
+    PrimitiveAdd te te' -> isTypedTerm `all` [te, te']
+  TermBlock (stmts, tm) _ -> all isTypedStatement stmts && isTypedTerm tm
+  TermStructure _ fields _ -> isTypedTerm `all` (snd <$> fields)
+  TermMember te _ _ -> isTypedTerm te
+  TermNeutral _app m_tes m_te's _ -> maybe True (isTypedTerm `all`) m_tes && maybe True (isTypedTerm `all`) m_te's
+  TermAscribe {} -> False
+  TermMatch te branches _ -> isTypedTerm te && isTypedTerm `all` (snd <$> branches)
+
+isTypedStatement :: Statement a -> Bool
+isTypedStatement = \case
+  StatementLet _pat te -> isTypedTerm te
+  StatementAssert te -> isTypedTerm te
+
+assertNormalModule :: Module Type -> TypingM ()
+assertNormalModule =
+  void . traverse
+    \ty ->
+      unlessM (isNormalType ty) $
+        throwTypingError ("type in module is not normal:" <+> pPrint ty) Nothing
+
+isTypedModule :: Module Type -> Bool
+isTypedModule Module {..} =
+  all
+    ( \de -> case de of
+        (DeclarationStructure {}) -> True
+        (DeclarationNewtype {}) -> True
+        (DeclarationVariant {}) -> True
+        (DeclarationEnum {}) -> True
+        (DeclarationAlias {}) -> True
+        (DeclarationFunction Function {..}) -> isTypedTerm functionBody
+        (DeclarationConstant Constant {..}) -> isTypedTerm constantTerm
+        (DeclarationRefinedType {}) -> True
+    )
+    moduleDeclarations

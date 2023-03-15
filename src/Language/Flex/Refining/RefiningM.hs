@@ -17,7 +17,7 @@ import Language.Fixpoint.Types.PrettyPrint (pprint)
 import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexLog (FlexLog), FlexM)
 import Language.Flex.Refining.Syntax
-import Language.Flex.Syntax (Module, TermId, TypeId)
+import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, ($$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 
@@ -48,8 +48,9 @@ instance F.PPrint RefiningError where
 throwRefiningError :: Doc -> RefiningM a
 throwRefiningError msg = throwError $ RefiningError msg
 
+-- TODO: refined structures and newtypes
 data RefiningCtx = RefiningCtx
-  { _ctxTermVars :: Map.Map TermId Type
+  { _ctxTermVars :: Map.Map Base.TermId Type
   }
 
 data RefiningEnv = RefiningEnv
@@ -59,24 +60,30 @@ data RefiningEnv = RefiningEnv
 makeLenses ''RefiningCtx
 makeLenses ''RefiningEnv
 
-topRefiningCtx :: Module Type -> ExceptT RefiningError FlexM RefiningCtx
-topRefiningCtx _mdl =
-  -- TODO: gather up all the RefinedTypes and make the map from their tyIds
-  error "TODO"
+topRefiningCtx :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningCtx
+topRefiningCtx _mdl = do
+  return
+    RefiningCtx
+      { _ctxTermVars = mempty
+      }
 
-topRefiningEnv :: Module Type -> ExceptT RefiningError FlexM RefiningCtx
-topRefiningEnv _mdl = error "topRefiningEnv"
+topRefiningEnv :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningEnv
+topRefiningEnv _mdl = do
+  return
+    RefiningEnv
+      { _freshSymbolIndex = 0
+      }
 
 -- ** Utilities
 
-lookupTermId :: TermId -> RefiningM Type
+lookupTermId :: Base.TermId -> RefiningM Type
 lookupTermId tmId =
   asks (^. ctxTermVars . at tmId)
     >>= \case
       Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown term symbol:" <+> pPrint tmId
       Just ty -> return ty
 
-fromTermIdToSymbol :: TermId -> RefiningM F.Symbol
+fromTermIdToSymbol :: Base.TermId -> RefiningM F.Symbol
 fromTermIdToSymbol = error "fromTermIdToSymbol"
 
 freshSymbol :: String -> RefiningM F.Symbol

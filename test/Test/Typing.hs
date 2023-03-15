@@ -1,9 +1,10 @@
 {-# HLINT ignore "Use camelCase" #-}
+{-# HLINT ignore "Use ++" #-}
 module Test.Typing where
 
 import Control.Monad (unless, when)
-import Language.Flex.FlexM (runFlexM)
 import Language.Flex.DefaultFlexOptions (defaultFlexOptions)
+import Language.Flex.FlexM (FlexOptions (flexVerbose), runFlexM)
 import Language.Flex.Parsing (parseModuleFile)
 import Language.Flex.Typing (typeModule)
 import System.IO.Unsafe (unsafePerformIO)
@@ -33,13 +34,12 @@ makeTest_procModule pass fp =
   TestLabel
     ("typing module file: " ++ fp)
     . TestCase
-    $ ( do
-          putStrLn ""
-          mdl <-
-            parseModuleFile fp >>= \case
-              Left err -> assertFailure (show err)
-              Right mdl -> return mdl
-          runFlexM defaultFlexOptions (typeModule mdl) >>= \case
-            Left err -> when pass $ assertFailure (render . pPrint $ err)
-            Right (_mdl', _env) -> unless pass $ assertFailure "expected typing to fail"
-      )
+    $ do
+      putStrLn ""
+      mdl <-
+        parseModuleFile fp >>= \case
+          Left err -> assertFailure (show err)
+          Right mdl -> return mdl
+      runFlexM defaultFlexOptions (typeModule mdl) >>= \case
+        Left err -> when pass $ assertFailure (render . pPrint $ err)
+        Right (mdl', _env) -> do unless pass $ assertFailure "expected typing to fail"

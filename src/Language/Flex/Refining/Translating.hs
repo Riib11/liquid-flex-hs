@@ -27,6 +27,7 @@ transTerm term = case term of
         Base.PrimitiveEq te te' -> PrimitiveEq <$> transTerm te <*> transTerm te'
         Base.PrimitiveAdd te te' -> PrimitiveAdd <$> transTerm te <*> transTerm te'
       <*> return ty
+  -- inlines local definitions
   Base.TermBlock (stmts, tm) _ty -> go stmts
     where
       go :: [Base.Statement Base.Type] -> RefiningM (Term Base.Type)
@@ -39,6 +40,8 @@ transTerm term = case term of
         return $ TermAssert te' body' (getTermR body')
   Base.TermStructure _ti _x0 _ty -> error "transTerm"
   Base.TermMember _te _fi _ty -> error "transTerm"
+  Base.TermNeutral (Base.Applicant (Nothing, tmId)) Nothing Nothing ty -> return $ TermNamed tmId ty
+  -- TODO: inline functions
   Base.TermNeutral _ap _m_tes _ma _ty -> error "transTerm"
   Base.TermMatch _te _x0 _ty -> error "transTerm"
   -- invalid
