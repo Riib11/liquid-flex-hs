@@ -86,6 +86,18 @@ Example:
 type Result = Optional<int32>
 ```
 
+### Type Defaulting
+
+Some types can be defaulted if not concretized during type-checking. For
+example, in the following, the type of `x` is defaulted to `int32`.
+```
+function f() -> bit {
+  let x = 1;
+  assert(x == x);
+  true
+}
+```
+
 ### Function
 
 (note about my terminology: a _parameter_ is what a function is abstractly
