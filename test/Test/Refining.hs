@@ -27,7 +27,7 @@ test =
           let !fps =
                 unsafePerformIO $
                   fmap concat . sequence $
-                    [getDirectoryFilesBySuffix dir_examples_typing_fail ".flex"]
+                    [getDirectoryFilesBySuffix dir_examples_refining_fail ".flex"]
            in makeTest_refineModule False <$> fps
         ]
 

@@ -22,7 +22,7 @@ dir_examples_refining :: FilePath
 dir_examples_refining = dir_examples <> "refining/"
 
 dir_examples_refining_fail :: FilePath
-dir_examples_refining_fail = dir_examples_refining <> "fail"
+dir_examples_refining_fail = dir_examples_refining <> "fail/"
 
 getDirectoryFilesBySuffix :: FilePath -> String -> IO [FilePath]
 getDirectoryFilesBySuffix dir suf = do
