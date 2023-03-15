@@ -10,6 +10,7 @@ import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render, (<+>))
 
+{-
 transTerm :: Base.Term Base.Type -> RefiningM Term
 transTerm term = case term of
   Base.TermLiteral lit ty -> transLiteral lit ty
@@ -95,3 +96,4 @@ transType type_ = case type_ of
   Base.TypeNewtype new -> error "transType TODO"
   -- invalid
   Base.TypeUnifyVar _ _ -> FlexBug.throw $ FlexLog "refining" $ "type unification variable should not appear in normalized type:" <+> pPrint type_
+-}

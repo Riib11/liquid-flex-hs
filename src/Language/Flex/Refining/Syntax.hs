@@ -161,20 +161,20 @@ data Enum = Enum
 
 -- ** Function
 
-data Function = Function
+data Function r = Function
   { functionId :: TermId,
     functionIsTransform :: Bool,
     functionParameters :: [(TermId, Type)],
     functionOutput :: Type,
-    functionBody :: Term
+    functionBody :: Term r
   }
   deriving (Eq, Show)
 
 -- ** Constant
 
-data Constant = Constant
+data Constant r = Constant
   { constantId :: TermId,
-    constantTerm :: Term,
+    constantTerm :: Term r,
     constantType :: Type
   }
   deriving (Eq, Show)
@@ -182,26 +182,19 @@ data Constant = Constant
 -- ** Term
 
 -- TODO: structure, member, construct enum, construct variant, match
-data Term
-  = TermNamed TermId Type
-  | TermLiteral !Literal Type
-  | TermPrimitive !Primitive Type
+data Term r
+  = TermNamed TermId r
+  | TermLiteral !Literal r
+  | TermPrimitive !(Primitive r) r
   deriving (Eq, Show)
 
 -- TODO: try, array, tuple, int ops
-data Primitive
-  = PrimitiveIf Term Term Term
-  | PrimitiveAnd Term Term
-  | PrimitiveOr Term Term
-  | PrimitiveNot Term
-  | PrimitiveEq Term Term
-  deriving (Eq, Show)
-
-type Block = ([Statement], Term)
-
-data Statement
-  = StatementLet !TermId !Term
-  | StatementAssert !Term
+data Primitive r
+  = PrimitiveIf (Term r) (Term r) (Term r)
+  | PrimitiveAnd (Term r) (Term r)
+  | PrimitiveOr (Term r) (Term r)
+  | PrimitiveNot (Term r)
+  | PrimitiveEq (Term r) (Term r)
   deriving (Eq, Show)
 
 -- ** Substitution

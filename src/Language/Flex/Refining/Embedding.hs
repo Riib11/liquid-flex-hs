@@ -10,7 +10,7 @@ import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
 
-embedTerm :: Term -> RefiningM F.Expr
+embedTerm :: Term r -> RefiningM F.Expr
 embedTerm = \case
   TermLiteral lit _ -> embedLiteral lit
   TermPrimitive prim _ -> embedPrimitive prim
@@ -25,7 +25,7 @@ embedLiteral =
     Base.LiteralChar c -> F.expr (pack [c])
     Base.LiteralString s -> F.expr (pack s)
 
-embedPrimitive :: Primitive -> RefiningM F.Expr
+embedPrimitive :: Primitive r -> RefiningM F.Expr
 embedPrimitive = \case
   PrimitiveIf te te' te2 -> F.EIte <$> embedTerm te <*> embedTerm te' <*> embedTerm te2
   PrimitiveAnd te te' -> F.PAnd <$> embedTerm `traverse` [te, te']

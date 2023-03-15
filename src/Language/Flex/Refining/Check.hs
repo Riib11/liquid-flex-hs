@@ -4,6 +4,7 @@ import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Refining.Types
 
+{-}
 -- ** Checking
 
 checkTerm :: Term -> Type -> RefiningM Cstr
@@ -18,3 +19,4 @@ synthTerm = undefined
 
 checkSubtype :: Type -> Type -> RefiningM Cstr
 checkSubtype = error "checkSubtype"
+-}
