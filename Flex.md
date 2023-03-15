@@ -17,13 +17,14 @@
 - list of fields with associated types
 - can have refinement
 - can be a _message_
+- multiple refinements are conjoined together for refinement-checking
 
 Example:
 ```
 message struct Bounded {
-  x: Int32;
-  min: Int32;
-  max: Int32;
+  x: int32;
+  min: int32;
+  max: int32;
   assert(min <= x);
   assert(x <= max);
 }
@@ -37,8 +38,8 @@ message struct Bounded {
 
 Example:
 ```
-newtype PositiveInt32 {
-  x: Int32;
+newtype Positiveint32 {
+  x: int32;
   assert(0 <= x);
 }
 ```
@@ -46,6 +47,10 @@ newtype PositiveInt32 {
 ### Variant
 
 - list of constructors, each with associated list of param types
+- no params is the same as empty list of params
+- constructing a variant term requires referencing the variant type e.g.
+  `Nat.Zero()` or `Nat.Suc(1)`, where the `()` is required even if the
+  constructor has no params (which is the same as empty list of params)
 
 Example:
 ```
@@ -59,10 +64,11 @@ variant Nat {
 
 - associated literal type
 - list of constructors, with associated literal value
+- constructing an enum term requires referencing the enum type e.g. `Day.Monday`
 
 Example
 ```
-enum Day String {
+enum Day string {
   Monday = "Monday";
   Tuesday = "Tuesday";
   ...
@@ -75,7 +81,7 @@ enum Day String {
 
 Example:
 ```
-type Result = Optional<Int32>
+type Result = Optional<int32>
 ```
 
 ### Function
@@ -109,16 +115,16 @@ application of a function)
 
 Example
 ```
-function add1(x: Int32) -> Float32 {
+function add1(x: int32) -> float32 {
   let y = x + 1;
   y
 }
 
-function mod(x: Int32) given (?modulus: Int32) {
+function mod(x: int32) given (?modulus: int32) {
   x % ?modulus
 }
 
-function foo() given (?x: Int32, ?flag: Bool) {
+function foo() given (?x: int32, ?flag: Bool) {
   if ?flag then {
     ?x
   } else {
@@ -126,20 +132,20 @@ function foo() given (?x: Int32, ?flag: Bool) {
   }
 }
 
-transform function doubleBoundedInt32(bounded: BoundedInt32) -> BoundedInt32 =
-  BoundedInt32 {
+transform function doubleBoundedint32(bounded: Boundedint32) -> Boundedint32 =
+  Boundedint32 {
     x = 2 * bounded.x;
     min = 2 * bounded.min;
     max = 2 * bounded.max;
   }
 
-function main() -> Int32 {
+function main() -> int32 {
   let modulus = 2;
   let flag = true;
 
   let _ = add1(0);
   // next 2 equivalent
-  let _ = mod(1); // implicitly finds that `modulus` is only named term in context that has type `Int32`
+  let _ = mod(1); // implicitly finds that `modulus` is only named term in context that has type `int32`
   let _ = mod(1) given (modulus);
   
   let _ = foo(); // finds `modulus` and `flag` to be the implicit args
@@ -147,8 +153,8 @@ function main() -> Int32 {
   let _ = foo() given (1, true);
   let _ = foo() given (true, 1);
 
-  let bounded = BoundedInt32 { x = 2; min = 0; max = 4 };
-  let _ = doubleBoundedInt32(bounded);
+  let bounded = Boundedint32 { x = 2; min = 0; max = 4 };
+  let _ = doubleBoundedint32(bounded);
 
   0
 }
@@ -160,7 +166,7 @@ function main() -> Int32 {
 
 Example
 ```
-const x: Int32 = 10
+const x: int32 = 10
 const b: Bool = true
 ```
 
