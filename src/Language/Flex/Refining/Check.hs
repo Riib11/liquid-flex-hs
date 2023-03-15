@@ -1,7 +1,8 @@
 module Language.Flex.Refining.Check where
 
 import Control.Monad.Trans (lift)
-import Control.Monad.Writer (MonadWriter (tell), WriterT)
+import Control.Monad.Writer (MonadWriter (tell), WriterT (runWriterT))
+import Data.Bifunctor (Bifunctor (second))
 import qualified Language.Fixpoint.Types as F
 import Language.Flex.Refining.Constraint
 import Language.Flex.Refining.Embedding (embedTerm)
@@ -15,6 +16,9 @@ import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), (<+>))
 import Utility (ticks)
 
 type CheckingM = WriterT CstrMonoid RefiningM
+
+runCheckingM :: CheckingM a -> RefiningM (a, Cstr)
+runCheckingM = fmap (second (\(CstrMonoid cs) -> cs)) . runWriterT
 
 newtype CstrMonoid = CstrMonoid Cstr
 
