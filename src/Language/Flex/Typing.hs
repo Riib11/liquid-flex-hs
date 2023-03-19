@@ -417,8 +417,10 @@ synthTerm term = case term of
     ty <- inferTerm bod
     return $ TermLet pat tm bod ty
   TermAssert {termTerm, termBody} -> do
-    void $ synthCheckTerm' (normType TypeBit) termTerm
-    synthTerm termBody
+    tm <- synthCheckTerm' (normType TypeBit) termTerm
+    bod <- synthTerm termBody
+    ty <- inferTerm bod
+    return $ TermAssert tm bod ty
   TermStructure tyId fields () -> do
     struct <-
       lookupType tyId >>>= \case

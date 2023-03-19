@@ -40,6 +40,12 @@ synthCheckTerm :: Type -> Term Base.Type -> CheckingM (Term Type)
 synthCheckTerm tyExpect tm = do
   tm' <- synthTerm tm
   tySynth <- inferTerm tm'
+  lift . FlexM.tell . FlexM.FlexLog "refining" $
+    "[synthCheckTerm]"
+      $$ (text "     tm  =" <+> pPrint tm)
+      $$ (text "     tm' =" <+> pPrint tm')
+      $$ (text " tySynth =" <+> pPrint tySynth)
+      $$ (text "tyExpect =" <+> pPrint tyExpect)
   checkSubtype tySynth tyExpect
   return tm'
 
@@ -66,6 +72,7 @@ synthTerm term = case term of
   TermPrimitive prim ty ->
     synthPrimitive term ty prim
   TermAssert tm1 tm2 _ty -> do
+    lift . FlexM.tell . FlexM.FlexLog "refining" $ "[synthTerm]" <+> pPrint term
     -- check asserted term against refinement type { x | x == true }
     ty1 <-
       TypeAtomic TypeBit
