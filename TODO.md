@@ -1,15 +1,37 @@
 # TODO
 
+- [ ] Structures
+    - [ ] constructing, destructing (with refinement)
+- [ ] Newtypes
+    - [ ] destructing (with refinement)
+- [ ] Enums
+    - [ ] pattern matching
+- [ ] Variants
+    - [ ] pattern matching
+- [ ] Proper freshening of variables when inlining functions
+- [ ] expand refinement test suite
+- [ ] totality
+    - [x] assertions
+    - [ ] exhaustive branching
+    - [ ] casting
+        - there's a predicate for each casting type pair
+    - [ ] try
+        - reasoning in refinements: make optional result explicit, and try works
+          over that?
 
-To get refinement type checking working with at least base types (e.g. just `int*` types):
+To get refinement type checking working with at least base types (e.g. just
+`int*` types):
 - [ ] some primitive functions in Flex
     - [x] add, div
-        - these are special because they require figuring out the type based on the types of the arguments
+        - these are special because they require figuring out the type based on
+          the types of the arguments
     - make a test that shows div passing/failing since it has the non-zero denom
       refinement
 - [ ] syntax translation: Flex -> Liquid Flex
     - [ ] handle Structures and Newtypes
-    - [ ] handle function implicit parameters
+    - [ ] pattern matching
+        - [ ] variants, enums
+    - [x] handle function implicit parameters
 - [ ] examples/tests for translation
     - [x] literals
     - [x] simple applications (no implicit parameters)
