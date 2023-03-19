@@ -40,7 +40,7 @@ synthCheckTerm :: Type -> Term Base.Type -> CheckingM (Term Type)
 synthCheckTerm tyExpect tm = do
   tm' <- synthTerm tm
   tySynth <- inferTerm tm'
-  lift . FlexM.tell . FlexM.FlexLog "refining" $
+  FlexM.debug . FlexM.FlexLog "refining" $
     "[synthCheckTerm]"
       $$ (text "     tm  =" <+> pPrint tm)
       $$ (text "     tm' =" <+> pPrint tm')
@@ -72,7 +72,7 @@ synthTerm term = case term of
   TermPrimitive prim ty ->
     synthPrimitive term ty prim
   TermAssert tm1 tm2 _ty -> do
-    lift . FlexM.tell . FlexM.FlexLog "refining" $ "[synthTerm]" <+> pPrint term
+    FlexM.debug . FlexM.FlexLog "refining" $ "[synthTerm]" <+> pPrint term
     -- check asserted term against refinement type { x | x == true }
     ty1 <-
       TypeAtomic TypeBit
@@ -81,11 +81,13 @@ synthTerm term = case term of
     tm2' <- synthTerm tm2
     ty' <- inferTerm tm2'
     return $ TermAssert tm1' tm2' ty'
-  TermLet pat tm bod ty -> do
+  TermLet id' tm bod ty -> do
     tm' <- synthTerm tm
-    bod' <- synthTerm bod
+    bod' <-
+      introApplicantType id' (Base.ApplicantType $ getTermR tm') $
+        synthTerm bod
     ty' <- lift $ transType ty
-    return $ TermLet pat tm' bod' ty'
+    return $ TermLet id' tm' bod' ty'
 
 -- most primitive operations are reflected in refinement
 synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term Type)
@@ -162,7 +164,7 @@ checkSubtype :: Type -> Type -> CheckingM ()
 checkSubtype tySynth tyExpect = case (tySynth, tyExpect) of
   (TypeAtomic at1 r1, TypeAtomic at2 r2)
     | at1 == at2 -> do
-        lift $ FlexM.tell $ FlexM.FlexLog "refining" ("[checkSubType]" $$ pPrint tySynth <+> text "<:" $$ pPrint tyExpect)
+        FlexM.debug $ FlexM.FlexLog "refining" ("[checkSubType]" $$ pPrint tySynth <+> text "<:" $$ pPrint tyExpect)
         --    forall x : T, p x ==> (p' x')[x' := x]
         --  ----------------------------------------------
         --    {x : T | p x} <: {x' : T | p' y'}

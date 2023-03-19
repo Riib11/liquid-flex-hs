@@ -47,6 +47,9 @@ data FlexLog = FlexLog
 tell :: MonadWriter [FlexLog] m => FlexLog -> m ()
 tell log = Writer.tell [log]
 
+debug :: MonadIO m => FlexLog -> m ()
+debug log = liftIO $ putStrLn (render . pPrint $ log)
+
 instance Pretty FlexLog where
   pPrint FlexLog {..} =
     let str = render $ brackets logLabel

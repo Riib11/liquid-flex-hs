@@ -35,10 +35,10 @@ checkModule Base.Module {..} = do
 checkDeclaration :: Base.Declaration Base.Type -> RefiningM ()
 checkDeclaration decl = case decl of
   Base.DeclarationFunction Base.Function {..} -> do
-    lift $ FlexM.tell $ FlexM.FlexLog "refining" ("check function body:" $$ text (show functionBody))
+    FlexM.debug $ FlexM.FlexLog "refining" ("check function body:" $$ text (show functionBody))
     foldr (uncurry introTerm) (check label functionBody functionOutput) functionParameters
   Base.DeclarationConstant Base.Constant {..} -> do
-    lift $ FlexM.tell $ FlexM.FlexLog "refining" ("check constant body:" $$ text (show constantBody))
+    FlexM.debug $ FlexM.FlexLog "refining" ("check constant body:" $$ text (show constantBody))
     check label constantBody constantType
   _ -> return ()
   where
@@ -67,9 +67,9 @@ introTerm tmId type_ m = do
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
 check label term type_ = do
   tm <- transTerm term
-  FlexM.tell $ FlexM.FlexLog "refining" $ "[check] transTerm term  =" <+> pPrint tm
+  FlexM.debug $ FlexM.FlexLog "refining" $ "[check] transTerm term  =" <+> pPrint tm
   ty <- transType type_
-  FlexM.tell $ FlexM.FlexLog "refining" $ "[check] transType type_ =" <+> pPrint ty
+  FlexM.debug $ FlexM.FlexLog "refining" $ "[check] transType type_ =" <+> pPrint ty
   (_, cstr) <- runCheckingM $ synthCheckTerm ty tm
   query <- makeQuery cstr
   result <- submitQuery query

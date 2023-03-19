@@ -109,6 +109,11 @@ lookupApplicantType id' =
     Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown applicant id:" <+> pPrint id'
     Just appTy -> return appTy
 
+introApplicantType id' appTy =
+  locally
+    (ctxApplicants . at id')
+    (const $ Just appTy)
+
 lookupFunction id' =
   asks (^. ctxFunctions . at id') >>= \case
     Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown function id:" <+> pPrint id'
