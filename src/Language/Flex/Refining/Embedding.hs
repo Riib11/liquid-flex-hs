@@ -6,6 +6,7 @@ import Data.Text (pack)
 import qualified Language.Fixpoint.Types as F
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
+import Language.Flex.Refining.Translating (sortOfType)
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
@@ -13,7 +14,7 @@ import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
 embedId' :: Id' -> RefiningM F.Expr
 embedId' Id' {..} = return $ F.eVar id'Symbol
 
-embedTerm :: Term () -> RefiningM F.Expr
+embedTerm :: Term Type -> RefiningM F.Expr
 embedTerm = \case
   TermLiteral lit _ -> embedLiteral lit
   TermPrimitive prim _ -> embedPrimitive prim
@@ -26,8 +27,9 @@ embedTerm = \case
         else F.eApps x' args'
   TermAssert _ tm _ -> embedTerm tm
   -- (let x = a in b) ~~> ((fun x => b) a)
-  TermLet x sort tm bod _ -> do
+  TermLet x tm bod _ -> do
     tm' <- embedTerm tm
+    let sort = sortOfType (getTermR tm)
     bod' <- embedTerm bod
     return $ F.eApps (F.ELam (id'Symbol x, sort) bod') [tm']
 
@@ -43,7 +45,7 @@ embedLiteral =
     Base.LiteralChar c -> F.expr (pack [c])
     Base.LiteralString s -> F.expr (pack s)
 
-embedPrimitive :: Primitive () -> RefiningM F.Expr
+embedPrimitive :: Primitive Type -> RefiningM F.Expr
 embedPrimitive = \case
   PrimitiveTry _ -> error "embedPrimitive Try"
   PrimitiveTuple _ -> error "embedPrimitive Tuple"

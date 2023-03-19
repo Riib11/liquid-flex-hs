@@ -36,8 +36,8 @@ instance Monoid CstrMonoid where
 
 -- ** Checking
 
-checkTerm :: Type -> Term Base.Type -> CheckingM (Term Type)
-checkTerm tyExpect tm = do
+synthCheckTerm :: Type -> Term Base.Type -> CheckingM (Term Type)
+synthCheckTerm tyExpect tm = do
   tm' <- synthTerm tm
   tySynth <- inferTerm tm'
   checkSubtype tySynth tyExpect
@@ -59,7 +59,9 @@ synthTerm term = case term of
   TermLiteral lit ty -> do
     -- literals are reflected
     ty' <- lift $ transType ty
-    tm' <- mapMTermTopR (mapMTypeTopR (reflectInReft term)) $ TermLiteral lit ty'
+    tm' <-
+      mapMTermTopR (mapMTypeTopR (reflectLiteralInReft ty' lit)) $
+        TermLiteral lit ty'
     return tm'
   TermPrimitive prim ty ->
     synthPrimitive term ty prim
@@ -67,24 +69,21 @@ synthTerm term = case term of
     -- check asserted term against refinement type { x | x == true }
     ty1 <-
       TypeAtomic TypeBit
-        <$> reflectInReft (TermLiteral (LiteralBit True) Base.TypeBit) F.trueReft
-    tm1' <- checkTerm ty1 tm1
+        <$> reflectLiteralInReft (bitType F.trueReft) (LiteralBit True) F.trueReft
+    tm1' <- synthCheckTerm ty1 tm1
     tm2' <- synthTerm tm2
     ty' <- inferTerm tm2'
     return $ TermAssert tm1' tm2' ty'
-  TermLet pat sort tm bod ty -> do
+  TermLet pat tm bod ty -> do
     tm' <- synthTerm tm
     bod' <- synthTerm bod
     ty' <- lift $ transType ty
-    return $ TermLet pat sort tm' bod' ty'
-
--- -- invalid
--- TermSymbol _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" "should never try to synthesize type of symbol term, since it's only introduced in refinements which are immediately embedded"
+    return $ TermLet pat tm' bod' ty'
 
 -- most primitive operations are reflected in refinement
 synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term Type)
-synthPrimitive term ty prim =
-  case prim of
+synthPrimitive _term ty primitive =
+  case primitive of
     PrimitiveTry _tm -> error "synthPrimitive: PrimitiveTry"
     PrimitiveTuple _tms -> error "synthPrimitive: PrimitiveTuple"
     PrimitiveArray _tms -> error "synthPrimitive: PrimitiveArray"
@@ -98,40 +97,47 @@ synthPrimitive term ty prim =
     go2 constr tm1 tm2 = do
       tm1' <- synthTerm tm1
       tm2' <- synthTerm tm2
+      let prim = constr tm1' tm2'
       ty' <- lift $ transType ty
-      mapMTermTopR (mapMTypeTopR (reflectInReft term)) $
-        TermPrimitive (constr tm1' tm2') ty'
+      mapMTermTopR (mapMTypeTopR (reflectPrimitiveInReft ty' prim)) $
+        TermPrimitive prim ty'
 
     go1 constr tm = do
       tm' <- synthTerm tm
+      let prim = constr tm'
       ty' <- lift $ transType ty
-      mapMTermTopR (mapMTypeTopR (reflectInReft term)) $
-        TermPrimitive (constr tm') ty'
+      mapMTermTopR (mapMTypeTopR (reflectPrimitiveInReft ty' prim)) $
+        TermPrimitive prim ty'
 
     go3 constr tm1 tm2 tm3 = do
       tm1' <- synthTerm tm1
       tm2' <- synthTerm tm2
       tm3' <- synthTerm tm3
+      let prim = constr tm1' tm2' tm3'
       ty' <- lift $ transType ty
-      mapMTermTopR (mapMTypeTopR (reflectInReft term)) $
-        TermPrimitive (constr tm1' tm2' tm3') ty'
+      mapMTermTopR (mapMTypeTopR (reflectPrimitiveInReft ty' prim)) $
+        TermPrimitive prim ty'
 
 -- ** Reflection
 
--- | predReflect tm { x | r } = { x | x == tm && r }
-reflectInReft :: Term r -> F.Reft -> CheckingM F.Reft
-reflectInReft tm r = do
+-- | reflectTermInReft tm { x | r } = { x | x == tm && r }
+reflectTermInReft :: Term Type -> F.Reft -> CheckingM F.Reft
+reflectTermInReft tm r = do
+  let sort = getTermR tm
   let x = F.reftBind r
   let p = F.reftPred r
   pRefl <-
     lift . embedTerm $
       TermPrimitive
-        ( PrimitiveEq
-            (varTerm (symbolId' x) ())
-            (void tm)
-        )
-        ()
+        (PrimitiveEq (varTerm (symbolId' x) sort) tm)
+        (bitType mempty)
   return $ F.reft x (F.conj [pRefl, p])
+
+reflectLiteralInReft :: Type -> Literal -> F.Reft -> CheckingM F.Reft
+reflectLiteralInReft ty lit = reflectTermInReft (TermLiteral lit ty)
+
+reflectPrimitiveInReft :: Type -> Primitive Type -> F.Reft -> CheckingM F.Reft
+reflectPrimitiveInReft ty prim = reflectTermInReft (TermPrimitive prim ty)
 
 -- ** Inferring
 
@@ -141,10 +147,7 @@ inferTerm = \case
   TermLiteral _ ty -> return ty
   TermPrimitive _ ty -> return ty
   TermAssert _ _ ty -> return ty
-  TermLet _ _ _ _ ty -> return ty
-
--- -- invalid
--- TermSymbol _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" "should never try to infer type of symbol term, since it's only introduced in refinements which are immediately embedded"
+  TermLet _ _ _ ty -> return ty
 
 -- ** Subtyping
 

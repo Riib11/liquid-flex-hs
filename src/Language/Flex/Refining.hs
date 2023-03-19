@@ -11,7 +11,7 @@ import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexM)
 import qualified Language.Flex.FlexM as FlexM
-import Language.Flex.Refining.Check (checkTerm, runCheckingM)
+import Language.Flex.Refining.Check (runCheckingM, synthCheckTerm)
 import Language.Flex.Refining.Query (makeQuery, submitQuery)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Translating (transTerm, transType)
@@ -67,8 +67,10 @@ introTerm tmId type_ m = do
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
 check label term type_ = do
   tm <- transTerm term
+  FlexM.tell $ FlexM.FlexLog "refining" $ "[check] transTerm term  =" <+> pPrint tm
   ty <- transType type_
-  (_, cstr) <- runCheckingM $ checkTerm ty tm
+  FlexM.tell $ FlexM.FlexLog "refining" $ "[check] transType type_ =" <+> pPrint ty
+  (_, cstr) <- runCheckingM $ synthCheckTerm ty tm
   query <- makeQuery cstr
   result <- submitQuery query
   case result of

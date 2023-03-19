@@ -39,7 +39,7 @@ transTerm term = case term of
     bod <-
       introId' id' $ -- TODO: intro typing?
         transTerm termBody
-    return $ TermLet id' (sortOfBaseType (getTermR tm)) tm bod (getTermR bod)
+    return $ TermLet id' tm bod (getTermR bod)
   Base.TermAssert {termTerm, termBody} -> do
     tm <- transTerm termTerm
     bod <- transTerm termBody
@@ -137,15 +137,15 @@ sortOfBaseType = \case
   -- TODO: use FApp (type constructor application) and FObj (uninterpreted
   -- type), and don't need to worry about needing to directly convert TypeIds to
   -- Symbols since there's never any possible shadoing of TypeIds
-  Base.TypeArray ty -> error "sortOfBaseType"
-  Base.TypeTuple tys -> error "sortOfBaseType"
-  Base.TypeOptional ty -> error "sortOfBaseType"
-  Base.TypeNamed ti -> error "sortOfBaseType"
-  Base.TypeUnifyVar uv m_uc -> error "sortOfBaseType"
-  Base.TypeStructure struc -> error "sortOfBaseType"
-  Base.TypeEnum en -> error "sortOfBaseType"
-  Base.TypeVariant vari -> error "sortOfBaseType"
-  Base.TypeNewtype new -> error "sortOfBaseType"
+  Base.TypeArray _ty -> error "sortOfBaseType"
+  Base.TypeTuple _tys -> error "sortOfBaseType"
+  Base.TypeOptional _ty -> error "sortOfBaseType"
+  Base.TypeNamed _ti -> error "sortOfBaseType"
+  Base.TypeUnifyVar _uv _m_uc -> error "sortOfBaseType"
+  Base.TypeStructure _struc -> error "sortOfBaseType"
+  Base.TypeEnum _en -> error "sortOfBaseType"
+  Base.TypeVariant _vari -> error "sortOfBaseType"
+  Base.TypeNewtype _new -> error "sortOfBaseType"
 
 sortOfType :: Type -> F.Sort
 sortOfType = \case

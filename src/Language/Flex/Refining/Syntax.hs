@@ -228,19 +228,19 @@ data Term r
   = TermNeutral !Id' [Term r] r
   | TermLiteral !Literal r
   | TermPrimitive !(Primitive r) r
-  | TermLet !Id' !F.Sort !(Term r) !(Term r) r
+  | TermLet !Id' !(Term r) !(Term r) r
   | TermAssert !(Term r) !(Term r) r
   deriving (Eq, Show, Functor)
 
 instance Pretty (Term r) where
   pPrint = \case
-    TermNeutral id' tes r
+    TermNeutral id' tes _r
       | null tes -> pPrint id'
       | otherwise -> pPrint id' <> parens (hsep $ punctuate comma $ pPrint <$> tes)
-    TermLiteral lit r -> pPrint lit
-    TermPrimitive prim r -> pPrint prim
-    TermLet id' _ te te' r -> text "let" <+> pPrint id' <+> text "=" <+> pPrint te <+> ";" $$ pPrint te'
-    TermAssert te te' r -> text "assert" <+> pPrint te <+> ";" $$ pPrint te'
+    TermLiteral lit _r -> pPrint lit
+    TermPrimitive prim _r -> pPrint prim
+    TermLet id' te te' _r -> text "let" <+> pPrint id' <+> text "=" <+> pPrint te <+> ";" $$ pPrint te'
+    TermAssert te te' _r -> text "assert" <+> pPrint te <+> ";" $$ pPrint te'
 
 data Id' = Id' {id'Symbol :: !F.Symbol, id'MaybeTermId :: !(Maybe TermId)}
   deriving (Eq, Ord, Show)
@@ -260,6 +260,7 @@ getTermR = \case
   TermLiteral _lit r -> r
   TermPrimitive _prim r -> r
   TermAssert _te _te' r -> r
+  TermLet _ _ _ r -> r
 
 mapTermTopR :: (r -> r) -> Term r -> Term r
 mapTermTopR f = \case
@@ -267,6 +268,7 @@ mapTermTopR f = \case
   TermLiteral lit r -> TermLiteral lit (f r)
   TermPrimitive prim r -> TermPrimitive prim (f r)
   TermAssert tm1 tm2 r -> TermAssert tm1 tm2 (f r)
+  TermLet x tm1 tm2 r -> TermLet x tm1 tm2 (f r)
 
 mapMTermTopR :: Monad m => (r -> m r) -> Term r -> m (Term r)
 mapMTermTopR k = \case
@@ -274,6 +276,7 @@ mapMTermTopR k = \case
   TermLiteral lit r -> TermLiteral lit <$> k r
   TermPrimitive prim r -> TermPrimitive prim <$> k r
   TermAssert tm1 tm2 r -> TermAssert tm1 tm2 <$> k r
+  TermLet x tm1 tm2 r -> TermLet x tm1 tm2 <$> k r
 
 -- ** Substitution
 

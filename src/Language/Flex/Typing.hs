@@ -409,11 +409,13 @@ synthTerm term = case term of
   TermPrimitive prim () -> synthPrimitive term prim
   TermLet {termPattern, termTerm, termBody} -> do
     tm <- synthTerm termTerm
-    ty <- inferTerm tm
-    pat <- checkPattern' ty termPattern
-    case pat of
-      PatternNamed tmId sig -> introTerm tmId sig $ synthTerm termBody
+    sig <- inferTerm tm
+    pat <- checkPattern' sig termPattern
+    bod <- case pat of
+      PatternNamed tmId _ -> introTerm tmId sig $ synthTerm termBody
       PatternDiscard _ -> synthTerm termBody
+    ty <- inferTerm bod
+    return $ TermLet pat tm bod ty
   TermAssert {termTerm, termBody} -> do
     void $ synthCheckTerm' (normType TypeBit) termTerm
     synthTerm termBody
