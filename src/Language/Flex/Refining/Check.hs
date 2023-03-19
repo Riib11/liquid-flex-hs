@@ -4,6 +4,7 @@ module Language.Flex.Refining.Check where
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer (MonadWriter (tell), WriterT (runWriterT), void)
 import Data.Bifunctor (Bifunctor (second))
+import Data.Functor
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import qualified Language.Flex.FlexM as FlexM
@@ -85,7 +86,7 @@ synthTerm term = case term of
     tm' <- synthTerm tm
     bod' <-
       introId' id' $
-        introApplicantType id' (Base.ApplicantType $ getTermR tm') $
+        introApplicantType id' (Base.ApplicantType $ getTermTopR tm') $
           synthTerm bod
     ty' <- lift $ transType ty
     return $ TermLet id' tm' bod' ty'
@@ -94,15 +95,38 @@ synthTerm term = case term of
 synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term Type)
 synthPrimitive _term ty primitive =
   case primitive of
-    PrimitiveTry _tm -> error "synthPrimitive: PrimitiveTry"
-    PrimitiveTuple _tms -> error "synthPrimitive: PrimitiveTuple"
-    PrimitiveArray _tms -> error "synthPrimitive: PrimitiveArray"
+    PrimitiveTuple tms -> do
+      tms <- synthTerm `traverse` tms
+      --- ..., { yI | rI }, ...
+      tyComps <- inferTerm `traverse` tms
+      x <- lift $ freshSymbol "tuple"
+
+      -- unrefined type, for embedding
+      let tyTuple = TypeTuple tyComps mempty
+
+      -- { x == (..., yI, ....) }
+      p1 <-
+        eqPred
+          (termVar (fromSymbolToId' x) tyTuple)
+          ( unrefinedTermTuple $
+              tyComps <&> \tyComp ->
+                fromSymbolToTerm (F.reftBind $ getTypeTopR tyComp) tyComp
+          )
+
+      -- ... && rI(yI) && ...
+      let p2 = F.conj $ tyComps <&> (F.reftPred . getTypeTopR)
+
+      -- { x: (..., AI, ...) | x == (..., yI, ...) && ... && rI(yI) && ... }
+      let r = F.reft x (F.conj [p1, p2])
+
+      return $ TermPrimitive (PrimitiveTuple tms) (TypeTuple tyComps r)
     PrimitiveIf tm1 tm2 tm3 -> go3 PrimitiveIf tm1 tm2 tm3
     PrimitiveAnd tm1 tm2 -> go2 PrimitiveAnd tm1 tm2
     PrimitiveOr tm1 tm2 -> go2 PrimitiveOr tm1 tm2
     PrimitiveNot tm -> go1 PrimitiveNot tm
     PrimitiveEq tm1 tm2 -> go2 PrimitiveEq tm1 tm2
     PrimitiveAdd tm1 tm2 -> go2 PrimitiveAdd tm1 tm2
+    _ -> error "TODO: synthPrimitive"
   where
     go2 constr tm1 tm2 = do
       tm1' <- synthTerm tm1
@@ -133,13 +157,13 @@ synthPrimitive _term ty primitive =
 -- | reflectTermInReft tm { x | r } = { x | x == tm && r }
 reflectTermInReft :: Term Type -> F.Reft -> CheckingM F.Reft
 reflectTermInReft tm r = do
-  let sort = getTermR tm
+  let sort = getTermTopR tm
   let x = F.reftBind r
   let p = F.reftPred r
   pRefl <-
     lift . embedTerm $
       TermPrimitive
-        (PrimitiveEq (varTerm (symbolId' x) sort) tm)
+        (PrimitiveEq (termVar (fromSymbolToId' x) sort) tm)
         (bitType mempty)
   return $ F.reft x (F.conj [pRefl, p])
 
@@ -152,12 +176,7 @@ reflectPrimitiveInReft ty prim = reflectTermInReft (TermPrimitive prim ty)
 -- ** Inferring
 
 inferTerm :: Term Type -> CheckingM Type
-inferTerm = \case
-  TermNeutral _ _ ty -> return ty
-  TermLiteral _ ty -> return ty
-  TermPrimitive _ ty -> return ty
-  TermAssert _ _ ty -> return ty
-  TermLet _ _ _ ty -> return ty
+inferTerm = return . getTermTopR
 
 -- ** Subtyping
 
@@ -176,3 +195,13 @@ checkSubtype tySynth tyExpect = case (tySynth, tyExpect) of
       (x1, _e1) = (F.reftBind r1, F.reftPred r1)
       (x2, e2) = (F.reftBind r2, F.reftPred r2)
   _ -> lift $ throwRefiningError $ "the type" <+> ticks (pPrint tySynth) <+> "cannot be a subtype of the type" <+> ticks (pPrint tyExpect)
+
+-- ** Utilities
+
+-- eqPred tm1 tm2 = { tm1 == tm2 }
+eqPred :: Term Type -> Term Type -> CheckingM F.Pred
+eqPred tm1 tm2 = do
+  lift . embedTerm $
+    TermPrimitive
+      (PrimitiveEq tm1 tm2)
+      (bitType mempty)

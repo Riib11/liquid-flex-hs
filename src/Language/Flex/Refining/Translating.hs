@@ -39,16 +39,16 @@ transTerm term = do
         Base.PatternNamed ti _ty -> freshId'TermId ti
         Base.PatternDiscard _ty -> freshId' "discard"
       tm <- transTerm termTerm
-      ty <- transType $ getTermR tm
+      ty <- transType $ getTermTopR tm
       bod <-
         introId' id'
           . introApplicantType id' (Base.ApplicantType ty)
           $ transTerm termBody
-      return $ TermLet id' tm bod (getTermR bod)
+      return $ TermLet id' tm bod (getTermTopR bod)
     Base.TermAssert {termTerm, termBody} -> do
       tm <- transTerm termTerm
       bod <- transTerm termBody
-      return $ TermAssert tm bod (getTermR bod)
+      return $ TermAssert tm bod (getTermTopR bod)
     Base.TermStructure _ti _x0 _ty -> error "transTerm"
     Base.TermMember _te _fi _ty -> error "transTerm"
     Base.TermNeutral app mb_args mb_cxargs ty -> do

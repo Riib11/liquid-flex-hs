@@ -29,7 +29,7 @@ embedTerm = \case
   -- (let x = a in b) ~~> ((fun x => b) a)
   TermLet x tm bod _ -> do
     tm' <- embedTerm tm
-    let sort = sortOfType (getTermR tm)
+    let sort = sortOfType (getTermTopR tm)
     bod' <- embedTerm bod
     return $ F.eApps (F.ELam (id'Symbol x, sort) bod') [tm']
 

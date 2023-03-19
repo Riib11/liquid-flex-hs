@@ -241,7 +241,7 @@ data Function ann = Function
   { functionId :: TermId,
     functionIsTransform :: Bool,
     functionParameters :: [(TermId, Type)],
-    -- | since contextual parameters must have newtypes, only need to store the
+    -- | since contextual parameters must have newtypes,data Term only need to store the
     -- newtypes' ids
     functionContextualParameters :: Maybe [(TypeId, TermId)],
     functionOutput :: Type,

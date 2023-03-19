@@ -128,7 +128,7 @@ freshSymbol str = do
 freshId' :: String -> RefiningM Id'
 freshId' str = do
   sym <- freshSymbol str
-  return $ symbolId' sym
+  return $ fromSymbolToId' sym
 
 freshId'TermId :: Base.TermId -> RefiningM Id'
 freshId'TermId tmId = do

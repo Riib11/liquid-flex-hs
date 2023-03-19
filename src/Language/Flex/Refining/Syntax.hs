@@ -53,32 +53,35 @@ type Type = Type_ F.Reft
 
 -- TODO: handle more advanced types
 
--- | TypeTuple r ![Type_ r]
--- | TypeArray r !(Type_ r)
--- | TypeOptional r (Type_ r)
--- | TypeStructure Structure r
--- | TypeEnumerated Enumerated r
--- | TypeVariant Variant r
--- | TypeNewtype NewType_ r
+-- | TypeTuple
+-- | TypeArray
+-- | TypeOptional
+-- | TypeStructure
+-- | TypeEnumerated
+-- | TypeVariant
+-- | TypeNewtype
 data Type_ r
   = TypeAtomic AtomicType r
+  | TypeTuple ![Type_ r] r
   deriving
     (Eq, Show, Functor)
 
 instance Pretty (Type_ F.Reft) where
   pPrint = \case
     TypeAtomic at r -> case at of
-      TypeInt -> go "int"
-      TypeFloat -> go "float"
-      TypeBit -> go "bit"
-      TypeChar -> go "char"
-      TypeString -> go "string"
-      where
-        go str = braces $ braces $ F.pprint (F.reftBind r) <+> colon <+> str <+> "|" <+> F.pprint (F.reftPred r)
+      TypeInt -> go "int" r
+      TypeFloat -> go "float" r
+      TypeBit -> go "bit" r
+      TypeChar -> go "char" r
+      TypeString -> go "string" r
+    TypeTuple tys r -> go (parens $ hsep $ punctuate comma $ pPrint <$> tys) r
+    where
+      go doc r = braces $ F.pprint (F.reftBind r) <+> ":" <+> doc <+> "|" <+> F.pprint (F.reftPred r)
 
 baseTypeReft :: Type -> F.Reft
 baseTypeReft = \case
   TypeAtomic _ r -> r
+  TypeTuple _ r -> r
 
 data AtomicType
   = TypeInt
@@ -106,17 +109,21 @@ charType = TypeAtomic TypeChar
 stringType :: F.Reft -> Type
 stringType = TypeAtomic TypeString
 
+getTypeTopR :: Type_ r -> r
+getTypeTopR = \case
+  TypeAtomic _at r -> r
+  TypeTuple _tys r -> r
+
+setTypeTopR :: Type_ r -> r -> Type_ r
+setTypeTopR ty r = case ty of
+  TypeAtomic at _r' -> TypeAtomic at r
+  TypeTuple tys _r' -> TypeTuple tys r
+
 mapTypeTopR :: (r -> r) -> Type_ r -> Type_ r
-mapTypeTopR f = \case
-  TypeAtomic at r -> TypeAtomic at (f r)
+mapTypeTopR f ty = setTypeTopR ty (f (getTypeTopR ty))
 
-mapMTypeTopR :: Monad m => (r -> m r) -> Type_ r -> m (Type_ r)
-mapMTypeTopR k = \case
-  TypeAtomic at r -> TypeAtomic at <$> k r
-
-getRefinement :: Type_ r -> r
-getRefinement = \case
-  TypeAtomic _ r -> r
+mapMTypeTopR :: Functor f => (r -> f r) -> Type_ r -> f (Type_ r)
+mapMTypeTopR k ty = setTypeTopR ty <$> k (getTypeTopR ty)
 
 -- ** FunctionType
 
@@ -221,6 +228,12 @@ instance Pretty (Primitive r) where
     PrimitiveEq te te' -> parens $ pPrint te <+> "==" <+> pPrint te'
     PrimitiveAdd te te' -> parens $ pPrint te <+> "+" <+> pPrint te'
 
+unrefinedTermTuple :: [Term Type] -> Term Type
+unrefinedTermTuple tms =
+  TermPrimitive
+    (PrimitiveTuple tms)
+    (TypeTuple (getTermTopR <$> tms) mempty)
+
 -- ** Term
 
 -- TODO: structure, member, construct enum, construct variant, match
@@ -248,14 +261,17 @@ data Id' = Id' {id'Symbol :: !F.Symbol, id'MaybeTermId :: !(Maybe TermId)}
 instance Pretty Id' where
   pPrint (Id' sym _m_ti) = F.pprint sym
 
-varTerm :: Id' -> r -> Term r
-varTerm id' = TermNeutral id' []
+termVar :: Id' -> r -> Term r
+termVar id' = TermNeutral id' []
 
-symbolId' :: F.Symbol -> Id'
-symbolId' id'Symbol = Id' {id'Symbol, id'MaybeTermId = Nothing}
+fromSymbolToTerm :: F.Symbol -> r -> Term r
+fromSymbolToTerm sym = termVar (fromSymbolToId' sym)
 
-getTermR :: Term r -> r
-getTermR = \case
+fromSymbolToId' :: F.Symbol -> Id'
+fromSymbolToId' id'Symbol = Id' {id'Symbol, id'MaybeTermId = Nothing}
+
+getTermTopR :: Term r -> r
+getTermTopR = \case
   TermNeutral _ _ r -> r
   TermLiteral _lit r -> r
   TermPrimitive _prim r -> r
