@@ -1,0 +1,43 @@
+module Bottom where
+
+{-@
+try : x:a -> {v : Maybe a | (x == BOT) ===> v == None }
+@-}
+
+// try : Exception<a> -> Option<a>
+
+function main() -> bit {
+  let x: Optional<int32> = try fail();
+  let y: Optional<bit> = try g(true);
+  assert(x == None);
+  assert(y == None); // FAILS
+  true 
+}
+
+function fail() -> int32 {
+  assert(false);
+  1
+}
+
+// if total => () -> bit 
+// if partial => () -> Exception<bit>
+transform g(x: bit) -> bit {
+  if x then fail() else true
+}
+
+
+
+f1 () -> bit {
+  let x = try f2()
+  match x with 
+  | None => true 
+  | Some _ => fails()
+}
+
+f2() -> bit {
+  let x = try f1()
+  match x with 
+  | None => true 
+  | Some _ => fails()
+}
+
