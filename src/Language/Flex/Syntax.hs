@@ -19,7 +19,7 @@ data Syntax ann
   | SyntaxType Type
   | SyntaxTerm (Term ann)
 
-instance Pretty (Syntax ann) where
+instance Pretty ann => Pretty (Syntax ann) where
   pPrint = \case
     SyntaxDeclaration de -> pPrint de
     SyntaxType ty -> pPrint ty
@@ -80,7 +80,7 @@ data Module ann = Module
   }
   deriving (Eq, Functor, Foldable, Traversable, Show)
 
-instance Pretty (Module ann) where
+instance Pretty ann => Pretty (Module ann) where
   pPrint (Module {..}) =
     ("module" <+> pPrint moduleId)
       $$ vcat (pPrint <$> moduleDeclarations)
@@ -89,16 +89,16 @@ instance Pretty (Module ann) where
 
 data Declaration ann
   = DeclarationStructure Structure
-  | DeclarationNewtype Newtype
-  | DeclarationVariant Variant
-  | DeclarationEnum Enum
+  | DeclarationNewtype (Newtype Type)
+  | DeclarationVariant (Variant Type)
+  | DeclarationEnum (Enum Type)
   | DeclarationAlias Alias
   | DeclarationFunction (Function ann)
   | DeclarationConstant (Constant ann)
   | DeclarationRefinedType (RefinedType ann)
   deriving (Eq, Functor, Foldable, Traversable, Show)
 
-instance Pretty (Declaration ann) where
+instance Pretty ann => Pretty (Declaration ann) where
   pPrint = \case
     DeclarationStructure struct -> pPrint struct
     DeclarationNewtype newty -> pPrint newty
@@ -115,13 +115,13 @@ class ToDeclaration a ann where
 instance ToDeclaration Structure ann where
   toDeclaration = DeclarationStructure
 
-instance ToDeclaration Newtype ann where
+instance ToDeclaration (Newtype Type) ann where
   toDeclaration = DeclarationNewtype
 
-instance ToDeclaration Variant ann where
+instance ToDeclaration (Variant Type) ann where
   toDeclaration = DeclarationVariant
 
-instance ToDeclaration Enum ann where
+instance ToDeclaration (Enum Type) ann where
   toDeclaration = DeclarationEnum
 
 instance ToDeclaration Alias ann where
@@ -176,26 +176,26 @@ instance Pretty (RefinedType ann) where
 
 -- *** Newtype
 
-data Newtype = Newtype
+data Newtype ann = Newtype
   { newtypeId :: TypeId,
     newtypeConstructorId :: TermId,
     newtypeFieldId :: FieldId,
-    newtypeType :: Type
+    newtypeType :: ann
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty Newtype where
+instance Pretty ann => Pretty (Newtype ann) where
   pPrint (Newtype {..}) = pPrint newtypeId <+> "=" <+> pPrint newtypeType
 
 -- *** Variant
 
-data Variant = Variant
+data Variant ann = Variant
   { variantId :: TypeId,
-    variantConstructors :: [(TermId, [Type])]
+    variantConstructors :: [(TermId, [ann])]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty Variant where
+instance Pretty ann => Pretty (Variant ann) where
   pPrint (Variant {..}) =
     vcat
       [ pPrint variantId <+> "{",
@@ -207,14 +207,14 @@ instance Pretty Variant where
 
 -- *** Enum
 
-data Enum = Enum
+data Enum ann = Enum
   { enumId :: TypeId,
-    enumType :: Type,
+    enumType :: ann,
     enumConstructors :: [(TermId, Literal)]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty Enum where
+instance Pretty ann => Pretty (Enum ann) where
   pPrint (Enum {..}) =
     vcat
       [ pPrint enumId <+> pPrint enumType <+> "{",
@@ -292,22 +292,40 @@ instance Pretty (Constant ann) where
 data Term ann
   = TermLiteral {termLiteral :: Literal, termAnn :: ann}
   | TermPrimitive {termPrimitive :: Primitive ann, termAnn :: ann}
-  | TermBlock {termBlock :: Block ann, termAnn :: ann}
+  | TermLet {termPattern :: Pattern ann, termTerm :: Term ann, termBody :: Term ann, termAnn :: ann}
+  | TermAssert {termTerm :: Term ann, termBody :: Term ann, termAnn :: ann}
   | TermStructure {termStructureId :: TypeId, termFields :: [(FieldId, Term ann)], termAnn :: ann}
   | TermMember {termTerm :: Term ann, termFieldId :: FieldId, termAnn :: ann}
-  | TermNeutral {termApplicant :: Applicant, termMaybeArgs :: Maybe [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
+  | TermNeutral {termApplicant :: Applicant ann, termMaybeArgs :: Maybe [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
   | TermAscribe {termTerm :: Term ann, termType :: Type, termAnn :: ann}
   | TermMatch {termTerm :: Term ann, termBranches :: Branches ann, termAnn :: ann}
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
-newtype Applicant = Applicant (Maybe TypeId, TermId)
-  deriving (Eq, Ord, Show)
+data Applicant ann = Applicant
+  { applicantMaybeTypeId :: Maybe TypeId,
+    applicantTermId :: TermId,
+    applicantAnn :: ApplicantType ann
+  }
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty Applicant where
-  pPrint (Applicant (Just tyId, tmId)) = pPrint tyId <> "." <> pPrint tmId
-  pPrint (Applicant (Nothing, tmId)) = pPrint tmId
+termIdApplicant :: TermId -> ApplicantType ann -> Applicant ann
+termIdApplicant applicantTermId applicantAnn =
+  Applicant
+    { applicantMaybeTypeId = Nothing,
+      applicantTermId,
+      applicantAnn
+    }
 
-type Block ann = ([Statement ann], Term ann)
+instance Eq ann => Ord (Applicant ann) where
+  compare app1 app2 = case compare (applicantMaybeTypeId app1) (applicantMaybeTypeId app2) of
+    LT -> LT
+    GT -> GT
+    EQ -> compare (applicantTermId app1) (applicantTermId app2)
+
+instance Pretty (Applicant ann) where
+  pPrint (Applicant {..}) = case applicantMaybeTypeId of
+    Nothing -> pPrint applicantTermId
+    Just tyId -> pPrint tyId <> "." <> pPrint applicantTermId
 
 type Branches ann = [(Pattern ann, Term ann)]
 
@@ -315,7 +333,10 @@ instance Pretty (Term ann) where
   pPrint = \case
     TermLiteral {termLiteral} -> pPrint termLiteral
     TermPrimitive {termPrimitive} -> pPrint termPrimitive
-    TermBlock {termBlock = (stmts, tm)} -> "{" $$ nest 2 (vcat $ (pPrint <$> stmts) ++ [pPrint tm]) $$ "}"
+    TermLet {termPattern, termTerm, termBody} ->
+      text "let" <+> pPrint termPattern <+> "=" <+> pPrint termTerm <+> ";" <+> pPrint termBody
+    TermAssert {termTerm, termBody} ->
+      text "assert" <+> pPrint termTerm <+> ";" <+> pPrint termBody
     TermStructure {termStructureId, termFields} ->
       pPrint termStructureId
         <> "{"
@@ -326,7 +347,7 @@ instance Pretty (Term ann) where
         <> "}"
     TermMember {termTerm, termFieldId} ->
       pPrint termTerm <> "." <> pPrint termFieldId
-    TermNeutral {termApplicant = Applicant (Nothing, termId), termMaybeArgs, termMaybeCxargs} ->
+    TermNeutral {termApplicant = Applicant Nothing termId _, termMaybeArgs, termMaybeCxargs} ->
       ( pPrint termId
           <> ( case termMaybeArgs of
                  Nothing -> mempty
@@ -337,7 +358,7 @@ instance Pretty (Term ann) where
                 Nothing -> mempty
                 Just cxargs -> "giving" <+> (parens . hsep . punctuate comma $ pPrint <$> cxargs)
             )
-    TermNeutral {termApplicant = Applicant (Just typeId, termId), termMaybeArgs, termMaybeCxargs} ->
+    TermNeutral {termApplicant = Applicant (Just typeId) termId _, termMaybeArgs, termMaybeCxargs} ->
       ( (pPrint typeId <> "#" <> pPrint termId)
           <> ( case termMaybeArgs of
                  Nothing -> mempty
@@ -391,18 +412,6 @@ instance Pretty (Primitive ann) where
     PrimitiveEq tm1 tm2 -> parens $ pPrint tm1 <+> "==" <+> pPrint tm2
     PrimitiveAdd tm1 tm2 -> parens $ pPrint tm1 <+> "+" <+> pPrint tm2
 
--- ** Statement
-
-data Statement ann
-  = StatementLet (Pattern ann) (Term ann)
-  | StatementAssert (Term ann)
-  deriving (Eq, Show, Functor, Foldable, Traversable)
-
-instance Pretty (Statement ann) where
-  pPrint = \case
-    StatementLet pat tm -> ("let" <+> pPrint pat <+> "=" <+> pPrint tm) <> ";"
-    StatementAssert tm -> "assert" <> parens (pPrint tm) <> ";"
-
 -- ** Pattern
 
 data Pattern ann
@@ -429,19 +438,27 @@ data Type
     -- introduced during typing
     TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
   | TypeStructure Structure
-  | TypeEnum Enum
-  | TypeVariant Variant
-  | TypeNewtype Newtype
+  | TypeEnum (Enum Type)
+  | TypeVariant (Variant Type)
+  | TypeNewtype (Newtype Type)
   deriving (Eq, Show)
 
-data FunctionType = FunctionType
+data ApplicantType ann
+  = ApplicantTypeFunction (FunctionType ann)
+  | ApplicantTypeEnumConstructor (Enum ann) TermId
+  | ApplicantTypeVariantConstructor (Variant ann) TermId [ann]
+  | ApplicantTypeNewtypeConstructor (Newtype ann)
+  | ApplicantType ann
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
+data FunctionType ann = FunctionType
   { functionTypeId :: TermId,
     functionTypeIsTransform :: Bool,
-    functionTypeParameters :: [(TermId, Type)],
+    functionTypeParameters :: [(TermId, ann)],
     functionTypeContextualParameters :: Maybe [(TypeId, TermId)],
-    functionTypeOutput :: Type
+    functionTypeOutput :: ann
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty Type where
   pPrint = \case
@@ -463,7 +480,7 @@ instance Pretty Type where
       tuple :: [Doc] -> Doc
       tuple = parens . hsep . punctuate comma
 
-instance Pretty FunctionType where
+instance Pretty ann => Pretty (FunctionType ann) where
   pPrint FunctionType {..} =
     hsep
       [ pPrint functionTypeId,

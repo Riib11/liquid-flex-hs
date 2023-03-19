@@ -68,6 +68,7 @@ library
       RecordWildCards
       BangPatterns
       GeneralizedNewtypeDeriving
+      ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports
   build-depends:
       HUnit
@@ -114,6 +115,7 @@ executable liquid-flex-hs-exe
       RecordWildCards
       BangPatterns
       GeneralizedNewtypeDeriving
+      ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
@@ -167,6 +169,7 @@ test-suite liquid-flex-hs-test
       RecordWildCards
       BangPatterns
       GeneralizedNewtypeDeriving
+      ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-unrecognised-pragmas -Wno-partial-fields -Wno-missing-export-lists -Wno-unused-imports -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit

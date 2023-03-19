@@ -1,3 +1,4 @@
+{-# HLINT ignore "Redundant return" #-}
 module Language.Flex.Refining.Check where
 
 import Control.Monad.Trans (lift)
@@ -46,16 +47,19 @@ checkTerm tyExpect tm = do
 
 synthTerm :: Term Base.Type -> CheckingM (Term Type)
 synthTerm term = case term of
-  TermNamed tmId _ ->
-    TermNamed tmId <$> lift (lookupTermId tmId)
+  -- TermNamed tmId _ ->
+  --   TermNamed tmId <$> lift (lookupTyping tmId)
+  TermNeutral app args ty -> do
+    args' <- synthTerm `traverse` args
+    -- TODO: for transforms, input values can't affect output refinement type,
+    -- BUT, newtype/variant/enum constructors should have their args reflected
+    -- in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c) }
+    ty' <- lift $ transType ty
+    return $ TermNeutral app args' ty'
   TermLiteral lit ty -> do
     -- literals are reflected
     ty' <- lift $ transType ty
-    -- lift $ FlexM.tell $ FlexM.FlexLog "refining" $ "synthTerm, TermLiteral, lit =" <+> pPrint lit
-    tm' <-
-      mapMTermTopR (mapMTypeTopR (reflectInReft term)) $
-        TermLiteral lit ty'
-    -- lift $ FlexM.tell $ FlexM.FlexLog "refining" $ "synthTerm, TermLiteral, tm' =" <+> text (show tm')
+    tm' <- mapMTermTopR (mapMTypeTopR (reflectInReft term)) $ TermLiteral lit ty'
     return tm'
   TermPrimitive prim ty ->
     synthPrimitive term ty prim
@@ -68,8 +72,14 @@ synthTerm term = case term of
     tm2' <- synthTerm tm2
     ty' <- inferTerm tm2'
     return $ TermAssert tm1' tm2' ty'
-  -- invalid
-  TermSymbol _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" "should never try to synthesize type of symbol term, since it's only introduced in refinements which are immediately embedded"
+  TermLet pat sort tm bod ty -> do
+    tm' <- synthTerm tm
+    bod' <- synthTerm bod
+    ty' <- lift $ transType ty
+    return $ TermLet pat sort tm' bod' ty'
+
+-- -- invalid
+-- TermSymbol _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" "should never try to synthesize type of symbol term, since it's only introduced in refinements which are immediately embedded"
 
 -- most primitive operations are reflected in refinement
 synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term Type)
@@ -113,19 +123,28 @@ reflectInReft :: Term r -> F.Reft -> CheckingM F.Reft
 reflectInReft tm r = do
   let x = F.reftBind r
   let p = F.reftPred r
-  pRefl <- lift $ embedTerm (TermPrimitive (PrimitiveEq (TermSymbol x ()) (void tm)) ())
+  pRefl <-
+    lift . embedTerm $
+      TermPrimitive
+        ( PrimitiveEq
+            (varTerm (symbolId' x) ())
+            (void tm)
+        )
+        ()
   return $ F.reft x (F.conj [pRefl, p])
 
 -- ** Inferring
 
 inferTerm :: Term Type -> CheckingM Type
 inferTerm = \case
-  TermNamed _ ty -> return ty
+  TermNeutral _ _ ty -> return ty
   TermLiteral _ ty -> return ty
   TermPrimitive _ ty -> return ty
   TermAssert _ _ ty -> return ty
-  -- invalid
-  TermSymbol _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" "should never try to infer type of symbol term, since it's only introduced in refinements which are immediately embedded"
+  TermLet _ _ _ _ ty -> return ty
+
+-- -- invalid
+-- TermSymbol _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" "should never try to infer type of symbol term, since it's only introduced in refinements which are immediately embedded"
 
 -- ** Subtyping
 

@@ -50,7 +50,12 @@ throwRefiningError msg = throwError $ RefiningError msg
 
 -- TODO: refined structures and newtypes
 data RefiningCtx = RefiningCtx
-  { _ctxTermVars :: Map.Map Base.TermId Type
+  { _ctxTypings :: Map.Map Base.TermId Type,
+    _ctxId's :: Map.Map (Base.Applicant ()) Id',
+    _ctxApplicants :: Map.Map Id' (Base.ApplicantType Type),
+    _ctxFunctions :: Map.Map Id' (Base.Function Base.Type),
+    -- | substitution resulting from inlining a function
+    _ctxTermIdSubstitution :: Map.Map Base.TermId (Term Base.Type)
   }
 
 data RefiningEnv = RefiningEnv
@@ -64,7 +69,11 @@ topRefiningCtx :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningC
 topRefiningCtx _mdl = do
   return
     RefiningCtx
-      { _ctxTermVars = mempty
+      { _ctxTypings = mempty,
+        _ctxId's = mempty,
+        _ctxApplicants = mempty,
+        _ctxFunctions = mempty,
+        _ctxTermIdSubstitution = mempty
       }
 
 topRefiningEnv :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningEnv
@@ -76,21 +85,49 @@ topRefiningEnv _mdl = do
 
 -- ** Utilities
 
-lookupTermId :: Base.TermId -> RefiningM Type
-lookupTermId tmId =
-  asks (^. ctxTermVars . at tmId)
+lookupTyping tmId =
+  asks (^. ctxTypings . at tmId)
     >>= \case
-      Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown term symbol:" <+> pPrint tmId
+      Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown:" <+> pPrint tmId
       Just ty -> return ty
 
-fromTermIdToSymbol :: Base.TermId -> RefiningM F.Symbol
-fromTermIdToSymbol = error "fromTermIdToSymbol"
+lookupId' app =
+  asks (^. ctxId's . at app) >>= \case
+    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown:" <+> pPrint app
+    Just id' -> return id'
+
+introId' id' = case id'MaybeTermId id' of
+  Nothing -> id
+  Just tmId ->
+    locally
+      (ctxId's . at (Base.termIdApplicant tmId (Base.ApplicantType ())))
+      (const $ Just id')
+
+lookupApplicantType id' =
+  asks (^. ctxApplicants . at id') >>= \case
+    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown applicant id:" <+> pPrint id'
+    Just appTy -> return appTy
+
+lookupFunction id' =
+  asks (^. ctxFunctions . at id') >>= \case
+    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown function id:" <+> pPrint id'
+    Just func -> return func
 
 freshSymbol :: String -> RefiningM F.Symbol
 freshSymbol str = do
   i <- gets (^. freshSymbolIndex)
   modifying freshSymbolIndex (1 +)
   return $ parseSymbol (str <> "#" <> show i)
+
+freshId' :: String -> RefiningM Id'
+freshId' str = do
+  sym <- freshSymbol str
+  return $ symbolId' sym
+
+freshId'TermId :: Base.TermId -> RefiningM Id'
+freshId'TermId tmId = do
+  id'Symbol <- freshSymbol (render . pPrint $ tmId)
+  return Id' {id'Symbol, id'MaybeTermId = Just tmId}
 
 parseSymbol :: String -> F.Symbol
 parseSymbol str = FP.doParse' FP.lowerIdP ("parseSymbol: " <> str) str

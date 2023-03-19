@@ -10,13 +10,29 @@ import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
 
-embedTerm :: Term r -> RefiningM F.Expr
+embedId' :: Id' -> RefiningM F.Expr
+embedId' Id' {..} = return $ F.eVar id'Symbol
+
+embedTerm :: Term () -> RefiningM F.Expr
 embedTerm = \case
   TermLiteral lit _ -> embedLiteral lit
-  TermSymbol sym _ -> return $ F.eVar sym
   TermPrimitive prim _ -> embedPrimitive prim
-  TermNamed x _ -> F.eVar <$> embedTermId x
+  TermNeutral x args _ -> do
+    x' <- embedId' x
+    args' <- embedTerm `traverse` args
+    return
+      if null args'
+        then x'
+        else F.eApps x' args'
   TermAssert _ tm _ -> embedTerm tm
+  -- (let x = a in b) ~~> ((fun x => b) a)
+  TermLet x sort tm bod _ -> do
+    tm' <- embedTerm tm
+    bod' <- embedTerm bod
+    return $ F.eApps (F.ELam (id'Symbol x, sort) bod') [tm']
+
+embedType :: Type -> RefiningM F.Sort
+embedType = error "embedType"
 
 embedLiteral :: Literal -> RefiningM F.Expr
 embedLiteral =
@@ -27,7 +43,7 @@ embedLiteral =
     Base.LiteralChar c -> F.expr (pack [c])
     Base.LiteralString s -> F.expr (pack s)
 
-embedPrimitive :: Primitive r -> RefiningM F.Expr
+embedPrimitive :: Primitive () -> RefiningM F.Expr
 embedPrimitive = \case
   PrimitiveTry _ -> error "embedPrimitive Try"
   PrimitiveTuple _ -> error "embedPrimitive Tuple"

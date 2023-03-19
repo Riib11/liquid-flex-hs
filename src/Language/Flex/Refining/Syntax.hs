@@ -23,7 +23,7 @@ import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Utils.Files as Files
 import Language.Flex.Syntax (FieldId, Literal (..), TermId, TypeId)
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
-import Text.PrettyPrint.HughesPJClass
+import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Text.Printf (printf)
 import Utility
 
@@ -195,6 +195,8 @@ data Constant r = Constant
   }
   deriving (Eq, Show)
 
+-- ** Primitive
+
 data Primitive r
   = PrimitiveTry (Term r)
   | PrimitiveTuple [Term r]
@@ -207,37 +209,68 @@ data Primitive r
   | PrimitiveAdd (Term r) (Term r)
   deriving (Eq, Show, Functor)
 
+instance Pretty (Primitive r) where
+  pPrint = \case
+    PrimitiveTry te -> parens $ text "try" <+> pPrint te
+    PrimitiveTuple tes -> parens $ hsep $ punctuate comma $ pPrint <$> tes
+    PrimitiveArray tes -> brackets $ hsep $ punctuate comma $ pPrint <$> tes
+    PrimitiveIf te te' te'' -> parens $ text "if" <+> pPrint te <+> text "then" <+> pPrint te' <+> text "else" <+> pPrint te''
+    PrimitiveAnd te te' -> parens $ pPrint te <+> text "&&" <+> pPrint te'
+    PrimitiveOr te te' -> parens $ pPrint te <+> text "||" <+> pPrint te'
+    PrimitiveNot te -> parens $ text "!" <+> pPrint te
+    PrimitiveEq te te' -> parens $ pPrint te <+> "==" <+> pPrint te'
+    PrimitiveAdd te te' -> parens $ pPrint te <+> "+" <+> pPrint te'
+
 -- ** Term
 
 -- TODO: structure, member, construct enum, construct variant, match
 data Term r
-  = TermNamed TermId r
-  | TermSymbol F.Symbol r
+  = TermNeutral !Id' [Term r] r
   | TermLiteral !Literal r
   | TermPrimitive !(Primitive r) r
-  | TermAssert (Term r) (Term r) r
+  | TermLet !Id' !F.Sort !(Term r) !(Term r) r
+  | TermAssert !(Term r) !(Term r) r
   deriving (Eq, Show, Functor)
+
+instance Pretty (Term r) where
+  pPrint = \case
+    TermNeutral id' tes r
+      | null tes -> pPrint id'
+      | otherwise -> pPrint id' <> parens (hsep $ punctuate comma $ pPrint <$> tes)
+    TermLiteral lit r -> pPrint lit
+    TermPrimitive prim r -> pPrint prim
+    TermLet id' _ te te' r -> text "let" <+> pPrint id' <+> text "=" <+> pPrint te <+> ";" $$ pPrint te'
+    TermAssert te te' r -> text "assert" <+> pPrint te <+> ";" $$ pPrint te'
+
+data Id' = Id' {id'Symbol :: !F.Symbol, id'MaybeTermId :: !(Maybe TermId)}
+  deriving (Eq, Ord, Show)
+
+instance Pretty Id' where
+  pPrint (Id' sym _m_ti) = F.pprint sym
+
+varTerm :: Id' -> r -> Term r
+varTerm id' = TermNeutral id' []
+
+symbolId' :: F.Symbol -> Id'
+symbolId' id'Symbol = Id' {id'Symbol, id'MaybeTermId = Nothing}
 
 getTermR :: Term r -> r
 getTermR = \case
-  TermNamed _ti r -> r
-  TermSymbol _ r -> r
+  TermNeutral _ _ r -> r
   TermLiteral _lit r -> r
   TermPrimitive _prim r -> r
   TermAssert _te _te' r -> r
 
 mapTermTopR :: (r -> r) -> Term r -> Term r
 mapTermTopR f = \case
-  TermNamed ti r -> TermNamed ti (f r)
-  TermSymbol sym r -> TermSymbol sym (f r)
+  TermNeutral ti args r -> TermNeutral ti args (f r)
   TermLiteral lit r -> TermLiteral lit (f r)
   TermPrimitive prim r -> TermPrimitive prim (f r)
   TermAssert tm1 tm2 r -> TermAssert tm1 tm2 (f r)
 
 mapMTermTopR :: Monad m => (r -> m r) -> Term r -> m (Term r)
 mapMTermTopR k = \case
-  TermNamed ti r -> TermNamed ti <$> k r
-  TermSymbol sym r -> TermSymbol sym <$> k r
+  TermNeutral ti args r -> TermNeutral ti args <$> k r
   TermLiteral lit r -> TermLiteral lit <$> k r
   TermPrimitive prim r -> TermPrimitive prim <$> k r
   TermAssert tm1 tm2 r -> TermAssert tm1 tm2 <$> k r
@@ -255,22 +288,23 @@ subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
 --   where
 --     sigma = F.mkSubst [(x, embedVar y)]
 
-substTerm :: TermId -> Term r -> Term r -> Term r
-substTerm tmId tm' term = case term of
-  TermLiteral {} -> term
-  TermSymbol {} -> term
-  TermNamed tmId' _ | tmId' == tmId -> tm'
-  TermNamed {} -> term
-  TermPrimitive prim r -> flip TermPrimitive r case prim of
-    PrimitiveTry te -> PrimitiveTry (go te)
-    PrimitiveTuple tes -> PrimitiveTuple (go <$> tes)
-    PrimitiveArray tes -> PrimitiveArray (go <$> tes)
-    PrimitiveIf te te' te3 -> PrimitiveIf (go te) (go te') (go te3)
-    PrimitiveAnd te te' -> PrimitiveAnd (go te) (go te')
-    PrimitiveOr te te' -> PrimitiveOr (go te) (go te')
-    PrimitiveNot te -> PrimitiveNot (go te)
-    PrimitiveEq te te' -> PrimitiveEq (go te) (go te')
-    PrimitiveAdd te te' -> PrimitiveAdd (go te) (go te')
-  TermAssert te te' r -> TermAssert (go te) (go te') r
-  where
-    go = substTerm tmId tm'
+-- TODO: SHOULDNT need this
+-- substTerm :: TermId -> Term r -> Term r -> Term r
+-- substTerm tmId tm' term = case term of
+--   TermLiteral {} -> term
+--   TermSymbol {} -> term
+--   TermNamed tmId' _ | tmId' == tmId -> tm'
+--   TermNamed {} -> term
+--   TermPrimitive prim r -> flip TermPrimitive r case prim of
+--     PrimitiveTry te -> PrimitiveTry (go te)
+--     PrimitiveTuple tes -> PrimitiveTuple (go <$> tes)
+--     PrimitiveArray tes -> PrimitiveArray (go <$> tes)
+--     PrimitiveIf te te' te3 -> PrimitiveIf (go te) (go te') (go te3)
+--     PrimitiveAnd te te' -> PrimitiveAnd (go te) (go te')
+--     PrimitiveOr te te' -> PrimitiveOr (go te) (go te')
+--     PrimitiveNot te -> PrimitiveNot (go te)
+--     PrimitiveEq te te' -> PrimitiveEq (go te) (go te')
+--     PrimitiveAdd te te' -> PrimitiveAdd (go te) (go te')
+--   TermAssert te te' r -> TermAssert (go te) (go te') r
+--   where
+--     go = substTerm tmId tm'

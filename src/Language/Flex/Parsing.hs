@@ -424,10 +424,10 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
                       hash
                       return tmId
                     tyId <- parseTermId
-                    return $ Applicant (Just tmId, tyId),
+                    return $ Applicant (Just tmId) tyId (ApplicantType ()),
                   do
                     tmId <- parseTermId
-                    return $ Applicant (Nothing, tmId)
+                    return $ Applicant Nothing tmId (ApplicantType ())
                 ]
             termMaybeArgs <-
               optionMaybe . parensTryOpen $
@@ -463,17 +463,42 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
 -- | Parses a block, but if the list of statements is empty then just yields
 -- parsed term
 parseTermBlock :: Parser (Term ())
-parseTermBlock = braces do
-  stmts <- many parseStatement
-  tm <- parseTerm
-  if null stmts
-    then return tm
-    else
-      return $
-        TermBlock
-          { termBlock = (stmts, tm),
-            termAnn = ()
-          }
+parseTermBlock = braces go
+  where
+    go :: Parser (Term ())
+    go =
+      choice
+        [ -- TermLet
+          do
+            try $ reserved "let"
+            pat <- parsePattern
+            choice
+              [ do
+                  try colon
+                  ty <- parseType
+                  equals
+                  tm <- parseTerm
+                  semi
+                  body <- go
+                  return $ TermLet pat (TermAscribe tm ty ()) body (),
+                do
+                  try equals
+                  tm <- parseTerm
+                  semi
+                  body <- go
+                  return $ TermLet pat tm body ()
+              ],
+          -- TermAssert
+          do
+            try $ reserved "assert"
+            tm <- parseTerm
+            semi
+            body <- go
+            return $ TermAssert tm body (),
+          -- Term
+          do
+            parseTerm
+        ]
 
 -- ** Pattern
 
@@ -486,35 +511,6 @@ parsePattern =
       do
         tmId <- parseTermId
         return $ PatternNamed tmId ()
-    ]
-
--- ** Statement
-
-parseStatement :: Parser (Statement ())
-parseStatement =
-  choice
-    [ do
-        reserved "let"
-        pat <- parsePattern
-        choice
-          [ do
-              try colon
-              ty <- parseType
-              equals
-              tm <- parseTerm
-              semi
-              return $ StatementLet pat (TermAscribe tm ty ()),
-            do
-              try equals
-              tm <- parseTerm
-              semi
-              return $ StatementLet pat tm
-          ],
-      do
-        reserved "assert"
-        tm <- parseTerm
-        semi
-        return $ StatementAssert tm
     ]
 
 -- ** Literal

@@ -1,14 +1,18 @@
 module Language.Flex.Refining.Translating where
 
-import Control.Monad (when)
+import Control.Lens (At (at), locally)
+import Control.Monad (void, when)
+import Data.Functor
+import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexLog (FlexLog))
-import Language.Flex.Refining.RefiningM (RefiningM, freshSymbol, throwRefiningError)
+import Language.Flex.Refining.RefiningM (RefiningM, ctxTermIdSubstitution, freshId', freshId'TermId, freshSymbol, introId', lookupApplicantType, lookupFunction, lookupId', throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render, (<+>))
+import Utility (comps, compsM)
 
 transTerm :: Base.Term Base.Type -> RefiningM (Term Base.Type)
 transTerm term = case term of
@@ -27,22 +31,60 @@ transTerm term = case term of
         Base.PrimitiveEq te te' -> PrimitiveEq <$> transTerm te <*> transTerm te'
         Base.PrimitiveAdd te te' -> PrimitiveAdd <$> transTerm te <*> transTerm te'
       <*> return ty
-  -- inlines local definitions
-  Base.TermBlock (stmts, tm) _ty -> go stmts
-    where
-      go :: [Base.Statement Base.Type] -> RefiningM (Term Base.Type)
-      go [] = transTerm tm
-      go ((Base.StatementLet (Base.PatternNamed ti _ty') te) : stmts') = substTerm ti <$> transTerm te <*> go stmts'
-      go ((Base.StatementLet (Base.PatternDiscard _ty') _te) : stmts') = go stmts'
-      go ((Base.StatementAssert te) : stmts') = do
-        te' <- transTerm te
-        body' <- go stmts'
-        return $ TermAssert te' body' (getTermR body')
+  Base.TermLet {termPattern, termTerm, termBody} -> do
+    id' <- case termPattern of
+      Base.PatternNamed ti _ty -> freshId'TermId ti
+      Base.PatternDiscard _ty -> freshId' "discard"
+    tm <- transTerm termTerm
+    bod <-
+      introId' id' $ -- TODO: intro typing?
+        transTerm termBody
+    return $ TermLet id' (sortOfBaseType (getTermR tm)) tm bod (getTermR bod)
+  Base.TermAssert {termTerm, termBody} -> do
+    tm <- transTerm termTerm
+    bod <- transTerm termBody
+    return $ TermAssert tm bod (getTermR bod)
   Base.TermStructure _ti _x0 _ty -> error "transTerm"
   Base.TermMember _te _fi _ty -> error "transTerm"
-  Base.TermNeutral (Base.Applicant (Nothing, tmId)) Nothing Nothing ty -> return $ TermNamed tmId ty
-  -- TODO: inline functions
-  Base.TermNeutral _ap _m_tes _ma _ty -> error "transTerm"
+  Base.TermNeutral app mb_args mb_cxargs ty -> do
+    id' <- lookupId' (void app)
+    -- note that we avoid inserting the globally-known refinement types here,
+    -- since we will do that in the refining step anyway, and we must provide a
+    -- `Base.Type` right now anyway since we're producing a `Term Base.Type`
+    lookupApplicantType id' >>= \case
+      -- function application is inlined
+      Base.ApplicantTypeFunction Base.FunctionType {..} | not functionTypeIsTransform -> do
+        mb_args' <- (transTerm `traverse`) `traverse` mb_args
+        mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
+        lookupFunction id' >>= \Base.Function {..} -> do
+          -- substitute params for args
+          maybe
+            id
+            ( \args' ->
+                comps
+                  ( (functionParameters `zip` args') <&> \((tmId, _ty), arg) ->
+                      locally (ctxTermIdSubstitution . at tmId) (const $ Just arg)
+                  )
+            )
+            mb_args'
+            $
+            -- substitute contextual params for contextual args
+            maybe
+              id
+              ( \(cxargs', cxparams) ->
+                  comps
+                    ( (cxparams `zip` cxargs') <&> \((_tyId, tmId), cxarg) ->
+                        locally (ctxTermIdSubstitution . at tmId) (const $ Just cxarg)
+                    )
+              )
+              ((,) <$> mb_cxargs' <*> functionContextualParameters)
+            $ transTerm functionBody
+      -- everything is else treated symbolically
+      _ -> do
+        mb_args' <- (transTerm `traverse`) `traverse` mb_args
+        mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
+        let args'' = fromMaybe [] mb_args' ++ fromMaybe [] mb_cxargs'
+        return $ TermNeutral id' args'' ty
   Base.TermMatch _te _x0 _ty -> error "transTerm"
   -- invalid
   Base.TermAscribe _te _ty _ty' -> FlexBug.throw $ FlexLog "refining" $ "term ascribe should not appear in typed term:" <+> pPrint term
@@ -65,11 +107,11 @@ transType type_ = case type_ of
                 F.PAtom F.Lt (F.expr x) (F.expr (2 ^ n :: Int))
               ]
           Base.TypeFloat -> error "transLiteral TypeFloat"
-    let at = case numty of
+    let atomic = case numty of
           Base.TypeInt -> TypeInt
           Base.TypeUInt -> TypeInt
           Base.TypeFloat -> TypeFloat
-    return $ TypeAtomic at (F.reft x p)
+    return $ TypeAtomic atomic (F.reft x p)
   Base.TypeBit -> return $ TypeAtomic TypeBit F.trueReft
   Base.TypeChar -> return $ TypeAtomic TypeChar F.trueReft
   Base.TypeArray Base.TypeChar -> return $ TypeAtomic TypeString F.trueReft
@@ -83,3 +125,33 @@ transType type_ = case type_ of
   Base.TypeNewtype _new -> error "transType TODO"
   -- invalid
   Base.TypeUnifyVar _ _ -> FlexBug.throw $ FlexLog "refining" $ "type unification variable should not appear in normalized type:" <+> pPrint type_
+
+sortOfBaseType :: Base.Type -> F.Sort
+sortOfBaseType = \case
+  Base.TypeNumber nt _n -> case nt of
+    Base.TypeInt -> F.intSort
+    Base.TypeUInt -> F.intSort
+    Base.TypeFloat -> F.realSort
+  Base.TypeBit -> F.boolSort
+  Base.TypeChar -> F.charSort
+  -- TODO: use FApp (type constructor application) and FObj (uninterpreted
+  -- type), and don't need to worry about needing to directly convert TypeIds to
+  -- Symbols since there's never any possible shadoing of TypeIds
+  Base.TypeArray ty -> error "sortOfBaseType"
+  Base.TypeTuple tys -> error "sortOfBaseType"
+  Base.TypeOptional ty -> error "sortOfBaseType"
+  Base.TypeNamed ti -> error "sortOfBaseType"
+  Base.TypeUnifyVar uv m_uc -> error "sortOfBaseType"
+  Base.TypeStructure struc -> error "sortOfBaseType"
+  Base.TypeEnum en -> error "sortOfBaseType"
+  Base.TypeVariant vari -> error "sortOfBaseType"
+  Base.TypeNewtype new -> error "sortOfBaseType"
+
+sortOfType :: Type -> F.Sort
+sortOfType = \case
+  TypeAtomic atomic _ -> case atomic of
+    TypeInt -> F.intSort
+    TypeFloat -> F.realSort
+    TypeBit -> F.boolSort
+    TypeChar -> F.charSort
+    TypeString -> F.strSort

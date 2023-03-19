@@ -71,6 +71,7 @@ default-extensions:
 - RecordWildCards
 - BangPatterns
 - GeneralizedNewtypeDeriving
+- ViewPatterns
 
 library:
   source-dirs: src

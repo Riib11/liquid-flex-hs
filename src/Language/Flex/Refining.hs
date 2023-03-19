@@ -62,7 +62,7 @@ introTerm tmId type_ m = do
     -- fallthrough
     _ -> do
       ty <- transType type_
-      locally ctxTermVars (Map.insert tmId ty) m
+      locally ctxTypings (Map.insert tmId ty) m
 
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
 check label term type_ = do
