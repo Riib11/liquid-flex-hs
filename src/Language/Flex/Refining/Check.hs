@@ -84,8 +84,9 @@ synthTerm term = case term of
   TermLet id' tm bod ty -> do
     tm' <- synthTerm tm
     bod' <-
-      introApplicantType id' (Base.ApplicantType $ getTermR tm') $
-        synthTerm bod
+      introId' id' $
+        introApplicantType id' (Base.ApplicantType $ getTermR tm') $
+          synthTerm bod
     ty' <- lift $ transType ty
     return $ TermLet id' tm' bod' ty'
 
