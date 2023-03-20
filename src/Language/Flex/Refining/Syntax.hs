@@ -255,7 +255,10 @@ instance Pretty (Term r) where
     TermLet id' te te' _r -> text "let" <+> pPrint id' <+> text "=" <+> pPrint te <+> ";" $$ pPrint te'
     TermAssert te te' _r -> text "assert" <+> pPrint te <+> ";" $$ pPrint te'
 
-data Id' = Id' {id'Symbol :: !F.Symbol, id'MaybeTermId :: !(Maybe TermId)}
+data Id' = Id'
+  { id'Symbol :: !F.Symbol,
+    id'MaybeTermId :: !(Maybe TermId)
+  }
   deriving (Eq, Ord, Show)
 
 instance Pretty Id' where
