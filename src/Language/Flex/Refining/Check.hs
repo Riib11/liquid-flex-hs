@@ -96,15 +96,16 @@ synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> Checking
 synthPrimitive _term ty primitive =
   case primitive of
     PrimitiveTuple tms -> do
-      tms <- synthTerm `traverse` tms
-      --- ..., { yI | rI }, ...
-      tyComps <- inferTerm `traverse` tms
-      x <- lift $ freshSymbol "tuple"
+      tms' <- synthTerm `traverse` tms
+
+      --- tyComps: ..., { yI | rI }, ...
+      tyComps <- inferTerm `traverse` tms'
 
       -- unrefined type, for embedding
       let tyTuple = TypeTuple tyComps mempty
 
-      -- { x == (..., yI, ....) }
+      -- p1: { x == (..., yI, ....) }
+      x <- lift $ freshSymbol "tuple"
       p1 <-
         eqPred
           (termVar (fromSymbolToId' x) tyTuple)
@@ -119,7 +120,7 @@ synthPrimitive _term ty primitive =
       -- { x: (..., AI, ...) | x == (..., yI, ...) && ... && rI(yI) && ... }
       let r = F.reft x (F.conj [p1, p2])
 
-      return $ TermPrimitive (PrimitiveTuple tms) (TypeTuple tyComps r)
+      return $ TermPrimitive (PrimitiveTuple tms') (TypeTuple tyComps r)
     PrimitiveIf tm1 tm2 tm3 -> go3 PrimitiveIf tm1 tm2 tm3
     PrimitiveAnd tm1 tm2 -> go2 PrimitiveAnd tm1 tm2
     PrimitiveOr tm1 tm2 -> go2 PrimitiveOr tm1 tm2

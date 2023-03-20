@@ -1,6 +1,3 @@
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE RecordWildCards #-}
-
 {-# HLINT ignore "Use newtype instead of data" #-}
 
 module Language.Flex.Syntax where
