@@ -1,6 +1,7 @@
 {-# HLINT ignore "Redundant return" #-}
 module Language.Flex.Refining.Check where
 
+-- TODO: rename this module to "Refining"
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer (MonadWriter (tell), WriterT (runWriterT), void)
 import Data.Bifunctor (Bifunctor (second))
@@ -77,7 +78,7 @@ synthTerm term = case term of
     -- check asserted term against refinement type { x | x == true }
     ty1 <-
       TypeAtomic TypeBit
-        <$> reflectLiteralInReft (bitType F.trueReft) (LiteralBit True) F.trueReft
+        <$> reflectLiteralInReft (typeBit F.trueReft) (LiteralBit True) F.trueReft
     tm1' <- synthCheckTerm ty1 tm1
     tm2' <- synthTerm tm2
     ty' <- inferTerm tm2'
@@ -97,30 +98,10 @@ synthPrimitive _term ty primitive =
   case primitive of
     PrimitiveTuple tms -> do
       tms' <- synthTerm `traverse` tms
-
-      --- tyComps: ..., { yI | rI }, ...
+      --- tyComps: ..., { xI: aI | rI(xI) }, ...
       tyComps <- inferTerm `traverse` tms'
-
-      -- unrefined type, for embedding
-      let tyTuple = TypeTuple tyComps mempty
-
-      -- p1: { x == (..., yI, ....) }
-      x <- lift $ freshSymbol "tuple"
-      p1 <-
-        eqPred
-          (termVar (fromSymbolToId' x) tyTuple)
-          ( unrefinedTermTuple $
-              tyComps <&> \tyComp ->
-                fromSymbolToTerm (F.reftBind $ getTypeTopR tyComp) tyComp
-          )
-
-      -- ... && rI(yI) && ...
-      let p2 = F.conj $ tyComps <&> (F.reftPred . getTypeTopR)
-
-      -- { x: (..., AI, ...) | x == (..., yI, ...) && ... && rI(yI) && ... }
-      let r = F.reft x (F.conj [p1, p2])
-
-      return $ TermPrimitive (PrimitiveTuple tms') (TypeTuple tyComps r)
+      tyTuple <- typeTuple tyComps
+      return $ TermPrimitive (PrimitiveTuple tms') tyTuple
     PrimitiveIf tm1 tm2 tm3 -> go3 PrimitiveIf tm1 tm2 tm3
     PrimitiveAnd tm1 tm2 -> go2 PrimitiveAnd tm1 tm2
     PrimitiveOr tm1 tm2 -> go2 PrimitiveOr tm1 tm2
@@ -165,7 +146,7 @@ reflectTermInReft tm r = do
     lift . embedTerm $
       TermPrimitive
         (PrimitiveEq (termVar (fromSymbolToId' x) sort) tm)
-        (bitType mempty)
+        (typeBit mempty)
   return $ F.reft x (F.conj [pRefl, p])
 
 reflectLiteralInReft :: Type -> Literal -> F.Reft -> CheckingM F.Reft
@@ -197,6 +178,37 @@ checkSubtype tySynth tyExpect = case (tySynth, tyExpect) of
       (x2, e2) = (F.reftBind r2, F.reftPred r2)
   _ -> lift $ throwRefiningError $ "the type" <+> ticks (pPrint tySynth) <+> "cannot be a subtype of the type" <+> ticks (pPrint tyExpect)
 
+-- ** Basic Types
+
+-- | Create a refined tuple type.
+--
+-- @
+--  typeTuple [.., { xI: aI | pI(xI) }, ...] = { tuple: (..., aI, ...) | (tuple == (..., xI, ....)) && ... && pI(xI) && .... }
+-- @
+typeTuple :: [Type] -> CheckingM Type
+typeTuple tyComps = do
+  -- unrefined type, for embedding
+  let tyTuple = TypeTuple tyComps mempty
+
+  -- p1: { tuple == (..., yI, ....) }
+  tuple <- lift $ freshSymbol "tuple"
+  p1 <-
+    eqPred
+      (termVar (fromSymbolToId' tuple) tyTuple)
+      ( unrefinedTermTuple $
+          tyComps <&> \tyComp ->
+            fromSymbolToTerm (F.reftBind $ getTypeTopR tyComp) tyComp
+      )
+
+  -- p2: ... && rI(yI) && ...
+  let p2 = F.conj $ tyComps <&> (F.reftPred . getTypeTopR)
+
+  -- r: { tuple | tuple == (..., yI, ...) && ... && rI(yI) && ... }
+  let r = F.reft tuple (F.conj [p1, p2])
+
+  -- { tuple: (..., aI, ...) | tuple == (..., yI, ...) && ... && rI(yI) && ... }
+  return (TypeTuple tyComps r)
+
 -- ** Utilities
 
 -- eqPred tm1 tm2 = { tm1 == tm2 }
@@ -205,4 +217,4 @@ eqPred tm1 tm2 = do
   lift . embedTerm $
     TermPrimitive
       (PrimitiveEq tm1 tm2)
-      (bitType mempty)
+      (typeBit mempty)

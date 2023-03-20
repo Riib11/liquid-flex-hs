@@ -160,3 +160,4 @@ sortOfType = \case
     TypeBit -> F.boolSort
     TypeChar -> F.charSort
     TypeString -> F.strSort
+  TypeTuple tys _ -> error "TODO"

@@ -1,5 +1,14 @@
 # TODO
 
+To add a new type to the refinement syntax:
+- Flex.Refining.Syntax
+    - add constructor to data Type_ r
+- Flex.Refining.Translating
+    - make output of a case in transType
+    - handle case of sortOfType
+- Flex.Refining.Constraint
+    - handle case of sortPred
+
 - [ ] Structures
     - [ ] constructing, destructing (with refinement)
 - [ ] Newtypes

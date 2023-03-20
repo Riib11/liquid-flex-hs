@@ -91,24 +91,6 @@ data AtomicType
   | TypeString
   deriving (Eq, Show)
 
-trueType :: Type
-trueType = bitType F.trueReft
-
-falseType :: Type
-falseType = bitType F.falseReft
-
-intType :: F.Reft -> Type
-intType = TypeAtomic TypeInt
-
-bitType :: F.Reft -> Type
-bitType = TypeAtomic TypeBit
-
-charType :: F.Reft -> Type
-charType = TypeAtomic TypeChar
-
-stringType :: F.Reft -> Type
-stringType = TypeAtomic TypeString
-
 getTypeTopR :: Type_ r -> r
 getTypeTopR = \case
   TypeAtomic _at r -> r
@@ -124,6 +106,24 @@ mapTypeTopR f ty = setTypeTopR ty (f (getTypeTopR ty))
 
 mapMTypeTopR :: Functor f => (r -> f r) -> Type_ r -> f (Type_ r)
 mapMTypeTopR k ty = setTypeTopR ty <$> k (getTypeTopR ty)
+
+typeTrue :: Type
+typeTrue = typeBit F.trueReft
+
+typeFalse :: Type
+typeFalse = typeBit F.falseReft
+
+typeInt :: F.Reft -> Type
+typeInt = TypeAtomic TypeInt
+
+typeBit :: F.Reft -> Type
+typeBit = TypeAtomic TypeBit
+
+typeChar :: F.Reft -> Type
+typeChar = TypeAtomic TypeChar
+
+typeString :: F.Reft -> Type
+typeString = TypeAtomic TypeString
 
 -- ** FunctionType
 
