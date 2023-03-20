@@ -4,6 +4,7 @@ import qualified Data.Map as Map
 import Data.String (IsString (fromString))
 import Data.Text (pack)
 import qualified Language.Fixpoint.Types as F
+import Language.Flex.Refining.Prelude (tupleFTycon)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..))
@@ -76,12 +77,4 @@ sortOfType = \case
     TypeBit -> F.boolSort
     TypeChar -> F.charSort
     TypeString -> F.strSort
-  TypeTuple tys _ -> F.fApp (F.fTyconSort tyConTuple) (sortOfType <$> tys)
-
--- ** Type Constructors
-
-tyConTuple :: F.FTycon
-tyConTuple = tyConPrimitive "Tuple"
-
-tyConPrimitive :: String -> F.FTycon
-tyConPrimitive label = F.symbolFTycon $ primitiveLocated label (F.symbol label)
+  TypeTuple (ty1, ty2) _ -> F.fApp (F.fTyconSort tupleFTycon) (sortOfType <$> [ty1, ty2])

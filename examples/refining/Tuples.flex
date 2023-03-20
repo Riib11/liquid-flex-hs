@@ -1,10 +1,12 @@
 module Tuples where
 
-function main() -> bit {
-    assert {
-        let t = (1, 2);
-        t == (1, 3)
-    };
+function main() -> Tuple<bit, bit> {
+    (true, false)
 
-    true
+    // assert {
+    //     let t = (1, 2);
+    //     t == (1, 3)
+    // };
+
+    // true
 }

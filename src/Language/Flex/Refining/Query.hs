@@ -12,8 +12,20 @@ import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Types
 import qualified Text.PrettyPrint.HughesPJ as PJ
 
+-- TODO: add primitives and constructor via wrapping Cstr with `H.Any (<Constr>
+-- )`
 makeQuery :: Cstr -> RefiningM Query
-makeQuery cstr = return $ H.Query [] [] cstr mempty mempty mempty mempty mempty
+makeQuery cstr =
+  return $
+    H.Query
+      mempty -- qualifiers
+      mempty -- measures
+      cstr -- expected constraint
+      mempty -- measures
+      mempty -- F.Symbol F.Sort
+      mempty -- [F.Equation]
+      mempty -- [F.Rewrite]
+      mempty -- [F.DataDecl]
 
 -- | Submit query to LH backend, which checks for validity
 submitQuery :: Query -> RefiningM Result
@@ -36,4 +48,5 @@ dumpQuery :: FilePath -> Query -> IO ()
 dumpQuery fp query = when True do
   let smtFile = Files.extFileName Files.Smt2 fp
   Misc.ensurePath smtFile
+  -- this is not presented to the user, so can use PJ.render
   writeFile smtFile (PJ.render . F.pprint $ query)

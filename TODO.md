@@ -1,5 +1,14 @@
 # TODO
 
+- [ ] where does SPRITE add and use data types in the `Env`? it seems that my
+  issue is that it doesn't know about the primitive type constructors that I am
+  introducing, and thinks they are free
+  - [ ] so it doesn't seem like SPRITE actually does introduce those type
+    constructor variables into context
+  - [ ] the type variable environment is initialized as empty in fact
+  - [ ] so that implies that i dont think my problem is that hte type constructor is not in context
+
+
 To add a new type to the refinement syntax:
 - Flex.Refining.Syntax
     - add constructor to data Type_ r

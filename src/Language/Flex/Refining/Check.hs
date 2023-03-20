@@ -1,4 +1,5 @@
 {-# HLINT ignore "Redundant return" #-}
+{-# HLINT ignore "Move brackets to avoid $" #-}
 module Language.Flex.Refining.Check where
 
 -- TODO: rename this module to "Refining"
@@ -17,7 +18,7 @@ import Language.Flex.Refining.Translating (transType, typeTuple)
 import Language.Flex.Refining.Types
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
-import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), parens, render, text, ($$), ($+$), (<+>))
+import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), nest, parens, render, text, vcat, ($$), (<+>))
 import Utility (ticks)
 
 type CheckingM = WriterT CstrMonoid RefiningM
@@ -44,10 +45,12 @@ synthCheckTerm tyExpect tm = do
   tySynth <- inferTerm tm'
   FlexM.debug . FlexM.FlexLog "refining" $
     "[synthCheckTerm]"
-      $$ (text "     tm  =" <+> pPrint tm)
-      $$ (text "     tm' =" <+> pPrint tm')
-      $$ (text " tySynth =" <+> pPrint tySynth)
-      $$ (text "tyExpect =" <+> pPrint tyExpect)
+      $$ (nest 2 . vcat)
+        [ text "     tm  =" <+> pPrint tm,
+          text "     tm' =" <+> pPrint tm',
+          text " tySynth =" <+> pPrint tySynth,
+          text "tyExpect =" <+> pPrint tyExpect
+        ]
   checkSubtype tm' tySynth tyExpect
   return tm'
 
@@ -55,8 +58,6 @@ synthCheckTerm tyExpect tm = do
 
 synthTerm :: Term Base.Type -> CheckingM (Term Type)
 synthTerm term = case term of
-  -- TermNamed tmId _ ->
-  --   TermNamed tmId <$> lift (lookupTyping tmId)
   TermNeutral app args ty -> do
     args' <- synthTerm `traverse` args
     -- TODO: for transforms, input values can't affect output refinement type,
@@ -167,21 +168,29 @@ inferTerm = return . getTermTopR
 -- ** Subtyping
 
 checkSubtype :: Term Type -> Type -> Type -> CheckingM ()
-checkSubtype tmSynth tySynth tyExpect = case (tySynth, tyExpect) of
-  (TypeAtomic at1 r1, TypeAtomic at2 r2)
-    | at1 == at2 -> do
-        FlexM.debug $ FlexM.FlexLog "refining" ("[checkSubType]" $$ pPrint tmSynth $$ pPrint tySynth <+> text "<:" $$ pPrint tyExpect)
-        --    forall x : T, p x ==> (p' x')[x' := x]
-        --  ----------------------------------------------
-        --    {x : T | p x} <: {x' : T | p' y'}
-        tellCstr $
-          cstrForall xSynth tySynth $
-            cstrHead
-              tmSynth
-              eSynth
-              tyExpect
-              (subst eExpect xExpect xSynth)
-    where
-      (xSynth, eSynth) = (F.reftBind r1, F.reftPred r1)
-      (xExpect, eExpect) = (F.reftBind r2, F.reftPred r2)
-  _ -> lift $ throwRefiningError $ "the type" <+> ticks (pPrint tySynth) <+> "cannot be a subtype of the type" <+> ticks (pPrint tyExpect)
+checkSubtype tmSynth tySynth tyExpect = do
+  FlexM.debug $
+    FlexM.FlexLog
+      "refining"
+      ( "[checkSubType]"
+          $$ (nest 2 . vcat)
+            [ pPrint tmSynth,
+              nest 2 $ " :" <+> pPrint tySynth,
+              nest 2 $ "<:" <+> pPrint tyExpect
+            ]
+      )
+  --    forall x : T, p x ==> (p' x')[x' := x]
+  --  ----------------------------------------------
+  --    {x : T | p x} <: {x' : T | p' y'}
+  tellCstr $
+    cstrForall xSynth tySynth $
+      cstrHead
+        tmSynth
+        eSynth
+        tyExpect
+        (subst eExpect xExpect xSynth)
+  where
+    rSynth = getTypeTopR tySynth
+    rExpect = getTypeTopR tyExpect
+    (xSynth, eSynth) = (F.reftBind rSynth, F.reftPred rSynth)
+    (xExpect, eExpect) = (F.reftBind rExpect, F.reftPred rExpect)

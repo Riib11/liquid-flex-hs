@@ -14,12 +14,11 @@ import qualified Data.Map as Map
 import GHC.Generics
 import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
-import Language.Fixpoint.Types.PrettyPrint (pprint)
 import qualified Language.Flex.FlexBug as FlexBug
-import Language.Flex.FlexM (FlexLog (FlexLog), FlexM)
+import Language.Flex.FlexM (FlexLog (FlexLog), FlexM, pprintInline)
 import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Base
-import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, ($$), ($+$), (<+>))
+import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, ($$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 
 -- ** RefiningM
@@ -118,6 +117,12 @@ lookupFunction id' =
   asks (^. ctxFunctions . at id') >>= \case
     Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown function id:" <+> pPrint id'
     Just func -> return func
+
+freshenBind :: F.Reft -> RefiningM F.Reft
+freshenBind r = do
+  let x = F.reftBind r
+  x' <- freshSymbol (render $ pprintInline x)
+  return $ F.substa (\y -> if y == x then x' else y) r
 
 freshSymbol :: String -> RefiningM F.Symbol
 freshSymbol str = do

@@ -9,7 +9,9 @@ import Control.Monad.Trans (MonadTrans)
 import Control.Monad.Writer (MonadWriter, WriterT (runWriterT), when)
 import qualified Control.Monad.Writer.Class as Writer
 import Data.Foldable (traverse_)
+import qualified Language.Fixpoint.Types.PrettyPrint as F
 import Text.PrettyPrint.HughesPJ hiding ((<>))
+import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 import Prelude hiding (log)
 
@@ -53,4 +55,10 @@ debug log = liftIO $ putStrLn (render . pPrint $ log)
 instance Pretty FlexLog where
   pPrint FlexLog {..} =
     let str = render $ brackets logLabel
-     in text str $+$ nest (length str + 1) logBody
+     in text str $$ nest 2 logBody
+
+pprintInline :: F.PPrint a => a -> Doc
+pprintInline =
+  text
+    . PJ.renderStyle (PJ.style {PJ.mode = PJ.OneLineMode})
+    . F.pprint

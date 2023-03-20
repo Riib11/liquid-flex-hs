@@ -1,0 +1,10 @@
+[refining]
+[checkSubType]
+
+(true, false)
+
+{ tuple : ({z : bit | z == true && true}, {w : bit | w == false && true})
+| exists [z : bool; w : bool] . tuple == Tuple z w && ((z == true && true) && (w == false && true))}
+
+{ tuple' : ({x : bit | true}, {y : bit | true}) 
+| exists [x : bool; y : bool] . tuple' == Tuple x y && (true && true)}

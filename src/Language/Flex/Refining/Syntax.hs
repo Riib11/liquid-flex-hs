@@ -5,7 +5,7 @@ import Control.DeepSeq
 import Control.Exception
 import Control.Monad (foldM, void, when)
 import Control.Monad.Error.Class (MonadError (throwError))
-import Data.Bifunctor (second)
+import Data.Bifunctor (Bifunctor (bimap), second)
 import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
@@ -20,7 +20,9 @@ import qualified Language.Fixpoint.Misc as Misc
 import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.Config as FC
+import qualified Language.Fixpoint.Types.PrettyPrint as P
 import qualified Language.Fixpoint.Utils.Files as Files
+import Language.Flex.FlexM (pprintInline)
 import Language.Flex.Syntax (FieldId, Literal (..), TermId, TypeId)
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
@@ -53,7 +55,6 @@ type Type = Type_ F.Reft
 
 -- TODO: handle more advanced types
 
--- | TypeTuple
 -- | TypeArray
 -- | TypeOptional
 -- | TypeStructure
@@ -62,7 +63,7 @@ type Type = Type_ F.Reft
 -- | TypeNewtype
 data Type_ r
   = TypeAtomic AtomicType r
-  | TypeTuple ![Type_ r] r
+  | TypeTuple !(Type_ r, Type_ r) r
   deriving
     (Eq, Show, Functor, Foldable, Traversable)
 
@@ -74,9 +75,9 @@ instance Pretty (Type_ F.Reft) where
       TypeBit -> go "bit" r
       TypeChar -> go "char" r
       TypeString -> go "string" r
-    TypeTuple tys r -> go (parens $ hsep $ punctuate comma $ pPrint <$> tys) r
+    TypeTuple (ty1, ty2) r -> go (parens $ (pPrint ty1 <> ",") <+> pPrint ty2) r
     where
-      go doc r = braces $ F.pprint (F.reftBind r) <+> ":" <+> doc <+> "|" <+> F.pprint (F.reftPred r)
+      go doc r = braces $ pprintInline (F.reftBind r) <+> ":" <+> doc <+> "|" <+> pprintInline (F.reftPred r)
 
 baseTypeReft :: Type -> F.Reft
 baseTypeReft = \case
@@ -107,11 +108,11 @@ mapTypeTopR f ty = setTypeTopR ty (f (getTypeTopR ty))
 mapMTypeTopR :: Functor f => (r -> f r) -> Type_ r -> f (Type_ r)
 mapMTypeTopR k ty = setTypeTopR ty <$> k (getTypeTopR ty)
 
-typeTrue :: Type
-typeTrue = typeBit F.trueReft
+typeEqTrue :: Type
+typeEqTrue = typeBit F.trueReft
 
-typeFalse :: Type
-typeFalse = typeBit F.falseReft
+typeEqFalse :: Type
+typeEqFalse = typeBit F.falseReft
 
 typeInt :: F.Reft -> Type
 typeInt = TypeAtomic TypeInt
@@ -125,13 +126,18 @@ typeChar = TypeAtomic TypeChar
 typeString :: F.Reft -> Type
 typeString = TypeAtomic TypeString
 
-primitiveLocated :: String -> a -> F.Located a
-primitiveLocated label a = F.Loc {loc = l, locE = l, val = a}
+primitiveLocated :: P.PPrint a => a -> F.Located a
+primitiveLocated a = F.Loc {loc = l, locE = l, val = a}
   where
-    l = primitiveSourcePos label
+    l = primitiveSourcePos (F.symbol $ "<primitive:" ++ render (pprintInline a) ++ ">")
 
-primitiveSourcePos :: String -> F.SourcePos
-primitiveSourcePos = error "primitiveSourcePos"
+primitiveSourcePos :: F.Symbol -> F.SourcePos
+primitiveSourcePos label =
+  F.SourcePos
+    { sourceName = render (pprintInline label),
+      sourceLine = F.mkPos 1,
+      sourceColumn = F.mkPos 1
+    }
 
 -- ** FunctionType
 
@@ -233,10 +239,15 @@ instance Pretty (Primitive r) where
     PrimitiveAdd te te' -> parens $ pPrint te <+> "+" <+> pPrint te'
 
 unrefinedTermTuple :: [Term Type] -> Term Type
-unrefinedTermTuple tms =
-  TermPrimitive
-    (PrimitiveTuple tms)
-    (TypeTuple (getTermTopR <$> tms) mempty)
+unrefinedTermTuple [] = error "unrefinedTermTuple []"
+unrefinedTermTuple [_] = error "unrefinedTermTuple [ _ ]"
+unrefinedTermTuple (tm : tms) = foldr go tm tms
+  where
+    go :: Term Type -> Term Type -> Term Type
+    go tm1 tm2 =
+      TermPrimitive
+        (PrimitiveTuple tms)
+        (TypeTuple (bimap getTermTopR getTermTopR (tm1, tm2)) mempty)
 
 -- ** Term
 
@@ -256,8 +267,8 @@ instance Pretty (Term r) where
       | otherwise -> pPrint id' <> parens (hsep $ punctuate comma $ pPrint <$> tes)
     TermLiteral lit _r -> pPrint lit
     TermPrimitive prim _r -> pPrint prim
-    TermLet id' te te' _r -> text "let" <+> pPrint id' <+> text "=" <+> pPrint te <+> ";" $$ pPrint te'
-    TermAssert te te' _r -> text "assert" <+> pPrint te <+> ";" $$ pPrint te'
+    TermLet id' te te' _r -> (text "let" <+> pPrint id' <+> text "=" <+> pPrint te <+> ";") $$ pPrint te'
+    TermAssert te te' _r -> (text "assert" <+> pPrint te <+> ";") $$ pPrint te'
 
 data Id' = Id'
   { id'Symbol :: !F.Symbol,
@@ -266,7 +277,7 @@ data Id' = Id'
   deriving (Eq, Ord, Show)
 
 instance Pretty Id' where
-  pPrint (Id' sym _m_ti) = F.pprint sym
+  pPrint (Id' sym _m_ti) = pprintInline sym
 
 termVar :: Id' -> r -> Term r
 termVar id' = TermNeutral id' []

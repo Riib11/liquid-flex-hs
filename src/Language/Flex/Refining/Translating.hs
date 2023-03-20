@@ -1,15 +1,15 @@
 module Language.Flex.Refining.Translating where
 
 import Control.Lens (At (at), locally)
-import Control.Monad (void, when)
+import Control.Monad (foldM, forM, void, when)
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Functor
 import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import qualified Language.Flex.FlexM as FlexM
-import Language.Flex.Refining.Embedding (embedTerm)
-import Language.Flex.Refining.RefiningM (RefiningM, ctxTermIdSubstitution, freshId', freshId'TermId, freshSymbol, introApplicantType, introId', lookupApplicantType, lookupFunction, lookupId', throwRefiningError)
+import Language.Flex.Refining.Embedding (embedTerm, sortOfType)
+import Language.Flex.Refining.RefiningM (RefiningM, ctxTermIdSubstitution, freshId', freshId'TermId, freshSymbol, freshenBind, introApplicantType, introId', lookupApplicantType, lookupFunction, lookupId', throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
@@ -142,28 +142,39 @@ transType type_ = case type_ of
 --
 -- > typeTuple [.., { xI: aI | pI(xI) }, ...] = { tuple: (..., aI, ...) | (tuple == (..., xI, ....)) && ... && pI(xI) && .... }
 typeTuple :: [Type] -> RefiningM Type
-typeTuple tyComps = do
-  -- unrefined type, for embedding
-  let tyTuple = TypeTuple tyComps mempty
+typeTuple tyComps_ = do
+  let go :: Type -> Type -> RefiningM Type
+      go tyComp1 tyComp2 = do
+        -- unrefined type, just for embedding
+        -- tyTuple: { (tyComp1, tyComp2) | true }
+        let tyTuple = TypeTuple (tyComp1, tyComp2) mempty
 
-  -- p1: { tuple == (..., yI, ....) }
-  tuple <- freshSymbol "tuple"
-  p1 <-
-    eqPred
-      (termVar (fromSymbolToId' tuple) tyTuple)
-      ( unrefinedTermTuple $
-          tyComps <&> \tyComp ->
-            fromSymbolToTerm (F.reftBind $ getTypeTopR tyComp) tyComp
-      )
+        -- p1(y1, y2): { tuple == (y1, y2) }
+        tuple <- freshSymbol "tuple"
+        p1 <-
+          eqPred
+            (termVar (fromSymbolToId' tuple) tyTuple)
+            ( unrefinedTermTuple $
+                [tyComp1, tyComp2] <&> \tyComp ->
+                  fromSymbolToTerm (F.reftBind $ getTypeTopR tyComp) tyComp
+            )
 
-  -- p2: ... && rI(yI) && ...
-  let p2 = F.conj $ tyComps <&> (F.reftPred . getTypeTopR)
+        -- p2(y1, y2): r1(y1) && r2(y2)
+        let p2 = F.conj $ [tyComp1, tyComp2] <&> (F.reftPred . getTypeTopR)
 
-  -- r: { tuple | tuple == (..., yI, ...) && ... && rI(yI) && ... }
-  let r = F.reft tuple (F.conj [p1, p2])
+        -- r: { tuple | exists y1 y2 . p1(y1, y2) && p2(y1, y2) }
+        let r =
+              F.reft tuple $
+                F.pExist [(F.reftBind $ getTypeTopR tyComp, sortOfType tyComp) | tyComp <- [tyComp1, tyComp2]] $
+                  F.conj [p1, p2]
 
-  -- { tuple: (..., aI, ...) | tuple == (..., yI, ...) && ... && rI(yI) && ... }
-  return (TypeTuple tyComps r)
+        -- { tuple: (a1, a2) | p1 && p2 }
+        return $ TypeTuple (tyComp1, tyComp2) r
+  -- first, freshen all the binds in tyComps
+  forM tyComps_ (freshenBind `traverse`) >>= \case
+    [] -> error "typeTuple []"
+    [_] -> error "typeTuple [ _ ]"
+    (tyComp : tyComps) -> foldM go tyComp tyComps
 
 -- ** Utilities
 
