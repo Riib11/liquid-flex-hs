@@ -5,6 +5,7 @@ import Language.Fixpoint.Types (pprint)
 import qualified Language.Fixpoint.Types as F
 import Language.Flex.Refining.RefiningM (RefiningError (RefiningError))
 import Language.Flex.Refining.Syntax
+import Language.Flex.Refining.Translating (sortOfType)
 import Language.Flex.Refining.Types
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), (<+>))
 
@@ -17,30 +18,31 @@ andCstr cstr1 cstr2 = andCstrs [cstr1, cstr2]
 andCstrs :: [Cstr] -> Cstr
 andCstrs = H.CAnd
 
-forallCstr :: F.Symbol -> Type -> Cstr -> Cstr
-forallCstr x ty cstr = case sortPred x ty of
-  Just (srt, prd) -> H.All (H.Bind x srt prd (RefiningError "forallCstr")) cstr
-  _ -> cstr
+-- | The constraint that `forall { x: a | p(x) }, q(x)`
+--
+-- > cstrForall x { y: a | p(y) } q(x) = forall { x: a | p(x) }, q(x)
+cstrForall :: F.Symbol -> Type -> Cstr -> Cstr
+cstrForall x ty = H.All (H.Bind x s p (RefiningError "cstrForall"))
+  where
+    (s, p) = predReplacingBind x ty
 
--- subtyping constraint (??)
-headCstr :: F.Expr -> Cstr
-headCstr e = H.Head (H.Reft e) (RefiningError $ "Subtype error:" <+> pprint e)
+-- | `Head` is a special constructor relevant to Horn Clauses, so read more
+-- about Horn clauses to learn where this detail is relevant.
+cstrHead :: F.Expr -> Cstr
+cstrHead e = H.Head (H.Reft e) (RefiningError $ "Subtype error:" <+> pprint e)
 
-reftSymbol :: F.Reft -> F.Symbol
-reftSymbol (F.Reft (x, _)) = x
+-- symbolOfReft :: F.Reft -> F.Symbol
+-- symbolOfReft (F.Reft (x, _)) = x
 
-reftExpr :: F.Reft -> F.Expr
-reftExpr (F.Reft (_, e)) = e
+-- exprOfReft :: F.Reft -> F.Expr
+-- exprOfReft (F.Reft (_, e)) = e
 
-sortPred :: F.Symbol -> Type -> Maybe (F.Sort, H.Pred)
-sortPred x = \case
-  TypeAtomic atom r ->
-    Just
-      ( case atom of
-          TypeInt -> F.intSort
-          TypeFloat -> F.realSort
-          TypeBit -> F.boolSort
-          TypeChar -> F.charSort
-          TypeString -> F.strSort,
-        H.Reft (subst (reftExpr r) (reftSymbol r) x)
-      )
+-- | The sorted and predicate `(a, p(x))`
+--
+-- > predReplacingBind x { y: a | p(y) } = (a, p(x))
+predReplacingBind :: F.Symbol -> Type -> (F.Sort, H.Pred)
+predReplacingBind x ty =
+  ( sortOfType ty,
+    let r = getTypeTopR ty
+     in H.Reft $ subst (F.reftPred r) (F.reftBind r) x
+  )

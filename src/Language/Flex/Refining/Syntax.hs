@@ -125,6 +125,14 @@ typeChar = TypeAtomic TypeChar
 typeString :: F.Reft -> Type
 typeString = TypeAtomic TypeString
 
+primitiveLocated :: String -> a -> F.Located a
+primitiveLocated label a = F.Loc {loc = l, locE = l, val = a}
+  where
+    l = primitiveSourcePos label
+
+primitiveSourcePos :: String -> F.SourcePos
+primitiveSourcePos = error "primitiveSourcePos"
+
 -- ** FunctionType
 
 -- Liquid Flex's function types are simple in that the they cannot express

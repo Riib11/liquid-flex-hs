@@ -175,8 +175,8 @@ checkSubtype tySynth tyExpect = case (tySynth, tyExpect) of
         --  ----------------------------------------------
         --    {x : T | p x} <: {x' : T | p' y'}
         tellCstr $
-          forallCstr x1 tySynth $
-            headCstr (subst e2 x2 x1)
+          cstrForall x1 tySynth $
+            cstrHead (subst e2 x2 x1)
     where
       (x1, _e1) = (F.reftBind r1, F.reftPred r1)
       (x2, e2) = (F.reftBind r2, F.reftPred r2)

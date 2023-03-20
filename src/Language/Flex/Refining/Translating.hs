@@ -8,12 +8,14 @@ import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import qualified Language.Flex.FlexM as FlexM
-import Language.Flex.Refining.RefiningM (RefiningM, ctxTermIdSubstitution, freshId', freshId'TermId, freshSymbol, introApplicantType, introId', lookupApplicantType, lookupFunction, lookupId', throwRefiningError)
+import Language.Flex.Refining.RefiningM (RefiningM, ctxTermIdSubstitution, freshId', freshId'TermId, freshSymbol, introApplicantType, introId', lookupApplicantType, lookupFunction, lookupId', parseSymbol, throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render, (<+>))
 import Utility (comps, compsM)
+
+-- ** Translate Term
 
 transTerm :: Base.Term Base.Type -> RefiningM (Term Base.Type)
 transTerm term = do
@@ -24,7 +26,6 @@ transTerm term = do
       TermPrimitive
         <$> case prim of
           Base.PrimitiveTry te -> PrimitiveTry <$> transTerm te
-          Base.PrimitiveCast _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "PrimitiveCast should not appear in typed term:" <+> pPrint term
           Base.PrimitiveTuple tes -> PrimitiveTuple <$> transTerm `traverse` tes
           Base.PrimitiveArray tes -> PrimitiveArray <$> transTerm `traverse` tes
           Base.PrimitiveIf te te' te3 -> PrimitiveIf <$> transTerm te <*> transTerm te' <*> transTerm te3
@@ -33,6 +34,8 @@ transTerm term = do
           Base.PrimitiveNot te -> PrimitiveNot <$> transTerm te
           Base.PrimitiveEq te te' -> PrimitiveEq <$> transTerm te <*> transTerm te'
           Base.PrimitiveAdd te te' -> PrimitiveAdd <$> transTerm te <*> transTerm te'
+          -- invalid
+          Base.PrimitiveCast _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "PrimitiveCast should not appear in typed term:" <+> pPrint term
         <*> return ty
     Base.TermLet {termPattern, termTerm, termBody} -> do
       id' <- case termPattern of
@@ -84,7 +87,6 @@ transTerm term = do
                 )
                 ((,) <$> mb_cxargs' <*> functionContextualParameters)
               $ transTerm functionBody
-        -- everything is else treated symbolically
         _ -> do
           mb_args' <- (transTerm `traverse`) `traverse` mb_args
           mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
@@ -93,6 +95,8 @@ transTerm term = do
     Base.TermMatch _te _x0 _ty -> error "transTerm"
     -- invalid
     Base.TermAscribe _te _ty _ty' -> FlexBug.throw $ FlexM.FlexLog "refining" $ "term ascribe should not appear in typed term:" <+> pPrint term
+
+-- ** Translate Type
 
 transType :: Base.Type -> RefiningM Type
 transType type_ = case type_ of
@@ -131,6 +135,8 @@ transType type_ = case type_ of
   -- invalid
   Base.TypeUnifyVar _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "type unification variable should not appear in normalized type:" <+> pPrint type_
 
+-- *** Translating to Sorts
+
 sortOfBaseType :: Base.Type -> F.Sort
 sortOfBaseType = \case
   Base.TypeNumber nt _n -> case nt of
@@ -160,4 +166,12 @@ sortOfType = \case
     TypeBit -> F.boolSort
     TypeChar -> F.charSort
     TypeString -> F.strSort
-  TypeTuple tys _ -> error "TODO"
+  TypeTuple tys _ -> F.fApp (F.fTyconSort tyConTuple) (sortOfType <$> tys)
+
+-- **** Type Constructors
+
+tyConTuple :: F.FTycon
+tyConTuple = tyConPrimitive "Tuple"
+
+tyConPrimitive :: String -> F.FTycon
+tyConPrimitive label = F.symbolFTycon $ primitiveLocated label (parseSymbol label)
