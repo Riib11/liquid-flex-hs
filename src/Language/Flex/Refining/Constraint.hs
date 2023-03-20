@@ -31,12 +31,6 @@ cstrForall x ty = H.All (H.Bind x s p (RefiningError "cstrForall"))
 cstrHead :: F.Expr -> Cstr
 cstrHead e = H.Head (H.Reft e) (RefiningError $ "Subtype error:" <+> pprint e)
 
--- symbolOfReft :: F.Reft -> F.Symbol
--- symbolOfReft (F.Reft (x, _)) = x
-
--- exprOfReft :: F.Reft -> F.Expr
--- exprOfReft (F.Reft (_, e)) = e
-
 -- | The sorted and predicate `(a, p(x))`
 --
 -- > predReplacingBind x { y: a | p(y) } = (a, p(x))
