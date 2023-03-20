@@ -92,7 +92,7 @@ synthTerm term = case term of
     ty' <- lift $ transType ty
     return $ TermLet id' tm' bod' ty'
 
--- most primitive operations are reflected in refinement
+-- | Note that most primitive operations are reflected in refinement.
 synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term Type)
 synthPrimitive _term ty primitive =
   case primitive of
@@ -108,7 +108,8 @@ synthPrimitive _term ty primitive =
     PrimitiveNot tm -> go1 PrimitiveNot tm
     PrimitiveEq tm1 tm2 -> go2 PrimitiveEq tm1 tm2
     PrimitiveAdd tm1 tm2 -> go2 PrimitiveAdd tm1 tm2
-    _ -> error "TODO: synthPrimitive"
+    PrimitiveTry _tm -> error "synthPrimitive: PrimitiveType"
+    PrimitiveArray _tms -> error "synthPrimitive: PrimitiveArray"
   where
     go2 constr tm1 tm2 = do
       tm1' <- synthTerm tm1
@@ -136,7 +137,10 @@ synthPrimitive _term ty primitive =
 
 -- ** Reflection
 
--- | reflectTermInReft tm { x | r } = { x | x == tm && r }
+-- | Given a term and a refinement type over that term's type, include in the
+-- refinement that the value is equal to the (embedded) term.
+--
+-- > reflectTermInReft v { x: a | r } = { x: a | x == v && r }
 reflectTermInReft :: Term Type -> F.Reft -> CheckingM F.Reft
 reflectTermInReft tm r = do
   let sort = getTermTopR tm
@@ -180,11 +184,9 @@ checkSubtype tySynth tyExpect = case (tySynth, tyExpect) of
 
 -- ** Basic Types
 
--- | Create a refined tuple type.
+-- | Refined tuple type.
 --
--- @
---  typeTuple [.., { xI: aI | pI(xI) }, ...] = { tuple: (..., aI, ...) | (tuple == (..., xI, ....)) && ... && pI(xI) && .... }
--- @
+-- > typeTuple [.., { xI: aI | pI(xI) }, ...] = { tuple: (..., aI, ...) | (tuple == (..., xI, ....)) && ... && pI(xI) && .... }
 typeTuple :: [Type] -> CheckingM Type
 typeTuple tyComps = do
   -- unrefined type, for embedding
@@ -211,7 +213,9 @@ typeTuple tyComps = do
 
 -- ** Utilities
 
--- eqPred tm1 tm2 = { tm1 == tm2 }
+-- | The predicate that asserts that two (embedded) terms are equal.
+--
+-- > eqPred tm1 tm2 = { tm1 == tm2 }
 eqPred :: Term Type -> Term Type -> CheckingM F.Pred
 eqPred tm1 tm2 = do
   lift . embedTerm $

@@ -8,6 +8,8 @@ To add a new type to the refinement syntax:
     - handle case of sortOfType
 - Flex.Refining.Constraint
     - handle case of sortPred
+- Flex.Refining.Check
+    - if can be produced by primitive, add as result of synthPrimitive
 
 - [ ] Structures
     - [ ] constructing, destructing (with refinement)
