@@ -80,10 +80,10 @@ check label term type_ = do
           [ "while checking" <+> label,
             "crash:"
               <+> text msg,
-            "stack:" $$ nest 2 (vcat $ (\(re, m_s) -> pPrint re <+> maybe mempty (parens . text) m_s) <$> mb_stack)
+            "stack:" $+$ nest 2 (vcat $ (\(re, m_s) -> pPrint re <+> maybe mempty (parens . text) m_s) <$> mb_stack)
           ]
     F.Unsafe _st res ->
       throwRefiningError $
         "unsafe:"
-          $$ nest 2 (vcat $ pPrint <$> res)
+          $+$ nest 2 (vcat $ pPrint <$> res)
     F.Safe _st -> return ()

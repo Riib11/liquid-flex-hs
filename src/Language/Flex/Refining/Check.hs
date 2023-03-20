@@ -13,11 +13,11 @@ import Language.Flex.Refining.Constraint
 import Language.Flex.Refining.Embedding (embedTerm)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
-import Language.Flex.Refining.Translating (transType)
+import Language.Flex.Refining.Translating (transType, typeTuple)
 import Language.Flex.Refining.Types
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
-import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), parens, render, text, ($$), (<+>))
+import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), parens, render, text, ($$), ($+$), (<+>))
 import Utility (ticks)
 
 type CheckingM = WriterT CstrMonoid RefiningM
@@ -48,7 +48,7 @@ synthCheckTerm tyExpect tm = do
       $$ (text "     tm' =" <+> pPrint tm')
       $$ (text " tySynth =" <+> pPrint tySynth)
       $$ (text "tyExpect =" <+> pPrint tyExpect)
-  checkSubtype tySynth tyExpect
+  checkSubtype tm' tySynth tyExpect
   return tm'
 
 -- ** Synthesizing
@@ -100,7 +100,7 @@ synthPrimitive _term ty primitive =
       tms' <- synthTerm `traverse` tms
       --- tyComps: ..., { xI: aI | rI(xI) }, ...
       tyComps <- inferTerm `traverse` tms'
-      tyTuple <- typeTuple tyComps
+      tyTuple <- lift $ typeTuple tyComps
       return $ TermPrimitive (PrimitiveTuple tms') tyTuple
     PrimitiveIf tm1 tm2 tm3 -> go3 PrimitiveIf tm1 tm2 tm3
     PrimitiveAnd tm1 tm2 -> go2 PrimitiveAnd tm1 tm2
@@ -166,59 +166,22 @@ inferTerm = return . getTermTopR
 
 -- ** Subtyping
 
-checkSubtype :: Type -> Type -> CheckingM ()
-checkSubtype tySynth tyExpect = case (tySynth, tyExpect) of
+checkSubtype :: Term Type -> Type -> Type -> CheckingM ()
+checkSubtype tmSynth tySynth tyExpect = case (tySynth, tyExpect) of
   (TypeAtomic at1 r1, TypeAtomic at2 r2)
     | at1 == at2 -> do
-        FlexM.debug $ FlexM.FlexLog "refining" ("[checkSubType]" $$ pPrint tySynth <+> text "<:" $$ pPrint tyExpect)
+        FlexM.debug $ FlexM.FlexLog "refining" ("[checkSubType]" $$ pPrint tmSynth $$ pPrint tySynth <+> text "<:" $$ pPrint tyExpect)
         --    forall x : T, p x ==> (p' x')[x' := x]
         --  ----------------------------------------------
         --    {x : T | p x} <: {x' : T | p' y'}
         tellCstr $
-          cstrForall x1 tySynth $
-            cstrHead (subst e2 x2 x1)
+          cstrForall xSynth tySynth $
+            cstrHead
+              tmSynth
+              eSynth
+              tyExpect
+              (subst eExpect xExpect xSynth)
     where
-      (x1, _e1) = (F.reftBind r1, F.reftPred r1)
-      (x2, e2) = (F.reftBind r2, F.reftPred r2)
+      (xSynth, eSynth) = (F.reftBind r1, F.reftPred r1)
+      (xExpect, eExpect) = (F.reftBind r2, F.reftPred r2)
   _ -> lift $ throwRefiningError $ "the type" <+> ticks (pPrint tySynth) <+> "cannot be a subtype of the type" <+> ticks (pPrint tyExpect)
-
--- ** Basic Types
-
--- | Refined tuple type.
---
--- > typeTuple [.., { xI: aI | pI(xI) }, ...] = { tuple: (..., aI, ...) | (tuple == (..., xI, ....)) && ... && pI(xI) && .... }
-typeTuple :: [Type] -> CheckingM Type
-typeTuple tyComps = do
-  -- unrefined type, for embedding
-  let tyTuple = TypeTuple tyComps mempty
-
-  -- p1: { tuple == (..., yI, ....) }
-  tuple <- lift $ freshSymbol "tuple"
-  p1 <-
-    eqPred
-      (termVar (fromSymbolToId' tuple) tyTuple)
-      ( unrefinedTermTuple $
-          tyComps <&> \tyComp ->
-            fromSymbolToTerm (F.reftBind $ getTypeTopR tyComp) tyComp
-      )
-
-  -- p2: ... && rI(yI) && ...
-  let p2 = F.conj $ tyComps <&> (F.reftPred . getTypeTopR)
-
-  -- r: { tuple | tuple == (..., yI, ...) && ... && rI(yI) && ... }
-  let r = F.reft tuple (F.conj [p1, p2])
-
-  -- { tuple: (..., aI, ...) | tuple == (..., yI, ...) && ... && rI(yI) && ... }
-  return (TypeTuple tyComps r)
-
--- ** Utilities
-
--- | The predicate that asserts that two (embedded) terms are equal.
---
--- > eqPred tm1 tm2 = { tm1 == tm2 }
-eqPred :: Term Type -> Term Type -> CheckingM F.Pred
-eqPred tm1 tm2 = do
-  lift . embedTerm $
-    TermPrimitive
-      (PrimitiveEq tm1 tm2)
-      (typeBit mempty)

@@ -8,7 +8,8 @@ import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import qualified Language.Flex.FlexM as FlexM
-import Language.Flex.Refining.RefiningM (RefiningM, ctxTermIdSubstitution, freshId', freshId'TermId, freshSymbol, introApplicantType, introId', lookupApplicantType, lookupFunction, lookupId', parseSymbol, throwRefiningError)
+import Language.Flex.Refining.Embedding (embedTerm)
+import Language.Flex.Refining.RefiningM (RefiningM, ctxTermIdSubstitution, freshId', freshId'TermId, freshSymbol, introApplicantType, introId', lookupApplicantType, lookupFunction, lookupId', throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
@@ -125,7 +126,7 @@ transType type_ = case type_ of
   Base.TypeChar -> return $ TypeAtomic TypeChar F.trueReft
   Base.TypeArray Base.TypeChar -> return $ TypeAtomic TypeString F.trueReft
   Base.TypeArray _ty -> error "transType TODO"
-  Base.TypeTuple _tys -> error "transType TODO"
+  Base.TypeTuple tys -> typeTuple =<< transType `traverse` tys
   Base.TypeOptional _ty -> error "transType TODO"
   Base.TypeNamed _ti -> error "transType TODO"
   Base.TypeStructure _struc -> error "transType TODO"
@@ -135,43 +136,67 @@ transType type_ = case type_ of
   -- invalid
   Base.TypeUnifyVar _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "type unification variable should not appear in normalized type:" <+> pPrint type_
 
+-- ** Basic Types
+
+-- | Refined tuple type.
+--
+-- > typeTuple [.., { xI: aI | pI(xI) }, ...] = { tuple: (..., aI, ...) | (tuple == (..., xI, ....)) && ... && pI(xI) && .... }
+typeTuple :: [Type] -> RefiningM Type
+typeTuple tyComps = do
+  -- unrefined type, for embedding
+  let tyTuple = TypeTuple tyComps mempty
+
+  -- p1: { tuple == (..., yI, ....) }
+  tuple <- freshSymbol "tuple"
+  p1 <-
+    eqPred
+      (termVar (fromSymbolToId' tuple) tyTuple)
+      ( unrefinedTermTuple $
+          tyComps <&> \tyComp ->
+            fromSymbolToTerm (F.reftBind $ getTypeTopR tyComp) tyComp
+      )
+
+  -- p2: ... && rI(yI) && ...
+  let p2 = F.conj $ tyComps <&> (F.reftPred . getTypeTopR)
+
+  -- r: { tuple | tuple == (..., yI, ...) && ... && rI(yI) && ... }
+  let r = F.reft tuple (F.conj [p1, p2])
+
+  -- { tuple: (..., aI, ...) | tuple == (..., yI, ...) && ... && rI(yI) && ... }
+  return (TypeTuple tyComps r)
+
+-- ** Utilities
+
+-- | The predicate that asserts that two (embedded) terms are equal.
+--
+-- > eqPred tm1 tm2 = { tm1 == tm2 }
+eqPred :: Term Type -> Term Type -> RefiningM F.Pred
+eqPred tm1 tm2 =
+  embedTerm $
+    TermPrimitive
+      (PrimitiveEq tm1 tm2)
+      (typeBit mempty)
+
 -- *** Translating to Sorts
 
-sortOfBaseType :: Base.Type -> F.Sort
-sortOfBaseType = \case
-  Base.TypeNumber nt _n -> case nt of
-    Base.TypeInt -> F.intSort
-    Base.TypeUInt -> F.intSort
-    Base.TypeFloat -> F.realSort
-  Base.TypeBit -> F.boolSort
-  Base.TypeChar -> F.charSort
-  -- TODO: use FApp (type constructor application) and FObj (uninterpreted
-  -- type), and don't need to worry about needing to directly convert TypeIds to
-  -- Symbols since there's never any possible shadoing of TypeIds
-  Base.TypeArray _ty -> error "sortOfBaseType"
-  Base.TypeTuple _tys -> error "sortOfBaseType"
-  Base.TypeOptional _ty -> error "sortOfBaseType"
-  Base.TypeNamed _ti -> error "sortOfBaseType"
-  Base.TypeUnifyVar _uv _m_uc -> error "sortOfBaseType"
-  Base.TypeStructure _struc -> error "sortOfBaseType"
-  Base.TypeEnum _en -> error "sortOfBaseType"
-  Base.TypeVariant _vari -> error "sortOfBaseType"
-  Base.TypeNewtype _new -> error "sortOfBaseType"
-
-sortOfType :: Type -> F.Sort
-sortOfType = \case
-  TypeAtomic atomic _ -> case atomic of
-    TypeInt -> F.intSort
-    TypeFloat -> F.realSort
-    TypeBit -> F.boolSort
-    TypeChar -> F.charSort
-    TypeString -> F.strSort
-  TypeTuple tys _ -> F.fApp (F.fTyconSort tyConTuple) (sortOfType <$> tys)
-
--- **** Type Constructors
-
-tyConTuple :: F.FTycon
-tyConTuple = tyConPrimitive "Tuple"
-
-tyConPrimitive :: String -> F.FTycon
-tyConPrimitive label = F.symbolFTycon $ primitiveLocated label (parseSymbol label)
+-- -- TODO:DEPRECATED: is this still needed?
+-- sortOfBaseType :: Base.Type -> F.Sort
+-- sortOfBaseType = \case
+--   Base.TypeNumber nt _n -> case nt of
+--     Base.TypeInt -> F.intSort
+--     Base.TypeUInt -> F.intSort
+--     Base.TypeFloat -> F.realSort
+--   Base.TypeBit -> F.boolSort
+--   Base.TypeChar -> F.charSort
+--   -- TODO: use FApp (type constructor application) and FObj (uninterpreted
+--   -- type), and don't need to worry about needing to directly convert TypeIds to
+--   -- Symbols since there's never any possible shadoing of TypeIds
+--   Base.TypeArray _ty -> error "sortOfBaseType"
+--   Base.TypeTuple _tys -> error "sortOfBaseType"
+--   Base.TypeOptional _ty -> error "sortOfBaseType"
+--   Base.TypeNamed _ti -> error "sortOfBaseType"
+--   Base.TypeUnifyVar _uv _m_uc -> error "sortOfBaseType"
+--   Base.TypeStructure _struc -> error "sortOfBaseType"
+--   Base.TypeEnum _en -> error "sortOfBaseType"
+--   Base.TypeVariant _vari -> error "sortOfBaseType"
+--   Base.TypeNewtype _new -> error "sortOfBaseType"

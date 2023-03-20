@@ -3,11 +3,11 @@ module Language.Flex.Refining.Constraint where
 import qualified Language.Fixpoint.Horn.Types as H
 import Language.Fixpoint.Types (pprint)
 import qualified Language.Fixpoint.Types as F
+import Language.Flex.Refining.Embedding (sortOfType)
 import Language.Flex.Refining.RefiningM (RefiningError (RefiningError))
 import Language.Flex.Refining.Syntax
-import Language.Flex.Refining.Translating (sortOfType)
 import Language.Flex.Refining.Types
-import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), (<+>))
+import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), nest, vcat, ($$), ($+$), (<+>))
 
 trivialCstr :: Cstr
 trivialCstr = H.CAnd []
@@ -28,8 +28,29 @@ cstrForall x ty = H.All (H.Bind x s p (RefiningError "cstrForall"))
 
 -- | `Head` is a special constructor relevant to Horn Clauses, so read more
 -- about Horn clauses to learn where this detail is relevant.
-cstrHead :: F.Expr -> Cstr
-cstrHead e = H.Head (H.Reft e) (RefiningError $ "Subtype error:" <+> pprint e)
+cstrHead :: Term Type -> F.Expr -> Type -> F.Expr -> Cstr
+cstrHead tmSynth eSynth tyExpect eExpect =
+  H.Head
+    (H.Reft eExpect)
+    ( RefiningError $
+        "the following type"
+          $+$ nest
+            2
+            ( vcat
+                [ "the term"
+                    $+$ ""
+                    $+$ nest 2 (pPrint tmSynth)
+                    $+$ ""
+                    $+$ "with (synthesized) refined type"
+                    $+$ ""
+                    $+$ nest 2 (pPrint (getTermTopR tmSynth))
+                    $+$ ""
+                    $+$ "is expected to have refined type"
+                    $+$ ""
+                    $+$ nest 2 (pPrint tyExpect)
+                ]
+            )
+    )
 
 -- | The sorted and predicate `(a, p(x))`
 --

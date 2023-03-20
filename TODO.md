@@ -3,6 +3,10 @@
 To add a new type to the refinement syntax:
 - Flex.Refining.Syntax
     - add constructor to data Type_ r
+- Flex.Refining.Embedding
+    - if can be constructed by primitive, then yield result in embedPrimitive
+    - handle case of sortOfType
+    - if involves a new type constructor, write a tyCon<type-constructor-name>
 - Flex.Refining.Translating
     - make output of a case in transType
     - handle case of sortOfType

@@ -53,4 +53,4 @@ debug log = liftIO $ putStrLn (render . pPrint $ log)
 instance Pretty FlexLog where
   pPrint FlexLog {..} =
     let str = render $ brackets logLabel
-     in text str $$ nest (length str + 1) logBody
+     in text str $+$ nest (length str + 1) logBody

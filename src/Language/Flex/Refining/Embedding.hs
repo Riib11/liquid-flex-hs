@@ -6,7 +6,6 @@ import Data.Text (pack)
 import qualified Language.Fixpoint.Types as F
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
-import Language.Flex.Refining.Translating (sortOfType)
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
@@ -48,7 +47,9 @@ embedLiteral =
 embedPrimitive :: Primitive Type -> RefiningM F.Expr
 embedPrimitive = \case
   PrimitiveTry _ -> error "embedPrimitive Try"
-  PrimitiveTuple _ -> error "embedPrimitive Tuple"
+  PrimitiveTuple tms -> do
+    es <- embedTerm `traverse` tms
+    return $ F.eApps constrTuple es
   PrimitiveArray _ -> error "embedPrimitive Array"
   PrimitiveIf te te' te2 -> F.EIte <$> embedTerm te <*> embedTerm te' <*> embedTerm te2
   PrimitiveAnd te te' -> F.PAnd <$> embedTerm `traverse` [te, te']
@@ -59,3 +60,28 @@ embedPrimitive = \case
 
 embedTermId :: Base.TermId -> RefiningM F.Symbol
 embedTermId tmId = return $ fromString (render . pPrint $ tmId)
+
+-- *** Primitive Constructors
+
+constrTuple :: F.Expr
+constrTuple = F.eVar @String "Tuple"
+
+-- ** Embedding as Sorts
+
+sortOfType :: Type -> F.Sort
+sortOfType = \case
+  TypeAtomic atomic _ -> case atomic of
+    TypeInt -> F.intSort
+    TypeFloat -> F.realSort
+    TypeBit -> F.boolSort
+    TypeChar -> F.charSort
+    TypeString -> F.strSort
+  TypeTuple tys _ -> F.fApp (F.fTyconSort tyConTuple) (sortOfType <$> tys)
+
+-- ** Type Constructors
+
+tyConTuple :: F.FTycon
+tyConTuple = tyConPrimitive "Tuple"
+
+tyConPrimitive :: String -> F.FTycon
+tyConPrimitive label = F.symbolFTycon $ primitiveLocated label (F.symbol label)

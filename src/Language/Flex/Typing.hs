@@ -693,7 +693,7 @@ satisfiesUnifyConstraint ty = \case
       | all (`elem` [TypeInt, TypeUInt]) [numty1, numty2] -> True
       | all (`elem` [TypeFloat]) [numty1, numty2] -> True
     (TypeUnifyVar _ mb_uc, _) -> maybe True (satisfiesUnifyConstraint ty') mb_uc
-    -- FlexBug.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
+    -- FlexBug.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $+$ nest 4 ("type =" <+> pPrint ty) $+$ nest 4 ("unifyConstraint =" <+> pPrint uc)
     _uc -> False
   UnifyConstraintNumeric -> case ty of
     TypeNumber _ _ -> True
@@ -747,9 +747,9 @@ throwUnifyError :: Type -> Type -> Maybe Doc -> TypingM a
 throwUnifyError tyExpect tySynth mb_msg =
   throwTypingError
     ( "failed to unify synthesized type"
-        $$ nest 2 (pPrint tySynth)
+        $+$ nest 2 (pPrint tySynth)
         $$ "with expected type"
-        $$ nest 2 (pPrint tyExpect)
+        $+$ nest 2 (pPrint tyExpect)
         $$ maybe mempty ("because" <+>) mb_msg
     )
     Nothing

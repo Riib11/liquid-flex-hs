@@ -19,7 +19,7 @@ import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexLog (FlexLog), FlexM)
 import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Base
-import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, ($$), (<+>))
+import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, ($$), ($+$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 
 -- ** RefiningM
@@ -35,7 +35,7 @@ newtype RefiningError = RefiningError Doc
 instance NFData RefiningError
 
 instance Pretty RefiningError where
-  pPrint (RefiningError msg) = "refining error:" <+> msg
+  pPrint (RefiningError msg) = msg
 
 instance F.Fixpoint RefiningError where
   toFix = pPrint
@@ -123,7 +123,7 @@ freshSymbol :: String -> RefiningM F.Symbol
 freshSymbol str = do
   i <- gets (^. freshSymbolIndex)
   modifying freshSymbolIndex (1 +)
-  return $ parseSymbol (str <> "#" <> show i)
+  return $ F.symbol (str <> "#" <> show i)
 
 freshId' :: String -> RefiningM Id'
 freshId' str = do
@@ -134,9 +134,6 @@ freshId'TermId :: Base.TermId -> RefiningM Id'
 freshId'TermId tmId = do
   id'Symbol <- freshSymbol (render . pPrint $ tmId)
   return Id' {id'Symbol, id'MaybeTermId = Just tmId}
-
-parseSymbol :: String -> F.Symbol
-parseSymbol str = FP.doParse' FP.lowerIdP ("parseSymbol: " <> str) str
 
 parsePred :: String -> F.Pred
 parsePred = FP.doParse' FP.predP "parsePred"

@@ -5,7 +5,7 @@ module Language.Flex.Syntax where
 import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.List (intercalate)
 import qualified Data.Map as Map
-import Text.PrettyPrint.HughesPJClass (Doc, Pretty (pPrint), braces, brackets, colon, comma, doubleQuotes, hsep, nest, parens, punctuate, quotes, text, vcat, ($$), (<+>))
+import Text.PrettyPrint.HughesPJClass (Doc, Pretty (pPrint), braces, brackets, colon, comma, doubleQuotes, hsep, nest, parens, punctuate, quotes, text, vcat, ($$), ($+$), (<+>))
 import Utility
 import Prelude hiding (Enum)
 
@@ -154,11 +154,11 @@ instance Pretty Structure where
           Just extId -> "extends" <+> pPrint extId,
         "{"
       ]
-      $$ ( nest 2 . vcat $
-             structureFields <&> \(fieldId, ty) ->
-               (pPrint fieldId <+> colon <+> pPrint ty) <> ";"
-         )
-      $$ "}"
+      $+$ ( nest 2 . vcat $
+              structureFields <&> \(fieldId, ty) ->
+                (pPrint fieldId <+> colon <+> pPrint ty) <> ";"
+          )
+      $+$ "}"
 
 -- RefinedType
 data RefinedType ann = RefinedType
