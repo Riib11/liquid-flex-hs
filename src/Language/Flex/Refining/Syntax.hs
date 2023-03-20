@@ -64,7 +64,7 @@ data Type_ r
   = TypeAtomic AtomicType r
   | TypeTuple ![Type_ r] r
   deriving
-    (Eq, Show, Functor)
+    (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Type_ F.Reft) where
   pPrint = \case
@@ -139,14 +139,10 @@ data FunctionType_ r = FunctionType
 
 -- | Subable (Subtypeable)
 instance F.Subable r => F.Subable (Type_ r) where
-  syms = \case
-    TypeAtomic _ r -> F.syms r
-  substa f = \case
-    TypeAtomic at r -> TypeAtomic at (F.substa f r)
-  substf f = \case
-    TypeAtomic at r -> TypeAtomic at (F.substf f r)
-  subst f = \case
-    TypeAtomic at r -> TypeAtomic at (F.subst f r)
+  syms = foldMap F.syms
+  substa f = fmap (F.substa f)
+  substf f = fmap (F.substf f)
+  subst f = fmap (F.subst f)
 
 instance F.Subable r => F.Subable (FunctionType_ r) where
   syms (FunctionType _params outTy) = F.syms outTy
