@@ -3,7 +3,6 @@ module Language.Flex.Refining.Translating where
 import Control.Lens (At (at), locally)
 import Control.Monad (foldM, forM, void, when)
 import Control.Monad.Trans (MonadTrans (lift))
-import Data.Foldable (foldlM)
 import Data.Functor
 import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
@@ -30,21 +29,14 @@ transTerm term = do
         Base.PrimitiveTuple tes | length tes < 2 -> FlexBug.throw $ FlexM.FlexLog "refining" "attempted to transTerm on a Base.PrimitiveTuple that has length terms < 2"
         Base.PrimitiveTuple (te : tes) -> do
           te' <- transTerm te
-          -- let f :: Base.Term Base.Type -> Term Base.Type -> RefiningM (Term Base.Type)
-          --     f tm1 tm2' = do
-          --       tm1' <- transTerm tm1
-          --       return $
-          --         TermPrimitive
-          --           (PrimitiveTuple (tm1', tm2'))
-          --           (Base.TypeTuple [getTermTopR tm1', getTermTopR tm2'])
-          let f :: Term Base.Type -> Base.Term Base.Type -> RefiningM (Term Base.Type)
-              f tm1' tm2 = do
-                tm2' <- transTerm tm2
+          let f :: Base.Term Base.Type -> Term Base.Type -> RefiningM (Term Base.Type)
+              f tm1 tm2' = do
+                tm1' <- transTerm tm1
                 return $
                   TermPrimitive
                     (PrimitiveTuple (tm1', tm2'))
                     (Base.TypeTuple [getTermTopR tm1', getTermTopR tm2'])
-          foldlM f te' tes -- TUPLE: fold left
+          foldrM f te' tes
         Base.PrimitiveTuple _ -> error "IMPOSSIBLE"
         Base.PrimitiveArray tes -> TermPrimitive <$> (PrimitiveArray <$> transTerm `traverse` tes) <*> return ty
         Base.PrimitiveIf te te' te3 -> TermPrimitive <$> (PrimitiveIf <$> transTerm te <*> transTerm te' <*> transTerm te3) <*> return ty
@@ -212,7 +204,7 @@ typeTuple tys_ = do
   case tys_ of
     [] -> error "typeTuple []"
     [_] -> error "typeTuple [ _ ]"
-    (ty : tys) -> foldlM go ty tys -- TUPLE: fold left
+    (ty : tys) -> foldM go ty tys
 
 -- ** Utilities
 
