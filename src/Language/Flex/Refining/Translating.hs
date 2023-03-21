@@ -30,13 +30,6 @@ transTerm term = do
         Base.PrimitiveTuple tes | length tes < 2 -> FlexBug.throw $ FlexM.FlexLog "refining" "attempted to transTerm on a Base.PrimitiveTuple that has length terms < 2"
         Base.PrimitiveTuple (te : tes) -> do
           te' <- transTerm te
-          -- let f :: Base.Term Base.Type -> Term Base.Type -> RefiningM (Term Base.Type)
-          --     f tm1 tm2' = do
-          --       tm1' <- transTerm tm1
-          --       return $
-          --         TermPrimitive
-          --           (PrimitiveTuple (tm1', tm2'))
-          --           (Base.TypeTuple [getTermTopR tm1', getTermTopR tm2'])
           let f :: Term Base.Type -> Base.Term Base.Type -> RefiningM (Term Base.Type)
               f tm1' tm2 = do
                 tm2' <- transTerm tm2
