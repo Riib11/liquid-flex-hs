@@ -8,6 +8,7 @@ import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Utils.Files as Files
 import Language.Flex.FlexM (FlexOptions (FlexOptions, sourceFilePath))
+import Language.Flex.Refining.Prelude (preludeDataDecls)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Types
 import qualified Text.PrettyPrint.HughesPJ as PJ
@@ -25,7 +26,7 @@ makeQuery cstr =
       mempty -- F.Symbol F.Sort
       mempty -- [F.Equation]
       mempty -- [F.Rewrite]
-      mempty -- [F.DataDecl]
+      preludeDataDecls -- [F.DataDecl] -- TODO: include user-defined types
 
 -- | Submit query to LH backend, which checks for validity
 submitQuery :: Query -> RefiningM Result

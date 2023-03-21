@@ -14,7 +14,7 @@ import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render, (<+>))
-import Utility (comps, compsM)
+import Utility (comps, compsM, foldrM)
 
 -- ** Translate Term
 
@@ -24,20 +24,29 @@ transTerm term = do
   case term of
     Base.TermLiteral lit ty -> return $ TermLiteral lit ty
     Base.TermPrimitive prim ty ->
-      TermPrimitive
-        <$> case prim of
-          Base.PrimitiveTry te -> PrimitiveTry <$> transTerm te
-          Base.PrimitiveTuple tes -> PrimitiveTuple <$> transTerm `traverse` tes
-          Base.PrimitiveArray tes -> PrimitiveArray <$> transTerm `traverse` tes
-          Base.PrimitiveIf te te' te3 -> PrimitiveIf <$> transTerm te <*> transTerm te' <*> transTerm te3
-          Base.PrimitiveAnd te te' -> PrimitiveAnd <$> transTerm te <*> transTerm te'
-          Base.PrimitiveOr te te' -> PrimitiveOr <$> transTerm te <*> transTerm te'
-          Base.PrimitiveNot te -> PrimitiveNot <$> transTerm te
-          Base.PrimitiveEq te te' -> PrimitiveEq <$> transTerm te <*> transTerm te'
-          Base.PrimitiveAdd te te' -> PrimitiveAdd <$> transTerm te <*> transTerm te'
-          -- invalid
-          Base.PrimitiveCast _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "PrimitiveCast should not appear in typed term:" <+> pPrint term
-        <*> return ty
+      case prim of
+        Base.PrimitiveTry te -> TermPrimitive <$> (PrimitiveTry <$> transTerm te) <*> return ty
+        Base.PrimitiveTuple tes | length tes < 2 -> FlexBug.throw $ FlexM.FlexLog "refining" "attempted to transTerm on a Base.PrimitiveTuple that has length terms < 2"
+        Base.PrimitiveTuple (te : tes) -> do
+          te' <- transTerm te
+          let f :: Base.Term Base.Type -> Term Base.Type -> RefiningM (Term Base.Type)
+              f tm1 tm2' = do
+                tm1' <- transTerm tm1
+                return $
+                  TermPrimitive
+                    (PrimitiveTuple (tm1', tm2'))
+                    (Base.TypeTuple [getTermTopR tm1', getTermTopR tm2'])
+          foldrM f te' tes
+        Base.PrimitiveTuple _ -> error "IMPOSSIBLE"
+        Base.PrimitiveArray tes -> TermPrimitive <$> (PrimitiveArray <$> transTerm `traverse` tes) <*> return ty
+        Base.PrimitiveIf te te' te3 -> TermPrimitive <$> (PrimitiveIf <$> transTerm te <*> transTerm te' <*> transTerm te3) <*> return ty
+        Base.PrimitiveAnd te te' -> TermPrimitive <$> (PrimitiveAnd <$> transTerm te <*> transTerm te') <*> return ty
+        Base.PrimitiveOr te te' -> TermPrimitive <$> (PrimitiveOr <$> transTerm te <*> transTerm te') <*> return ty
+        Base.PrimitiveNot te -> TermPrimitive <$> (PrimitiveNot <$> transTerm te) <*> return ty
+        Base.PrimitiveEq te te' -> TermPrimitive <$> (PrimitiveEq <$> transTerm te <*> transTerm te') <*> return ty
+        Base.PrimitiveAdd te te' -> TermPrimitive <$> (PrimitiveAdd <$> transTerm te <*> transTerm te') <*> return ty
+        -- invalid
+        Base.PrimitiveCast _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "PrimitiveCast should not appear in typed term:" <+> pPrint term
     Base.TermLet {termPattern, termTerm, termBody} -> do
       id' <- case termPattern of
         Base.PatternNamed ti _ty -> freshId'TermId ti
@@ -99,7 +108,7 @@ transTerm term = do
 
 -- ** Translate Type
 
-transType :: Base.Type -> RefiningM Type
+transType :: Base.Type -> RefiningM TypeReft
 transType type_ = case type_ of
   Base.TypeNumber numty n -> do
     x <- freshSymbol (render $ pPrint type_)
@@ -138,55 +147,76 @@ transType type_ = case type_ of
 
 -- ** Basic Types
 
+-- TODO: do i actually ever use this in the list form, or can i reduce it to
+-- just handling tuples?
+--
+
 -- | Refined tuple type.
 --
--- > typeTuple [.., { xI: aI | pI(xI) }, ...] = { tuple: (..., aI, ...) | (tuple == (..., xI, ....)) && ... && pI(xI) && .... }
-typeTuple :: [Type] -> RefiningM Type
-typeTuple tyComps_ = do
-  let go :: Type -> Type -> RefiningM Type
-      go tyComp1 tyComp2 = do
-        -- unrefined type, just for embedding
-        -- tyTuple: { (tyComp1, tyComp2) | true }
-        let tyTuple = TypeTuple (tyComp1, tyComp2) mempty
+-- > typeTuple [.., { xI: aI | pI(xI) }, ...] = { tuple: (..., aI, ...) | (tuple
+-- > == (..., xI, ....)) && ... && pI(xI) && .... }
+typeTuple :: [TypeReft] -> RefiningM TypeReft
+typeTuple tys_ = do
+  let go :: TypeReft -> TypeReft -> RefiningM TypeReft
+      go ty1 ty2 = do
+        -- ty1: { x1: a1 | r1(x1) }
+        -- ty2: { x2: a2 | r2(x2) }
 
-        -- p1(y1, y2): { tuple == (y1, y2) }
+        -- r1(x1)
+        -- r2(x2)
+        let r1 = getTypeTopR ty1
+            r2 = getTypeTopR ty2
+
+        -- tyTuple: (ty1, ty2)
+        -- unrefined, since only used for embedding
+        let tyTuple = TypeTuple (void ty1, void ty2) ()
+
+        -- p1(x1, x2): tuple == (x1, x2)
         tuple <- freshSymbol "tuple"
         p1 <-
           eqPred
             (termVar (fromSymbolToId' tuple) tyTuple)
-            ( unrefinedTermTuple $
-                [tyComp1, tyComp2] <&> \tyComp ->
-                  fromSymbolToTerm (F.reftBind $ getTypeTopR tyComp) tyComp
+            ( TermPrimitive
+                ( PrimitiveTuple
+                    ( fromSymbolToTerm (F.reftBind r1) (void ty1),
+                      fromSymbolToTerm (F.reftBind r2) (void ty2)
+                    )
+                )
+                tyTuple
             )
 
-        -- p2(y1, y2): r1(y1) && r2(y2)
-        let p2 = F.conj $ [tyComp1, tyComp2] <&> (F.reftPred . getTypeTopR)
+        -- p2(x1, x2): r1(x1) && r2(x2)
+        let p2 = F.conj $ [ty1, ty2] <&> (F.reftPred . getTypeTopR)
 
-        -- r: { tuple | exists y1 y2 . p1(y1, y2) && p2(y1, y2) }
+        -- r: { tuple: tyTuple | exists x1 x2 . p1(y1, x2) && p2(y1, x2) }
         let r =
               F.reft tuple $
-                F.pExist [(F.reftBind $ getTypeTopR tyComp, sortOfType tyComp) | tyComp <- [tyComp1, tyComp2]] $
+                F.pExist [(F.reftBind r1, sortOfType ty1), (F.reftBind r2, sortOfType ty2)] $
                   F.conj [p1, p2]
 
         -- { tuple: (a1, a2) | p1 && p2 }
-        return $ TypeTuple (tyComp1, tyComp2) r
-  -- first, freshen all the binds in tyComps
-  forM tyComps_ (freshenBind `traverse`) >>= \case
+        return $ TypeTuple (ty1, ty2) r
+
+  -- TODO: should do this here??
+  -- first, freshen all the binds in tys
+  -- forM tys_ (freshenBind `traverse`) >>= \case
+
+  case tys_ of
     [] -> error "typeTuple []"
     [_] -> error "typeTuple [ _ ]"
-    (tyComp : tyComps) -> foldM go tyComp tyComps
+    (ty : tys) -> foldM go ty tys
 
 -- ** Utilities
 
 -- | The predicate that asserts that two (embedded) terms are equal.
 --
 -- > eqPred tm1 tm2 = { tm1 == tm2 }
-eqPred :: Term Type -> Term Type -> RefiningM F.Pred
+eqPred :: Term (Type_ ()) -> Term (Type_ ()) -> RefiningM F.Pred
 eqPred tm1 tm2 =
   embedTerm $
     TermPrimitive
       (PrimitiveEq tm1 tm2)
-      (typeBit mempty)
+      (typeBit ())
 
 -- *** Translating to Sorts
 

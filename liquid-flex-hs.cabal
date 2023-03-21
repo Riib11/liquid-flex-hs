@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Data.List2
       Language.Flex.DefaultFlexOptions
       Language.Flex.FlexBug
       Language.Flex.FlexM
@@ -60,6 +61,7 @@ library
       DeriveFunctor
       DeriveGeneric
       DeriveTraversable
+      DeriveAnyClass
       FlexibleInstances
       ScopedTypeVariables
       MultiParamTypeClasses
@@ -107,6 +109,7 @@ executable liquid-flex-hs-exe
       DeriveFunctor
       DeriveGeneric
       DeriveTraversable
+      DeriveAnyClass
       FlexibleInstances
       ScopedTypeVariables
       MultiParamTypeClasses
@@ -161,6 +164,7 @@ test-suite liquid-flex-hs-test
       DeriveFunctor
       DeriveGeneric
       DeriveTraversable
+      DeriveAnyClass
       FlexibleInstances
       ScopedTypeVariables
       MultiParamTypeClasses

@@ -39,7 +39,7 @@ instance Monoid CstrMonoid where
 
 -- ** Checking
 
-synthCheckTerm :: Type -> Term Base.Type -> CheckingM (Term Type)
+synthCheckTerm :: TypeReft -> Term Base.Type -> CheckingM (Term TypeReft)
 synthCheckTerm tyExpect tm = do
   tm' <- synthTerm tm
   tySynth <- inferTerm tm'
@@ -56,7 +56,7 @@ synthCheckTerm tyExpect tm = do
 
 -- ** Synthesizing
 
-synthTerm :: Term Base.Type -> CheckingM (Term Type)
+synthTerm :: Term Base.Type -> CheckingM (Term TypeReft)
 synthTerm term = case term of
   TermNeutral app args ty -> do
     args' <- synthTerm `traverse` args
@@ -69,7 +69,7 @@ synthTerm term = case term of
     -- literals are reflected
     ty' <- lift $ transType ty
     tm' <-
-      mapMTermTopR (mapMTypeTopR (reflectLiteralInReft ty' lit)) $
+      mapMTermTopR (mapMTypeTopR (reflectLiteralInReft (void ty') lit)) $
         TermLiteral lit ty'
     return tm'
   TermPrimitive prim ty ->
@@ -79,7 +79,7 @@ synthTerm term = case term of
     -- check asserted term against refinement type { x | x == true }
     ty1 <-
       TypeAtomic TypeBit
-        <$> reflectLiteralInReft (typeBit F.trueReft) (LiteralBit True) F.trueReft
+        <$> reflectLiteralInReft (typeBit ()) (LiteralBit True) F.trueReft
     tm1' <- synthCheckTerm ty1 tm1
     tm2' <- synthTerm tm2
     ty' <- inferTerm tm2'
@@ -94,15 +94,16 @@ synthTerm term = case term of
     return $ TermLet id' tm' bod' ty'
 
 -- | Note that most primitive operations are reflected in refinement.
-synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term Type)
+synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term TypeReft)
 synthPrimitive _term ty primitive =
   case primitive of
-    PrimitiveTuple tms -> do
-      tms' <- synthTerm `traverse` tms
-      --- tyComps: ..., { xI: aI | rI(xI) }, ...
-      tyComps <- inferTerm `traverse` tms'
-      tyTuple <- lift $ typeTuple tyComps
-      return $ TermPrimitive (PrimitiveTuple tms') tyTuple
+    PrimitiveTuple (tm1, tm2) -> do
+      tm1' <- synthTerm tm1
+      ty1 <- inferTerm tm1'
+      tm2' <- synthTerm tm2
+      ty2 <- inferTerm tm2'
+      tyTuple <- lift $ typeTuple [ty1, ty2]
+      return $ TermPrimitive (PrimitiveTuple (tm1', tm2')) tyTuple
     PrimitiveIf tm1 tm2 tm3 -> go3 PrimitiveIf tm1 tm2 tm3
     PrimitiveAnd tm1 tm2 -> go2 PrimitiveAnd tm1 tm2
     PrimitiveOr tm1 tm2 -> go2 PrimitiveOr tm1 tm2
@@ -117,15 +118,17 @@ synthPrimitive _term ty primitive =
       tm2' <- synthTerm tm2
       let prim = constr tm1' tm2'
       ty' <- lift $ transType ty
-      mapMTermTopR (mapMTypeTopR (reflectPrimitiveInReft ty' prim)) $
-        TermPrimitive prim ty'
+      mapMTermTopR
+        (mapMTypeTopR $ reflectPrimitiveInReft (void ty') (void <$> prim))
+        $ TermPrimitive prim ty'
 
     go1 constr tm = do
       tm' <- synthTerm tm
       let prim = constr tm'
       ty' <- lift $ transType ty
-      mapMTermTopR (mapMTypeTopR (reflectPrimitiveInReft ty' prim)) $
-        TermPrimitive prim ty'
+      mapMTermTopR
+        (mapMTypeTopR $ reflectPrimitiveInReft (void ty') (void <$> prim))
+        $ TermPrimitive prim ty'
 
     go3 constr tm1 tm2 tm3 = do
       tm1' <- synthTerm tm1
@@ -133,8 +136,9 @@ synthPrimitive _term ty primitive =
       tm3' <- synthTerm tm3
       let prim = constr tm1' tm2' tm3'
       ty' <- lift $ transType ty
-      mapMTermTopR (mapMTypeTopR (reflectPrimitiveInReft ty' prim)) $
-        TermPrimitive prim ty'
+      mapMTermTopR
+        (mapMTypeTopR $ reflectPrimitiveInReft (void ty') (void <$> prim))
+        $ TermPrimitive prim ty'
 
 -- ** Reflection
 
@@ -142,32 +146,32 @@ synthPrimitive _term ty primitive =
 -- refinement that the value is equal to the (embedded) term.
 --
 -- > reflectTermInReft v { x: a | r } = { x: a | x == v && r }
-reflectTermInReft :: Term Type -> F.Reft -> CheckingM F.Reft
+reflectTermInReft :: Term (Type_ ()) -> F.Reft -> CheckingM F.Reft
 reflectTermInReft tm r = do
-  let sort = getTermTopR tm
+  let sort = void $ getTermTopR tm
   let x = F.reftBind r
   let p = F.reftPred r
   pRefl <-
     lift . embedTerm $
       TermPrimitive
         (PrimitiveEq (termVar (fromSymbolToId' x) sort) tm)
-        (typeBit mempty)
+        (typeBit ())
   return $ F.reft x (F.conj [pRefl, p])
 
-reflectLiteralInReft :: Type -> Literal -> F.Reft -> CheckingM F.Reft
+reflectLiteralInReft :: Type_ () -> Literal -> F.Reft -> CheckingM F.Reft
 reflectLiteralInReft ty lit = reflectTermInReft (TermLiteral lit ty)
 
-reflectPrimitiveInReft :: Type -> Primitive Type -> F.Reft -> CheckingM F.Reft
+reflectPrimitiveInReft :: Type_ () -> Primitive (Type_ ()) -> F.Reft -> CheckingM F.Reft
 reflectPrimitiveInReft ty prim = reflectTermInReft (TermPrimitive prim ty)
 
 -- ** Inferring
 
-inferTerm :: Term Type -> CheckingM Type
+inferTerm :: Term TypeReft -> CheckingM TypeReft
 inferTerm = return . getTermTopR
 
 -- ** Subtyping
 
-checkSubtype :: Term Type -> Type -> Type -> CheckingM ()
+checkSubtype :: Term TypeReft -> TypeReft -> TypeReft -> CheckingM ()
 checkSubtype tmSynth tySynth tyExpect = do
   FlexM.debug $
     FlexM.FlexLog

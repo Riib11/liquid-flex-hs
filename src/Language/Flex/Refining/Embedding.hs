@@ -1,10 +1,11 @@
 module Language.Flex.Refining.Embedding where
 
+import Data.Foldable (foldlM, foldrM)
 import qualified Data.Map as Map
 import Data.String (IsString (fromString))
 import Data.Text (pack)
 import qualified Language.Fixpoint.Types as F
-import Language.Flex.Refining.Prelude (tupleFTycon)
+import Language.Flex.Refining.Prelude (tupleConstructorSymbol, tupleFTycon)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..))
@@ -14,7 +15,7 @@ import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
 embedId' :: Id' -> RefiningM F.Expr
 embedId' Id' {..} = return $ F.eVar id'Symbol
 
-embedTerm :: Term Type -> RefiningM F.Expr
+embedTerm :: Term (Type_ ()) -> RefiningM F.Expr
 embedTerm = \case
   TermLiteral lit _ -> embedLiteral lit
   TermPrimitive prim _ -> embedPrimitive prim
@@ -33,7 +34,7 @@ embedTerm = \case
     bod' <- embedTerm bod
     return $ F.eApps (F.ELam (id'Symbol x, sort) bod') [tm']
 
-embedType :: Type -> RefiningM F.Sort
+embedType :: Type_ () -> RefiningM F.Sort
 embedType = error "embedType"
 
 embedLiteral :: Literal -> RefiningM F.Expr
@@ -45,12 +46,16 @@ embedLiteral =
     Base.LiteralChar c -> F.expr (pack [c])
     Base.LiteralString s -> F.expr (pack s)
 
-embedPrimitive :: Primitive Type -> RefiningM F.Expr
+embedPrimitive :: Primitive (Type_ ()) -> RefiningM F.Expr
 embedPrimitive = \case
   PrimitiveTry _ -> error "embedPrimitive Try"
-  PrimitiveTuple tms -> do
-    es <- embedTerm `traverse` tms
-    return $ F.eApps constrTuple es
+  PrimitiveTuple (tm1, tm2) -> do
+    -- let ty1 = getTermTopR tm1
+    -- let ty2 = getTermTopR tm2
+    e1 <- embedTerm tm1
+    e2 <- embedTerm tm2
+    -- return $ constrTuple `F.ETApp` sortOfType ty1 `F.ETApp` sortOfType ty2 `F.EApp` e1 `F.EApp` e2
+    return $ constrTuple `F.EApp` e1 `F.EApp` e2
   PrimitiveArray _ -> error "embedPrimitive Array"
   PrimitiveIf te te' te2 -> F.EIte <$> embedTerm te <*> embedTerm te' <*> embedTerm te2
   PrimitiveAnd te te' -> F.PAnd <$> embedTerm `traverse` [te, te']
@@ -65,11 +70,11 @@ embedTermId tmId = return $ fromString (render . pPrint $ tmId)
 -- *** Primitive Constructors
 
 constrTuple :: F.Expr
-constrTuple = F.eVar @String "Tuple"
+constrTuple = F.eVar tupleConstructorSymbol
 
 -- ** Embedding as Sorts
 
-sortOfType :: Type -> F.Sort
+sortOfType :: Type_ r -> F.Sort
 sortOfType = \case
   TypeAtomic atomic _ -> case atomic of
     TypeInt -> F.intSort

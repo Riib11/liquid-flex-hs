@@ -62,6 +62,7 @@ default-extensions:
 - DeriveFunctor
 - DeriveGeneric
 - DeriveTraversable
+- DeriveAnyClass
 - FlexibleInstances
 - ScopedTypeVariables
 - MultiParamTypeClasses

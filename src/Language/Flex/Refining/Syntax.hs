@@ -6,6 +6,7 @@ import Control.Exception
 import Control.Monad (foldM, void, when)
 import Control.Monad.Error.Class (MonadError (throwError))
 import Data.Bifunctor (Bifunctor (bimap), second)
+import Data.Foldable (toList)
 import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
@@ -22,7 +23,9 @@ import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Types.PrettyPrint as P
 import qualified Language.Fixpoint.Utils.Files as Files
+import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (pprintInline)
+import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Syntax (FieldId, Literal (..), TermId, TypeId)
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
@@ -51,7 +54,7 @@ reflect _everything_ from Flex, such as statements a-normal types, etc.
 
 -- ** Type
 
-type Type = Type_ F.Reft
+type TypeReft = Type_ F.Reft
 
 -- TODO: handle more advanced types
 
@@ -79,7 +82,10 @@ instance Pretty (Type_ F.Reft) where
     where
       go doc r = braces $ pprintInline (F.reftBind r) <+> ":" <+> doc <+> "|" <+> pprintInline (F.reftPred r)
 
-baseTypeReft :: Type -> F.Reft
+voidTypeR :: Type_ r -> Type_ ()
+voidTypeR = void
+
+baseTypeReft :: TypeReft -> F.Reft
 baseTypeReft = \case
   TypeAtomic _ r -> r
   TypeTuple _ r -> r
@@ -108,22 +114,22 @@ mapTypeTopR f ty = setTypeTopR ty (f (getTypeTopR ty))
 mapMTypeTopR :: Functor f => (r -> f r) -> Type_ r -> f (Type_ r)
 mapMTypeTopR k ty = setTypeTopR ty <$> k (getTypeTopR ty)
 
-typeEqTrue :: Type
+typeEqTrue :: TypeReft
 typeEqTrue = typeBit F.trueReft
 
-typeEqFalse :: Type
+typeEqFalse :: TypeReft
 typeEqFalse = typeBit F.falseReft
 
-typeInt :: F.Reft -> Type
+typeInt :: r -> Type_ r
 typeInt = TypeAtomic TypeInt
 
-typeBit :: F.Reft -> Type
+typeBit :: r -> Type_ r
 typeBit = TypeAtomic TypeBit
 
-typeChar :: F.Reft -> Type
+typeChar :: F.Reft -> TypeReft
 typeChar = TypeAtomic TypeChar
 
-typeString :: F.Reft -> Type
+typeString :: F.Reft -> TypeReft
 typeString = TypeAtomic TypeString
 
 primitiveLocated :: P.PPrint a => a -> F.Located a
@@ -170,7 +176,7 @@ data Structure = Structure
   { structureId :: TypeId,
     structureIsMessage :: Bool,
     structureMaybeExtensionId :: Maybe TypeId,
-    structureFields :: [(FieldId, Type)],
+    structureFields :: [(FieldId, TypeReft)],
     structureRefinement :: F.Expr
   }
   deriving (Eq, Show)
@@ -179,7 +185,7 @@ data Structure = Structure
 
 data Variant = Variant
   { variantId :: TypeId,
-    variantConstructors :: [(TermId, Maybe [Type])]
+    variantConstructors :: [(TermId, Maybe [TypeReft])]
   }
   deriving (Eq, Show)
 
@@ -187,7 +193,7 @@ data Variant = Variant
 
 data Enum = Enum
   { enumId :: TypeId,
-    enumType :: Type,
+    enumType :: TypeReft,
     enumConstructors :: [(TermId, Literal)]
   }
   deriving (Eq, Show)
@@ -197,8 +203,8 @@ data Enum = Enum
 data Function r = Function
   { functionId :: TermId,
     functionIsTransform :: Bool,
-    functionParameters :: [(TermId, Type)],
-    functionOutput :: Type,
+    functionParameters :: [(TermId, TypeReft)],
+    functionOutput :: TypeReft,
     functionBody :: Term r
   }
   deriving (Eq, Show)
@@ -208,7 +214,7 @@ data Function r = Function
 data Constant r = Constant
   { constantId :: TermId,
     constantBody :: Term r,
-    constantType :: Type
+    constantType :: TypeReft
   }
   deriving (Eq, Show)
 
@@ -216,7 +222,7 @@ data Constant r = Constant
 
 data Primitive r
   = PrimitiveTry (Term r)
-  | PrimitiveTuple [Term r]
+  | PrimitiveTuple (Term r, Term r)
   | PrimitiveArray [Term r]
   | PrimitiveIf (Term r) (Term r) (Term r)
   | PrimitiveAnd (Term r) (Term r)
@@ -229,7 +235,7 @@ data Primitive r
 instance Pretty (Primitive r) where
   pPrint = \case
     PrimitiveTry te -> parens $ text "try" <+> pPrint te
-    PrimitiveTuple tes -> parens $ hsep $ punctuate comma $ pPrint <$> tes
+    PrimitiveTuple (te1, te2) -> parens $ (pPrint te1 <> ",") <+> pPrint te2
     PrimitiveArray tes -> brackets $ hsep $ punctuate comma $ pPrint <$> tes
     PrimitiveIf te te' te'' -> parens $ text "if" <+> pPrint te <+> text "then" <+> pPrint te' <+> text "else" <+> pPrint te''
     PrimitiveAnd te te' -> parens $ pPrint te <+> text "&&" <+> pPrint te'
@@ -238,16 +244,16 @@ instance Pretty (Primitive r) where
     PrimitiveEq te te' -> parens $ pPrint te <+> "==" <+> pPrint te'
     PrimitiveAdd te te' -> parens $ pPrint te <+> "+" <+> pPrint te'
 
-unrefinedTermTuple :: [Term Type] -> Term Type
-unrefinedTermTuple [] = error "unrefinedTermTuple []"
-unrefinedTermTuple [_] = error "unrefinedTermTuple [ _ ]"
-unrefinedTermTuple (tm : tms) = foldr go tm tms
-  where
-    go :: Term Type -> Term Type -> Term Type
-    go tm1 tm2 =
-      TermPrimitive
-        (PrimitiveTuple tms)
-        (TypeTuple (bimap getTermTopR getTermTopR (tm1, tm2)) mempty)
+-- unrefinedTermTuple :: [Term Type] -> Term Type
+-- unrefinedTermTuple tms | length tms < 2 = FlexBug.throw $ FlexM.FlexLog "refining" "attempted to contruct unrefined tuple term from term list with length < 2"
+-- unrefinedTermTuple (tm : tms) = foldr go tm tms
+--   where
+--     go :: Term Type -> Term Type -> Term Type
+--     go tm1 tm2 =
+--       TermPrimitive
+--         (PrimitiveTuple tm1 tm2)
+--         (TypeTuple (getTermTopR tm1, getTermTopR tm2) mempty)
+-- unrefinedTermTuple _ = error "IMPOSSIBLE"
 
 -- ** Term
 
@@ -278,6 +284,9 @@ data Id' = Id'
 
 instance Pretty Id' where
   pPrint (Id' sym _m_ti) = pprintInline sym
+
+voidTermTypeR :: Functor t => Term (t r) -> Term (t ())
+voidTermTypeR = fmap void
 
 termVar :: Id' -> r -> Term r
 termVar id' = TermNeutral id' []

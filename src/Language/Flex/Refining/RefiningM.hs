@@ -50,9 +50,9 @@ throwRefiningError msg = throwError $ RefiningError msg
 
 -- TODO: refined structures and newtypes
 data RefiningCtx = RefiningCtx
-  { _ctxTypings :: Map.Map Base.TermId Type,
+  { _ctxTypings :: Map.Map Base.TermId TypeReft,
     _ctxId's :: Map.Map (Base.Applicant ()) Id',
-    _ctxApplicants :: Map.Map Id' (Base.ApplicantType Type),
+    _ctxApplicants :: Map.Map Id' (Base.ApplicantType TypeReft),
     _ctxFunctions :: Map.Map Id' (Base.Function Base.Type),
     -- | substitution resulting from inlining a function
     _ctxTermIdSubstitution :: Map.Map Base.TermId (Term Base.Type)

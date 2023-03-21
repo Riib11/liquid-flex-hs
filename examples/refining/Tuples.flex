@@ -1,7 +1,7 @@
 module Tuples where
 
-function main() -> Tuple<bit, bit> {
-    (true, false)
+function main() -> Tuple<bit, bit, bit> {
+    (true, false, true)
 
     // assert {
     //     let t = (1, 2);
