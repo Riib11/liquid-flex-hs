@@ -54,8 +54,10 @@ data RefiningCtx = RefiningCtx
     _ctxId's :: Map.Map (Base.Applicant ()) Id',
     _ctxApplicants :: Map.Map Id' (Base.ApplicantType TypeReft),
     _ctxFunctions :: Map.Map Id' (Base.Function Base.Type),
-    -- | substitution resulting from inlining a function
-    _ctxTermIdSubstitution :: Map.Map Base.TermId (Term Base.Type)
+    -- | substitution resulting from inlining a function; it is built up during
+    -- translating (that's why it has to be a Term Base.Type), and then used
+    -- during refinement checking
+    _ctxTermIdSubstitution :: Map.Map Id' (Term Base.Type)
   }
 
 data RefiningEnv = RefiningEnv
@@ -104,9 +106,12 @@ introId' id' = case id'MaybeTermId id' of
       (const $ Just id')
 
 lookupApplicantType id' =
-  asks (^. ctxApplicants . at id') >>= \case
-    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown applicant id:" <+> pPrint id'
-    Just appTy -> return appTy
+  asks (^. ctxTermIdSubstitution . at id') >>= \case
+    Just tm -> return (Base.ApplicantType (Left $ getTermTopR tm))
+    Nothing ->
+      asks (^. ctxApplicants . at id') >>= \case
+        Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown applicant id:" <+> pPrint id'
+        Just appTy -> return (Right <$> appTy)
 
 introApplicantType id' appTy =
   locally

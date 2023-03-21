@@ -77,27 +77,46 @@ transTerm term = do
           mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
           lookupFunction id' >>= \Base.Function {..} -> do
             -- substitute params for args
-            maybe
-              id
-              ( \args' ->
-                  comps
-                    ( (functionParameters `zip` args') <&> \((tmId, _ty), arg) ->
-                        locally (ctxTermIdSubstitution . at tmId) (const $ Just arg)
-                    )
-              )
-              mb_args'
-              $
-              -- substitute contextual params for contextual args
-              maybe
-                id
-                ( \(cxargs', cxparams) ->
+            let f1 :: RefiningM (Term Base.Type) -> RefiningM (Term Base.Type)
+                f1 = case mb_args' of
+                  Nothing -> id
+                  Just args' ->
                     comps
-                      ( (cxparams `zip` cxargs') <&> \((_tyId, tmId), cxarg) ->
-                          locally (ctxTermIdSubstitution . at tmId) (const $ Just cxarg)
+                      ( functionParameters `zip` args' <&> \((tmId, _ty), arg') m -> do
+                          argId' <- freshId'TermId tmId
+                          locally (ctxTermIdSubstitution . at argId') (const $ Just arg') m
                       )
-                )
-                ((,) <$> mb_cxargs' <*> functionContextualParameters)
-              $ transTerm functionBody
+
+            let f2 :: RefiningM (Term Base.Type) -> RefiningM (Term Base.Type)
+                f2 = error "same as above, but for mb_cxargs'"
+
+            f1 $ transTerm functionBody
+
+        -- -- substitute params for args
+        -- maybe
+        --   _id
+        --   ( \args' ->
+        --       compsM
+        --         ( (functionParameters `zip` args') <&> \((tmId, _ty), arg) -> do
+        --             -- argId' <- _
+        --             -- arg' <- transTerm arg
+        --             -- locally (ctxTermIdSubstitution . at argId') (const $ Just arg') -- (const $ Just arg)
+        --             \m -> _
+        --         )
+        --   )
+        --   mb_args'
+        --   <*>
+        --   -- substitute contextual params for contextual args
+        --   (return $ maybe
+        --     id
+        --     ( \(cxargs', cxparams) ->
+        --         comps
+        --           ( (cxparams `zip` cxargs') <&> \((_tyId, tmId), cxarg) ->
+        --               locally (ctxTermIdSubstitution . at tmId) (const $ Just cxarg)
+        --           )
+        --     )
+        --     ((,) <$> mb_cxargs' <*> functionContextualParameters))
+        --   $ transTerm functionBody
         _ -> do
           mb_args' <- (transTerm `traverse`) `traverse` mb_args
           mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
