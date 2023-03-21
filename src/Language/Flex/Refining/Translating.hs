@@ -6,12 +6,13 @@ import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Foldable (foldlM)
 import Data.Functor
+import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Embedding (embedTerm, sortOfType)
-import Language.Flex.Refining.RefiningM (RefiningM, ctxTermIdSubstitution, freshId', freshId'TermId, freshSymbol, freshenBind, introApplicantType, introId', lookupApplicantType, lookupFunction, lookupId', throwRefiningError)
+import Language.Flex.Refining.RefiningM (RefiningM, freshId', freshId'TermId, freshSymbol, freshenBind, freshenTermId, introApplicantType, introBinding, introId', lookupApplicantType, lookupFunction, lookupId', throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
@@ -49,6 +50,9 @@ transTerm term = do
         Base.PrimitiveAdd te te' -> TermPrimitive <$> (PrimitiveAdd <$> transTerm te <*> transTerm te') <*> return ty
         -- invalid
         Base.PrimitiveCast _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "PrimitiveCast should not appear in typed term:" <+> pPrint term
+    -- local binding is added to refinement context during refinement checking,
+    -- not translation (since the implementation of the let needs to be checked
+    -- first)
     Base.TermLet {termPattern, termTerm, termBody} -> do
       id' <- case termPattern of
         Base.PatternNamed ti _ty -> freshId'TermId ti
@@ -56,8 +60,10 @@ transTerm term = do
       tm <- transTerm termTerm
       ty <- transType $ getTermTopR tm
       bod <-
-        introId' id'
-          . introApplicantType id' (Base.ApplicantType ty)
+        comps
+          [ introId' id',
+            introApplicantType id' (Base.ApplicantType ty)
+          ]
           $ transTerm termBody
       return $ TermLet id' tm bod (getTermTopR bod)
     Base.TermAssert {termTerm, termBody} -> do
@@ -68,55 +74,72 @@ transTerm term = do
     Base.TermMember _te _fi _ty -> error "transTerm"
     Base.TermNeutral app mb_args mb_cxargs ty -> do
       id' <- lookupId' (void app)
+      -- note that we avoid inserting the globally-known refinement types here,
+      -- since we will do that in the refining step anyway, and we must provide a
+      -- `Base.Type` right now anyway since we're producing a `Term Base.Type`
+      lookupApplicantType id' >>= \case
+        -- Function application is inlined. For example, given
+        --
+        -- @
+        --    function f(x: bit) -> bit {
+        --      let y = !x;
+        --      y
+        --    }
+        -- @
+        --
+        -- then the application @f(true)@ is inlined to be
+        --
+        -- @
+        --    let x' = true;
+        --    let y' = !x';
+        --    y'
+        -- @
+        --
+        -- where @x'@ and @y'@ are fresh variables substituted in for @x@
+        -- and @y@
+        Base.ApplicantTypeFunction Base.FunctionType {..} | not functionTypeIsTransform -> do
+          mb_args' <- (transTerm `traverse`) `traverse` mb_args
+          mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
+          lookupFunction id' >>= \Base.Function {..} -> do
+            -- make fresh versions of arg ids
+            -- RefiningM (Map.Map Base.TermId Base.TermId)
+            freshArgIds <-
+              Map.fromList
+                <$> case mb_args' of
+                  Nothing -> return []
+                  Just args' ->
+                    forM (functionParameters `zip` args') \((tmId, _ty), arg') -> do
+                      tmId' <- freshenTermId tmId
+                      return (tmId, tmId')
 
-      -- first, check if this neutral has been substituted
-      asks (^. ctxTermIdSubstitution . at id') >>= \case
-        -- this neutral has been substited by function inlining
-        Just tm -> return tm
-        -- this neutral has NOT been substituted by function inlining
-        Nothing -> do
-          -- note that we avoid inserting the globally-known refinement types here,
-          -- since we will do that in the refining step anyway, and we must provide a
-          -- `Base.Type` right now anyway since we're producing a `Term Base.Type`
-          lookupApplicantType id' >>= \case
-            -- function application is inlined
-            Base.ApplicantTypeFunction Base.FunctionType {..} | not functionTypeIsTransform -> do
-              mb_args' <- (transTerm `traverse`) `traverse` mb_args
-              mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
-              lookupFunction id' >>= \Base.Function {..} -> do
-                comps
-                  [ -- substitute arguments
-                    case mb_args' of
-                      Nothing -> id
-                      Just args' ->
-                        comps
-                          ( functionParameters `zip` args' <&> \((tmId, _ty), arg') m -> do
-                              argId' <- freshId'TermId tmId
-                              locally (ctxTermIdSubstitution . at argId') (const $ Just arg') m
-                          ),
-                    -- substitute contextual arguments
-                    case (functionContextualParameters, mb_cxargs') of
-                      (Nothing, Nothing) -> id
-                      (Just cxparams, Just cxargs') ->
-                        comps
-                          ( cxparams `zip` cxargs' <&> \((_tyId, tmId), cxarg) m -> do
-                              cxargId' <- freshId'TermId tmId
-                              locally (ctxTermIdSubstitution . at cxargId') (const $ Just cxarg) m
-                          )
-                      _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "function type's contextual parameters doesn't correspond to application's contextual arguments: " <+> pPrint functionContextualParameters <+> "," <+> pPrint mb_cxargs'
-                  ]
-                  $ transTerm functionBody
-            _ -> do
-              mb_args' <- (transTerm `traverse`) `traverse` mb_args
-              mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
-              let args'' = fromMaybe [] mb_args' ++ fromMaybe [] mb_cxargs'
-              return $ TermNeutral id' args'' ty
+            -- make fresh version of cxarg ids
+            freshCxargIds <-
+              Map.fromList <$> case (functionContextualParameters, mb_cxargs') of
+                (Nothing, Nothing) -> return []
+                (Just cxparams, Just cxargs') -> forM (cxparams `zip` cxargs') \((_tyId, tmId), _cxarg) -> do
+                  tmId' <- freshenTermId tmId
+                  return (tmId, tmId')
+                _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "function type's contextual parameters doesn't correspond to application's contextual arguments: " <+> pPrint functionContextualParameters <+> "," <+> pPrint mb_cxargs'
+
+            let freshTermIds = Map.union freshArgIds freshCxargIds
+
+            -- substitute via `freshTermIds` in `functionBody`
+            let funBody' = error "TODO:checkpoint"
+
+            transTerm functionBody
+        _ -> do
+          mb_args' <- (transTerm `traverse`) `traverse` mb_args
+          mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
+          let args'' = fromMaybe [] mb_args' ++ fromMaybe [] mb_cxargs'
+          return $ TermNeutral id' args'' ty
     Base.TermMatch _te _x0 _ty -> error "transTerm"
     -- invalid
     Base.TermAscribe _te _ty _ty' -> FlexBug.throw $ FlexM.FlexLog "refining" $ "term ascribe should not appear in typed term:" <+> pPrint term
 
 -- ** Translate Type
 
+-- in the refinement, accounts for local bindings as existentially quantified
+-- variables with an equality constraint
 transType :: Base.Type -> RefiningM TypeReft
 transType type_ = case type_ of
   Base.TypeNumber numty n -> do
@@ -155,10 +178,6 @@ transType type_ = case type_ of
   Base.TypeUnifyVar _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "type unification variable should not appear in normalized type:" <+> pPrint type_
 
 -- ** Basic Types
-
--- TODO: do i actually ever use this in the list form, or can i reduce it to
--- just handling tuples?
---
 
 -- | Refined tuple type.
 --

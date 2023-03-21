@@ -54,10 +54,7 @@ data RefiningCtx = RefiningCtx
     _ctxId's :: Map.Map (Base.Applicant ()) Id',
     _ctxApplicants :: Map.Map Id' (Base.ApplicantType TypeReft),
     _ctxFunctions :: Map.Map Id' (Base.Function Base.Type),
-    -- | substitution resulting from inlining a function; it is built up during
-    -- translating (that's why it has to be a Term Base.Type), and then used
-    -- during refinement checking
-    _ctxTermIdSubstitution :: Map.Map Id' (Term Base.Type)
+    _ctxBindings :: Map.Map Id' (Term TypeReft)
   }
 
 data RefiningEnv = RefiningEnv
@@ -74,8 +71,7 @@ topRefiningCtx _mdl = do
       { _ctxTypings = mempty,
         _ctxId's = mempty,
         _ctxApplicants = mempty,
-        _ctxFunctions = mempty,
-        _ctxTermIdSubstitution = mempty
+        _ctxFunctions = mempty
       }
 
 topRefiningEnv :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningEnv
@@ -120,11 +116,19 @@ lookupFunction id' =
     Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown function id:" <+> pPrint id'
     Just func -> return func
 
+introBinding id' tm =
+  locally
+    (ctxBindings . at id')
+    (const $ Just tm)
+
 freshenBind :: F.Reft -> RefiningM F.Reft
 freshenBind r = do
   let x = F.reftBind r
   x' <- freshSymbol (render $ pprintInline x)
   return $ F.substa (\y -> if y == x then x' else y) r
+
+freshenTermId :: Base.TermId -> RefiningM Base.TermId
+freshenTermId = error "TODO: freshenTermId"
 
 freshSymbol :: String -> RefiningM F.Symbol
 freshSymbol str = do

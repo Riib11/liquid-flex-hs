@@ -559,6 +559,32 @@ andRefinements (rfn : rfns) = foldr andRefinement rfn rfns
 instance Pretty (Refinement ann) where
   pPrint tm = "assert" <> parens (pPrint tm)
 
+renameTerm :: Map.Map TermId TermId -> Term r -> Term r
+renameTerm tmIds term = case term of
+  TermLiteral lit r -> term
+  TermPrimitive prim r -> TermPrimitive (renamePrimitive tmIds prim) r
+  -- there's no shadowing, so nothing special to worry about here
+  TermLet pat te te' r -> TermLet pat (renameTerm tmIds te) (renameTerm tmIds te') r
+  TermAssert te te' r -> TermAssert (renameTerm tmIds te) (renameTerm tmIds te') r
+  TermStructure ti fields r -> TermStructure ti (second (renameTerm tmIds) <$> fields) r
+  TermMember te fi r -> TermMember (renameTerm tmIds te) fi r
+  TermNeutral ap m_tes m_te's r -> TermNeutral ap (renameTerm tmIds <$$> m_tes) (renameTerm tmIds <$$> m_te's) r
+  TermAscribe te ty r -> TermAscribe (renameTerm tmIds te) ty r
+  TermMatch te branches r -> TermMatch (renameTerm tmIds te) (second (renameTerm tmIds) <$> branches) r
+
+renamePrimitive :: Map.Map TermId TermId -> Primitive r -> Primitive r
+renamePrimitive tmIds prim = case prim of
+  PrimitiveTry te -> PrimitiveTry (renameTerm tmIds te)
+  PrimitiveCast te -> PrimitiveCast (renameTerm tmIds te)
+  PrimitiveTuple tes -> PrimitiveTuple (renameTerm tmIds <$> tes)
+  PrimitiveArray tes -> PrimitiveArray (renameTerm tmIds <$> tes)
+  PrimitiveIf te te' te_r -> PrimitiveIf (renameTerm tmIds te) (renameTerm tmIds te') (renameTerm tmIds te_r)
+  PrimitiveAnd te te' -> PrimitiveAnd (renameTerm tmIds te) (renameTerm tmIds te')
+  PrimitiveOr te te' -> PrimitiveOr (renameTerm tmIds te) (renameTerm tmIds te')
+  PrimitiveNot te -> PrimitiveNot (renameTerm tmIds te)
+  PrimitiveEq te te' -> PrimitiveEq (renameTerm tmIds te) (renameTerm tmIds te')
+  PrimitiveAdd te te' -> PrimitiveAdd (renameTerm tmIds te) (renameTerm tmIds te')
+
 -- -- substTerm x a b = b[x := a]
 -- substTerm :: TermId -> Term r -> Term r -> Term r
 -- substTerm tmId tm' = go

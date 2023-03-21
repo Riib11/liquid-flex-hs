@@ -3,6 +3,8 @@
 module Language.Flex.Refining.Check where
 
 -- TODO: rename this module to "Refining"
+import Control.Lens (at, (^.))
+import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer (MonadWriter (tell), WriterT (runWriterT), void)
 import Data.Bifunctor (Bifunctor (second))
@@ -58,13 +60,18 @@ synthCheckTerm tyExpect tm = do
 
 synthTerm :: Term Base.Type -> CheckingM (Term TypeReft)
 synthTerm term = case term of
-  TermNeutral app args ty -> do
-    args' <- synthTerm `traverse` args
-    -- TODO: for transforms, input values can't affect output refinement type,
-    -- BUT, newtype/variant/enum constructors should have their args reflected
-    -- in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c) }
-    ty' <- lift $ transType ty
-    return $ TermNeutral app args' ty'
+  TermNeutral id' args ty -> do
+    -- first, check if its a reference to a local binding
+    asks (^. ctxBindings . at id') >>= \case
+      -- this
+      Just tm -> _
+      Nothing -> do
+        args' <- synthTerm `traverse` args
+        -- TODO: for transforms, input values can't affect output refinement type,
+        -- BUT, newtype/variant/enum constructors should have their args reflected
+        -- in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c) }
+        ty' <- lift $ transType ty
+        return $ TermNeutral id' args' ty'
   TermLiteral lit ty -> do
     -- literals are reflected
     ty' <- lift $ transType ty
@@ -89,7 +96,8 @@ synthTerm term = case term of
     bod' <-
       introId' id' $
         introApplicantType id' (Base.ApplicantType $ getTermTopR tm') $
-          synthTerm bod
+          introBinding id' tm' $
+            synthTerm bod
     ty' <- lift $ transType ty
     return $ TermLet id' tm' bod' ty'
 
