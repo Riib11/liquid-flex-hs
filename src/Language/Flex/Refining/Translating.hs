@@ -1,7 +1,8 @@
 module Language.Flex.Refining.Translating where
 
-import Control.Lens (At (at), locally)
+import Control.Lens (At (at), locally, (^.))
 import Control.Monad (foldM, forM, void, when)
+import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Foldable (foldlM)
 import Data.Functor
@@ -67,61 +68,49 @@ transTerm term = do
     Base.TermMember _te _fi _ty -> error "transTerm"
     Base.TermNeutral app mb_args mb_cxargs ty -> do
       id' <- lookupId' (void app)
-      -- note that we avoid inserting the globally-known refinement types here,
-      -- since we will do that in the refining step anyway, and we must provide a
-      -- `Base.Type` right now anyway since we're producing a `Term Base.Type`
-      lookupApplicantType id' >>= \case
-        -- function application is inlined
-        Base.ApplicantTypeFunction Base.FunctionType {..} | not functionTypeIsTransform -> do
-          mb_args' <- (transTerm `traverse`) `traverse` mb_args
-          mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
-          lookupFunction id' >>= \Base.Function {..} -> do
-            -- substitute params for args
-            let f1 :: RefiningM (Term Base.Type) -> RefiningM (Term Base.Type)
-                f1 = case mb_args' of
-                  Nothing -> id
-                  Just args' ->
-                    comps
-                      ( functionParameters `zip` args' <&> \((tmId, _ty), arg') m -> do
-                          argId' <- freshId'TermId tmId
-                          locally (ctxTermIdSubstitution . at argId') (const $ Just arg') m
-                      )
 
-            let f2 :: RefiningM (Term Base.Type) -> RefiningM (Term Base.Type)
-                f2 = error "same as above, but for mb_cxargs'"
-
-            f1 $ transTerm functionBody
-
-        -- -- substitute params for args
-        -- maybe
-        --   _id
-        --   ( \args' ->
-        --       compsM
-        --         ( (functionParameters `zip` args') <&> \((tmId, _ty), arg) -> do
-        --             -- argId' <- _
-        --             -- arg' <- transTerm arg
-        --             -- locally (ctxTermIdSubstitution . at argId') (const $ Just arg') -- (const $ Just arg)
-        --             \m -> _
-        --         )
-        --   )
-        --   mb_args'
-        --   <*>
-        --   -- substitute contextual params for contextual args
-        --   (return $ maybe
-        --     id
-        --     ( \(cxargs', cxparams) ->
-        --         comps
-        --           ( (cxparams `zip` cxargs') <&> \((_tyId, tmId), cxarg) ->
-        --               locally (ctxTermIdSubstitution . at tmId) (const $ Just cxarg)
-        --           )
-        --     )
-        --     ((,) <$> mb_cxargs' <*> functionContextualParameters))
-        --   $ transTerm functionBody
-        _ -> do
-          mb_args' <- (transTerm `traverse`) `traverse` mb_args
-          mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
-          let args'' = fromMaybe [] mb_args' ++ fromMaybe [] mb_cxargs'
-          return $ TermNeutral id' args'' ty
+      -- first, check if this neutral has been substituted
+      asks (^. ctxTermIdSubstitution . at id') >>= \case
+        -- this neutral has been substited by function inlining
+        Just tm -> return tm
+        -- this neutral has NOT been substituted by function inlining
+        Nothing -> do
+          -- note that we avoid inserting the globally-known refinement types here,
+          -- since we will do that in the refining step anyway, and we must provide a
+          -- `Base.Type` right now anyway since we're producing a `Term Base.Type`
+          lookupApplicantType id' >>= \case
+            -- function application is inlined
+            Base.ApplicantTypeFunction Base.FunctionType {..} | not functionTypeIsTransform -> do
+              mb_args' <- (transTerm `traverse`) `traverse` mb_args
+              mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
+              lookupFunction id' >>= \Base.Function {..} -> do
+                comps
+                  [ -- substitute arguments
+                    case mb_args' of
+                      Nothing -> id
+                      Just args' ->
+                        comps
+                          ( functionParameters `zip` args' <&> \((tmId, _ty), arg') m -> do
+                              argId' <- freshId'TermId tmId
+                              locally (ctxTermIdSubstitution . at argId') (const $ Just arg') m
+                          ),
+                    -- substitute contextual arguments
+                    case (functionContextualParameters, mb_cxargs') of
+                      (Nothing, Nothing) -> id
+                      (Just cxparams, Just cxargs') ->
+                        comps
+                          ( cxparams `zip` cxargs' <&> \((_tyId, tmId), cxarg) m -> do
+                              cxargId' <- freshId'TermId tmId
+                              locally (ctxTermIdSubstitution . at cxargId') (const $ Just cxarg) m
+                          )
+                      _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "function type's contextual parameters doesn't correspond to application's contextual arguments: " <+> pPrint functionContextualParameters <+> "," <+> pPrint mb_cxargs'
+                  ]
+                  $ transTerm functionBody
+            _ -> do
+              mb_args' <- (transTerm `traverse`) `traverse` mb_args
+              mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
+              let args'' = fromMaybe [] mb_args' ++ fromMaybe [] mb_cxargs'
+              return $ TermNeutral id' args'' ty
     Base.TermMatch _te _x0 _ty -> error "transTerm"
     -- invalid
     Base.TermAscribe _te _ty _ty' -> FlexBug.throw $ FlexM.FlexLog "refining" $ "term ascribe should not appear in typed term:" <+> pPrint term
@@ -145,7 +134,7 @@ transType type_ = case type_ of
               [ F.PAtom F.Le (F.expr (0 :: Int)) (F.expr x),
                 F.PAtom F.Lt (F.expr x) (F.expr (2 ^ n :: Int))
               ]
-          Base.TypeFloat -> error "transLiteral TypeFloat"
+          Base.TypeFloat -> error "TODO: transType TypeFloat"
     let atomic = case numty of
           Base.TypeInt -> TypeInt
           Base.TypeUInt -> TypeInt
@@ -216,10 +205,6 @@ typeTuple tys_ = do
 
         -- { tuple: (a1, a2) | p1 && p2 }
         return $ TypeTuple (ty1, ty2) r
-
-  -- TODO: should do this here??
-  -- first, freshen all the binds in tys
-  -- forM tys_ (freshenBind `traverse`) >>= \case
 
   case tys_ of
     [] -> error "typeTuple []"

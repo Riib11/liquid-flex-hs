@@ -106,12 +106,9 @@ introId' id' = case id'MaybeTermId id' of
       (const $ Just id')
 
 lookupApplicantType id' =
-  asks (^. ctxTermIdSubstitution . at id') >>= \case
-    Just tm -> return (Base.ApplicantType (Left $ getTermTopR tm))
-    Nothing ->
-      asks (^. ctxApplicants . at id') >>= \case
-        Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown applicant id:" <+> pPrint id'
-        Just appTy -> return (Right <$> appTy)
+  asks (^. ctxApplicants . at id') >>= \case
+    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown applicant id:" <+> pPrint id'
+    Just appTy -> return (Right <$> appTy)
 
 introApplicantType id' appTy =
   locally
