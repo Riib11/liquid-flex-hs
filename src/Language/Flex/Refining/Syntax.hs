@@ -244,17 +244,6 @@ instance Pretty (Primitive r) where
     PrimitiveEq te te' -> parens $ pPrint te <+> "==" <+> pPrint te'
     PrimitiveAdd te te' -> parens $ pPrint te <+> "+" <+> pPrint te'
 
--- unrefinedTermTuple :: [Term Type] -> Term Type
--- unrefinedTermTuple tms | length tms < 2 = FlexBug.throw $ FlexM.FlexLog "refining" "attempted to contruct unrefined tuple term from term list with length < 2"
--- unrefinedTermTuple (tm : tms) = foldr go tm tms
---   where
---     go :: Term Type -> Term Type -> Term Type
---     go tm1 tm2 =
---       TermPrimitive
---         (PrimitiveTuple tm1 tm2)
---         (TypeTuple (getTermTopR tm1, getTermTopR tm2) mempty)
--- unrefinedTermTuple _ = error "IMPOSSIBLE"
-
 -- ** Term
 
 -- TODO: structure, member, construct enum, construct variant, match
