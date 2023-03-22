@@ -72,7 +72,7 @@ type TypeReft = Type F.Reft
 data Type r
   = TypeAtomic {typeAtomic :: AtomicType, typeAnn :: r}
   | TypeTuple {typeTupleComponents :: !(Type r, Type r), typeAnn :: r}
-  | TypeStructure {typeStructure :: Base.Structure, typeFieldTypes :: [(FieldId, Type r)], typeAnn :: r} -- TODO: can this be converted to a dataytype be be handled automatically by LH?
+  | TypeStructure {typeStructure :: Base.Structure, typeAnn :: r}
   deriving
     (Eq, Show, Functor, Foldable, Traversable)
 
@@ -85,7 +85,7 @@ instance Pretty (Type F.Reft) where
       TypeChar -> go "char" r
       TypeString -> go "string" r
     TypeTuple (ty1, ty2) r -> go (parens $ (pPrint ty1 <> ",") <+> pPrint ty2) r
-    TypeStructure structId _ r -> go (pPrint structId) r
+    TypeStructure structId r -> go (pPrint structId) r
     where
       go doc r = braces $ pprintInline (F.reftBind r) <+> ":" <+> doc <+> "|" <+> pprintInline (F.reftPred r)
 

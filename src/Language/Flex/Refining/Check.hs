@@ -19,10 +19,9 @@ import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexM)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
-import Language.Flex.Refining.Embedding (embedTerm, embedType)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
-import Language.Flex.Refining.Translating (eqPred, transType, typeTuple)
+import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, transType, typeTuple)
 import Language.Flex.Refining.Types
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
