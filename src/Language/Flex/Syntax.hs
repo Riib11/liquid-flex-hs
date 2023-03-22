@@ -561,7 +561,7 @@ instance Pretty (Refinement ann) where
 
 renameTerm :: Map.Map TermId TermId -> Term r -> Term r
 renameTerm tmIds term = case term of
-  TermLiteral lit r -> term
+  TermLiteral {} -> term
   TermPrimitive prim r -> TermPrimitive (renamePrimitive tmIds prim) r
   -- there's no shadowing, so nothing special to worry about here
   TermLet pat te te' r -> TermLet pat (renameTerm tmIds te) (renameTerm tmIds te') r

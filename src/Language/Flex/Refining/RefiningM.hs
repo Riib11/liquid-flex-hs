@@ -71,7 +71,8 @@ topRefiningCtx _mdl = do
       { _ctxTypings = mempty,
         _ctxId's = mempty,
         _ctxApplicants = mempty,
-        _ctxFunctions = mempty
+        _ctxFunctions = mempty,
+        _ctxBindings = mempty
       }
 
 topRefiningEnv :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningEnv
