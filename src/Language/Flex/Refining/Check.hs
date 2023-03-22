@@ -6,7 +6,7 @@ module Language.Flex.Refining.Check where
 import Control.Lens (at, (^.))
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (lift)
-import Control.Monad.Writer (MonadWriter (tell), WriterT (runWriterT), void)
+import Control.Monad.Writer (MonadWriter (tell), WriterT (runWriterT), unless, void)
 import Data.Bifunctor (Bifunctor (second))
 import Data.Functor
 import qualified Language.Fixpoint.Types as F
@@ -63,8 +63,10 @@ synthTerm term = case term of
   TermNeutral id' args ty -> do
     -- first, check if its a reference to a local binding
     asks (^. ctxBindings . at id') >>= \case
-      -- this
-      Just tm -> _
+      -- this neutral form is a reference to a local binding
+      Just tm -> do
+        unless (null args) $ FlexBug.throw $ FlexM.FlexLog "refining" $ "neutral forms that have as the applicant a reference to a local binding must not have any arguments, because functions cannot be defined locally"
+        return tm
       Nothing -> do
         args' <- synthTerm `traverse` args
         -- TODO: for transforms, input values can't affect output refinement type,
@@ -91,6 +93,10 @@ synthTerm term = case term of
     tm2' <- synthTerm tm2
     ty' <- inferTerm tm2'
     return $ TermAssert tm1' tm2' ty'
+  -- let-bindings introduce the following info into context:
+  --  - map the Base.TermId to a fresh Id' via introId'
+  --  - map the Id' to an ApplicantType via introApplicantType
+  --  - map the Id' to a Term TypeReft via introBinding
   TermLet id' tm bod ty -> do
     tm' <- synthTerm tm
     bod' <-
