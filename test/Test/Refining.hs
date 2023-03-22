@@ -20,20 +20,21 @@ test =
   TestLabel "refining" $
     TestList $
       concat
-      -- [ let !fps =
-      --         unsafePerformIO $
-      --           fmap concat . sequence $
-      --             [getDirectoryFilesBySuffix dir_examples_refining ".flex"]
-      --    in makeTest_refineModule True <$> fps,
-      --   let !fps =
-      --         unsafePerformIO $
-      --           fmap concat . sequence $
-      --             [getDirectoryFilesBySuffix dir_examples_refining_fail ".flex"]
-      --    in makeTest_refineModule False <$> fps
-      -- ]
-      $
-        singleton $
-          [makeTest_refineModule True "examples/refining/Locals.flex"]
+        [ let !fps =
+                unsafePerformIO $
+                  fmap concat . sequence $
+                    [getDirectoryFilesBySuffix dir_examples_refining ".flex"]
+           in makeTest_refineModule True <$> fps,
+          let !fps =
+                unsafePerformIO $
+                  fmap concat . sequence $
+                    [getDirectoryFilesBySuffix dir_examples_refining_fail ".flex"]
+           in makeTest_refineModule False <$> fps
+        ]
+
+-- \$
+--   singleton $
+--     [makeTest_refineModule True "examples/refining/Locals.flex"]
 
 makeTest_refineModule :: Bool -> FilePath -> Test
 makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . TestCase $ do
