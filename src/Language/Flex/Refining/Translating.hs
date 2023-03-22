@@ -184,93 +184,49 @@ transType type_ = case type_ of
   Base.TypeChar -> return $ TypeAtomic TypeChar F.trueReft
   Base.TypeArray Base.TypeChar -> return $ TypeAtomic TypeString F.trueReft
   Base.TypeArray _ty -> error "transType TODO"
-  Base.TypeTuple tys -> typeTuple =<< transType `traverse` tys
+  Base.TypeTuple tys -> do
+    tupleTypeReft =<< transType `traverse` tys
   Base.TypeOptional _ty -> error "transType TODO"
   Base.TypeNamed _ti -> error "transType TODO"
-  Base.TypeStructure Base.Structure {structureId = structId} -> do
-    {-
-    Structure {..} <- getStructure structId
-
-    symStruct <- freshSymbol "struct"
-
-    let tyStruct = TypeStructure structureId ()
-
-    -- pEq: struct = S x1 ... xN
-    pEq <-
-      eqPred
-        (termVar (fromSymbolToSymId symStruct) tyStruct)
-        ( TermStructure
-            structureId
-            ( structureFields <&> \(fieldId, ty) ->
-                ( fieldId,
-                  termVar
-                    (fromSymbolToSymId (F.symbol (structureId, fieldId)))
-                    (void ty)
-                )
-            )
-            tyStruct
-        )
-
-    -- pUser
-    let pUser = structureRefinement
-
-    tys <- (liftFlexM_RefiningM . embedType . snd) `traverse` structureFields
-
-    -- p: exists x1 ... xN . pEq(x1, ..., xN) && pUser(x1, ..., xN)
-    let p =
-          F.pExist
-            ( (structureFields `zip` tys)
-                <&> \((fieldId, _tyField), srtField) ->
-                  (F.symbol (structureId, fieldId), srtField)
-            )
-            $ F.conj [pEq, pUser]
-
-    -- r: { struct: S | p(struct) }
-    let r = F.reft symStruct p
-
-    return
-      TypeStructure
-        { typeStructureId = structureId,
-          typeAnn = r
-        }
-    -}
-    error "TODO: transType TypeStructure"
+  Base.TypeStructure struct@Base.Structure {..} -> do
+    structureTypeReft struct =<< secondM transType `traverse` structureFields
   Base.TypeEnum _en -> error "transType TODO"
   Base.TypeVariant _vari -> error "transType TODO"
   Base.TypeNewtype _new -> error "transType TODO"
   -- invalid
   Base.TypeUnifyVar _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "type unification variable should not appear in normalized type:" <+> pPrint type_
 
--- ** Basic Types
+-- ** Basic Refinement Types
 
 -- | Refined structure type.
-typeStructure :: Base.Structure -> [(Base.FieldId, TypeReft)] -> RefiningM TypeReft
-typeStructure struct@Base.Structure {..} fieldTys = do
-  symStruct <- liftFlexM_RefiningM $ freshSymbol "struct"
+--
+-- > structureTypeReft ... = ... TODO
+structureTypeReft :: Base.Structure -> [(Base.FieldId, TypeReft)] -> FlexM TypeReft
+structureTypeReft struct@Base.Structure {..} fieldTys = do
+  symStruct <- freshSymbol "struct"
 
   -- tyStruct: S a1 ... aN
   let tyStruct = TypeStructure struct ()
 
   -- p1(struct, x1, ..., xN): p1(x1, ..., xN): struct = S a1 ... aN
   p1 <-
-    liftFlexM_RefiningM $
-      eqPred
-        (termVar (fromSymbolToSymId symStruct) tyStruct)
-        ( TermStructure
-            structureId
-            ( fieldTys <&> \(fieldId, ty) ->
-                ( fieldId,
-                  fromSymbolToTerm (F.reftBind (typeAnn ty)) (void ty)
-                )
-            )
-            tyStruct
-        )
+    eqPred
+      (termVar (fromSymbolToSymId symStruct) tyStruct)
+      ( TermStructure
+          structureId
+          ( fieldTys <&> \(fieldId, ty) ->
+              ( fieldId,
+                fromSymbolToTerm (F.reftBind (typeAnn ty)) (void ty)
+              )
+          )
+          tyStruct
+      )
 
   -- p2(x1, ..., xN): r1(x1) && ... && rN(xN)
   let p2 = F.conj $ fieldTys <&> \(_, ty) -> F.reftPred $ typeAnn ty
 
   -- p(struct): exists x1, ..., xN . p1(struct, x1, ..., xN) && p2(x1, ..., xN)
-  fieldSrts <- secondM (liftFlexM_RefiningM . embedType) `traverse` fieldTys
+  fieldSrts <- secondM embedType `traverse` fieldTys
   let p =
         F.pExist
           ( fieldSrts <&> \(fieldId, srt) ->
@@ -285,10 +241,11 @@ typeStructure struct@Base.Structure {..} fieldTys = do
 
 -- | Refined tuple type.
 --
--- > typeTuple [.., { xI: aI | pI(xI) }, ...] = { tuple: (..., aI, ...) | (tuple
--- > == (..., xI, ....)) && ... && pI(xI) && .... }
-typeTuple :: [TypeReft] -> FlexM TypeReft
-typeTuple tys_ = do
+-- > tupleTypeReft [.., { xI: aI | pI(xI) }, ...] = { tuple: (((a1, a2), ...), aN) |
+-- > (tuple
+-- > == (((x1, x2), ...), xN)  ) && ... && pI(xI) && .... }
+tupleTypeReft :: [TypeReft] -> FlexM TypeReft
+tupleTypeReft tys_ = do
   let go :: TypeReft -> TypeReft -> FlexM TypeReft
       go ty1 ty2 = do
         -- ty1: { x1: a1 | r1(x1) }
@@ -333,8 +290,8 @@ typeTuple tys_ = do
         return $ TypeTuple (ty1, ty2) r
 
   case tys_ of
-    [] -> error "typeTuple []"
-    [_] -> error "typeTuple [ _ ]"
+    [] -> error "tupleTypeReft []"
+    [_] -> error "tupleTypeReft [ _ ]"
     (ty : tys) -> foldlM go ty tys -- TUPLE: fold left
 
 -- ** Utilities

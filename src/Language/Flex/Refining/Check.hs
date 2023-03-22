@@ -21,7 +21,7 @@ import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
-import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, transType, typeTuple)
+import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, transType, tupleTypeReft)
 import Language.Flex.Refining.Types
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
@@ -129,7 +129,7 @@ synthTerm term = case term of
   TermStructure {..} -> do
     -- reflect as you'd expect
 
-    struct@Base.Structure {..} <- getStructure termStructureId
+    Base.Structure {..} <- getStructure termStructureId
 
     fields <-
       forM
@@ -162,7 +162,10 @@ synthPrimitive _term ty primitive =
       ty1 <- inferTerm tm1'
       tm2' <- synthTerm tm2
       ty2 <- inferTerm tm2'
-      tyTuple <- liftFlexM_CheckingM $ typeTuple [ty1, ty2]
+      -- need to use tupleTypeReft instead of transType here because tuples are
+      -- polymorphic, so the refinements on the components need to be propogated
+      -- outwards
+      tyTuple <- liftFlexM_CheckingM $ tupleTypeReft [ty1, ty2]
       return $ TermPrimitive (PrimitiveTuple (tm1', tm2')) tyTuple
     PrimitiveIf tm1 tm2 tm3 -> go3 PrimitiveIf tm1 tm2 tm3
     PrimitiveAnd tm1 tm2 -> go2 PrimitiveAnd tm1 tm2

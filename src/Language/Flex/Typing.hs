@@ -425,11 +425,14 @@ synthTerm term = case term of
     struct <-
       lookupType tyId >>>= \case
         TypeStructure struct -> return struct
-        _ -> throwTypingError ("expected" <+> ticks (pPrint tyId) <+> " to be a structure type id") (pure . toSyntax $ term)
-    fields' <- forM fields \(fieldId, tm) ->
-      case lookup fieldId (structureFields struct) of
-        Nothing -> throwTypingError ("unknown field" <+> pPrint fieldId <+> " of the structure" <+> ticks (pPrint tyId)) (pure . toSyntax $ term)
-        Just tyField -> (fieldId,) <$> synthCheckTerm tyField tm
+        _ -> throwTypingError ("expected" <+> ticks (pPrint tyId) <+> "to be a structure type id") (pure . toSyntax $ term)
+    -- iterate over structureFields, since we want the resulting fields' to be
+    -- in the same order defined by the structure declaration
+    fields' <- forM (structureFields struct) \(fieldId, tyField) ->
+      case lookup fieldId fields of
+        Nothing -> throwTypingError ("missing field" <+> pPrint fieldId <+> "of the structure" <+> ticks (pPrint tyId)) (pure . toSyntax $ term)
+        Just tm -> (fieldId,) <$> synthCheckTerm tyField tm
+    unless (length fields' == length fields) $ throwTypingError "excess fields given to structure" (pure . toSyntax $ term)
     return $ TermStructure tyId fields' (return $ TypeStructure struct)
   TermMember tm fieldId () -> do
     tm' <- synthTerm tm
