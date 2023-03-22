@@ -90,7 +90,7 @@ data Module ann = Module
 
 instance Pretty ann => Pretty (Module ann) where
   pPrint (Module {..}) =
-    ("module" <+> pPrint moduleId)
+    ("module" <+> pPrint moduleId <+> "where")
       $$ vcat (pPrint <$> moduleDeclarations)
 
 -- ** Declarations
@@ -178,7 +178,7 @@ data RefinedType ann = RefinedType
   }
   deriving (Eq, Functor, Foldable, Traversable, Show)
 
-instance Pretty (RefinedType ann) where
+instance Pretty ann => Pretty (RefinedType ann) where
   pPrint (RefinedType {..}) =
     "#refine" <> angles (pPrint refinedTypeId) <> parens (pPrint refinedTypeRefinement)
 
@@ -568,7 +568,7 @@ andRefinements [rfn] = rfn
 andRefinements (rfn : rfns) = foldr andRefinement rfn rfns
 
 instance Pretty (Refinement ann) where
-  pPrint tm = "assert" <> parens (pPrint tm)
+  pPrint (Refinement tm) = "assert" <> parens (pPrint tm)<
 
 renameTerm :: Map.Map TermId TermId -> Term r -> Term r
 renameTerm tmIds term = case term of
