@@ -7,18 +7,18 @@ import Language.Flex.Refining.Syntax (primitiveLocated)
 
 preludeDataDecls :: [F.DataDecl]
 preludeDataDecls =
-  [ datadeclTuple
+  [ tupleDataDecl
   ]
 
 -- TODO: is it actually proper to use F.FVar to refer to the type variables?
-datadeclTuple :: F.DataDecl
-datadeclTuple =
+tupleDataDecl :: F.DataDecl
+tupleDataDecl =
   F.DDecl
     { ddTyCon = tupleFTycon,
       ddVars = 2,
       ddCtors =
         [ F.DCtor
-            { dcName = primitiveLocated tupleConstructorSymbol,
+            { dcName = primitiveLocated tupleTermConstructorSymbol,
               dcFields =
                 [ F.DField
                     { dfName = primitiveLocated tupleField1Symbol,
@@ -38,11 +38,8 @@ datadeclTuple =
 tupleFTycon :: F.FTycon
 tupleFTycon = primitiveTycon "Tuple"
 
-tupleTypeSymbol :: F.Symbol
-tupleTypeSymbol = "Tuple"
-
-tupleConstructorSymbol :: F.Symbol
-tupleConstructorSymbol = "MakeTuple"
+tupleTermConstructorSymbol :: F.Symbol
+tupleTermConstructorSymbol = "TupleConstructor"
 
 tupleField1Symbol :: F.Symbol
 tupleField1Symbol = "TupleField1"

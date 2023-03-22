@@ -51,6 +51,11 @@ defaultSourcePos = do
         sourceColumn = F.mkPos 1
       }
 
+defaultLocated :: MonadReader FlexOptions m => a -> m (F.Located a)
+defaultLocated a = do
+  pos <- defaultSourcePos
+  return F.Loc {loc = pos, locE = pos, val = a}
+
 data FlexLog = FlexLog
   { logLabel :: Doc,
     logBody :: Doc

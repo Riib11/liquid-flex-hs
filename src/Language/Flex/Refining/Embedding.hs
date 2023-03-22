@@ -1,19 +1,20 @@
 module Language.Flex.Refining.Embedding where
 
-import Control.Monad.Writer (WriterT)
+import Control.Monad.Writer (MonadTrans (lift), WriterT, forM)
 import Data.Foldable (foldlM, foldrM)
 import qualified Data.Map as Map
 import Data.String (IsString (fromString))
 import Data.Text (pack)
 import qualified Language.Fixpoint.Types as F
-import Language.Flex.Refining.Prelude (tupleConstructorSymbol, tupleFTycon)
+import Language.Flex.FlexM (FlexM, defaultLocated)
+import Language.Flex.Refining.Prelude (tupleFTycon, tupleTermConstructorSymbol)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
 
--- type EmbeddingM a = WriterT [(SymId, Term (Type ()))] RefiningM a
+-- * Embedding
 
 embedSymId :: SymId -> RefiningM F.Expr
 embedSymId SymId {..} = return $ F.eVar symIdSymbol
@@ -33,7 +34,7 @@ embedTerm = \case
   -- (let x = a in b) ~~> ((fun x => b) a)
   TermLet x tm bod _ -> do
     tm' <- embedTerm tm
-    let sort = embedType (termAnn tm)
+    sort <- lift . lift . lift $ embedType (termAnn tm)
     bod' <- embedTerm bod
     return $ F.eApps (F.ELam (symIdSymbol x, sort) bod') [tm']
 
@@ -70,16 +71,43 @@ embedTermId tmId = return $ fromString (render . pPrint $ tmId)
 -- *** Primitive Constructors
 
 constrTuple :: F.Expr
-constrTuple = F.eVar tupleConstructorSymbol
+constrTuple = F.eVar tupleTermConstructorSymbol
 
 -- ** Embedding as Sorts
 
-embedType :: Type r -> F.Sort
+embedType :: Type r -> FlexM F.Sort
 embedType = \case
   TypeAtomic atomic _ -> case atomic of
-    TypeInt -> F.intSort
-    TypeFloat -> F.realSort
-    TypeBit -> F.boolSort
-    TypeChar -> F.charSort
-    TypeString -> F.strSort
-  TypeTuple (ty1, ty2) _ -> F.fApp (F.fTyconSort tupleFTycon) (embedType <$> [ty1, ty2])
+    TypeInt -> return F.intSort
+    TypeFloat -> return F.realSort
+    TypeBit -> return F.boolSort
+    TypeChar -> return F.charSort
+    TypeString -> return F.strSort
+  TypeTuple (ty1, ty2) _ -> F.fApp (F.fTyconSort tupleFTycon) <$> (embedType `traverse` [ty1, ty2])
+  TypeStructure struct _ -> F.fTyconSort <$> structureFTycon struct
+
+-- ** Datatypes
+
+structureDataDecl :: Structure -> FlexM F.DataDecl
+structureDataDecl struct@Structure {..} =
+  do
+    ddTyCon <- structureFTycon struct
+    dcName <- structureSymbol struct
+    dcFields <- forM structureFields \(fieldId, ty) -> do
+      dfName <- structureFieldSymbol struct fieldId
+      dfSort <- embedType ty
+      return F.DField {dfName, dfSort}
+    return F.DDecl {ddTyCon, ddVars = 0, ddCtors = [F.DCtor {dcName, dcFields}]}
+
+structureSymbol :: Structure -> FlexM F.LocSymbol
+structureSymbol Structure {..} = defaultLocated $ F.symbol structureId
+
+structureFTycon :: Structure -> FlexM F.FTycon
+structureFTycon Structure {..} = F.symbolFTycon <$> defaultLocated (F.symbol structureId)
+
+-- TODO: could this cause issues since uses the same symbol as the FTycon?
+structureConstructorSymbol :: Structure -> FlexM F.LocSymbol
+structureConstructorSymbol = structureSymbol
+
+structureFieldSymbol :: Structure -> Base.FieldId -> FlexM F.LocSymbol
+structureFieldSymbol Structure {..} fieldId = defaultLocated $ F.symbol (structureId, fieldId)

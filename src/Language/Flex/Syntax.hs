@@ -6,6 +6,7 @@ import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.Functor ((<&>))
 import Data.List (intercalate)
 import qualified Data.Map as Map
+import qualified Language.Fixpoint.Types as F
 import Text.PrettyPrint.HughesPJClass (Doc, Pretty (pPrint), braces, brackets, colon, comma, doubleQuotes, hsep, nest, parens, punctuate, quotes, text, vcat, ($$), (<+>))
 import Utility
 import Prelude hiding (Enum)
@@ -63,6 +64,15 @@ newtype FieldId = FieldId String
 
 instance Pretty FieldId where
   pPrint (FieldId x) = text x
+
+instance F.Symbolic TypeId where
+  symbol (TypeId x) = F.symbol x
+
+instance F.Symbolic TermId where
+  symbol (TermId x) = F.symbol x
+
+instance F.Symbolic (TypeId, FieldId) where
+  symbol (TypeId x, FieldId y) = F.symbol $ x <> "#" <> y
 
 fromFieldIdToTermId :: FieldId -> TermId
 fromFieldIdToTermId (FieldId x) = TermId x

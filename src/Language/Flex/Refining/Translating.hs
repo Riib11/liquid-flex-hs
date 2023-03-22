@@ -306,9 +306,11 @@ typeTuple tys_ = do
         let p2 = F.conj $ [ty1, ty2] <&> (F.reftPred . typeAnn)
 
         -- r: { tuple: tyTuple | exists x1 x2 . p1(y1, x2) && p2(y1, x2) }
+        srt1 <- lift . lift . lift $ embedType ty1
+        srt2 <- lift . lift . lift $ embedType ty2
         let r =
               F.reft tuple $
-                F.pExist [(F.reftBind r1, embedType ty1), (F.reftBind r2, embedType ty2)] $
+                F.pExist [(F.reftBind r1, srt1), (F.reftBind r2, srt2)] $
                   F.conj [p1, p2]
 
         -- { tuple: (a1, a2) | p1 && p2 }

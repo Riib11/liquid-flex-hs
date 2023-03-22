@@ -124,12 +124,13 @@ synthTerm term = case term of
       p <- lift $ eqPred (termVar symId (void $ termAnn tm')) (void <$> tm')
       -- the constraint yielded by checking the body must be wrapped in a
       -- quantification over the binding introduced by the let
+      bSort <- lift . lift . lift . lift $ embedType $ void $ termAnn tm'
       Writer.censor
         ( mapCstrMonoid $
             H.All
               H.Bind
                 { bSym = symIdSymbol symId,
-                  bSort = embedType $ void $ termAnn tm',
+                  bSort,
                   bPred = H.Reft p,
                   bMeta = RefiningError (pPrint term)
                 }
@@ -233,13 +234,15 @@ checkSubtype tmSynth tySynth tyExpect = do
   --    forall x : T, p x ==> (p' x')[x' := x]
   --  ----------------------------------------------
   --    {x : T | p x} <: {x' : T | p' y'}
-  tellCstr $
-    cstrForall xSynth tySynth $
-      cstrHead
-        tmSynth
-        eSynth
-        tyExpect
-        (subst eExpect xExpect xSynth)
+  tellCstr
+    =<< ( lift . lift . lift . lift $
+            cstrForall xSynth tySynth $
+              cstrHead
+                tmSynth
+                eSynth
+                tyExpect
+                (subst eExpect xExpect xSynth)
+        )
   where
     rSynth = typeAnn tySynth
     rExpect = typeAnn tyExpect
