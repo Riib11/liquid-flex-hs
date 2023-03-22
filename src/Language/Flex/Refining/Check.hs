@@ -1,5 +1,6 @@
 {-# HLINT ignore "Redundant return" #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
+{-# HLINT ignore "Use camelCase" #-}
 module Language.Flex.Refining.Check where
 
 -- TODO: rename this module to "Refining"
@@ -15,6 +16,7 @@ import Data.Functor
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
+import Language.Flex.FlexM (FlexM)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
 import Language.Flex.Refining.Embedding (embedTerm, embedType)
@@ -31,6 +33,9 @@ type CheckingM = Writer.WriterT CstrMonoid RefiningM
 
 runCheckingM :: CheckingM a -> RefiningM (a, Cstr)
 runCheckingM = fmap (second (\(CstrMonoid cs) -> cs)) . Writer.runWriterT
+
+liftFlexM_CheckingM :: FlexM a -> CheckingM a
+liftFlexM_CheckingM = lift . lift . lift . lift
 
 newtype CstrMonoid = CstrMonoid Cstr
 
@@ -103,10 +108,10 @@ synthTerm term = case term of
 
     bod' <- do
       -- p: symId == tm'
-      p <- lift $ eqPred (termVar symId (void $ termAnn tm')) (void <$> tm')
+      p <- liftFlexM_CheckingM $ eqPred (termVar symId (void $ termAnn tm')) (void <$> tm')
       -- the constraint yielded by checking the body must be wrapped in a
       -- quantification over the binding introduced by the let
-      bSort <- lift . lift . lift . lift $ embedType $ void $ termAnn tm'
+      bSort <- liftFlexM_CheckingM $ embedType $ void $ termAnn tm'
       Writer.censor
         ( mapCstrMonoid $
             H.All
@@ -125,24 +130,27 @@ synthTerm term = case term of
   TermStructure {..} -> do
     -- reflect as you'd expect
 
+    struct@Base.Structure {..} <- getStructure termStructureId
+
     fields <-
       forM
-        (termFields `zip` structureFields termStructure)
+        (termFields `zip` structureFields)
         \((fieldId, tmField), (fieldId', tyField)) -> do
           unless (fieldId == fieldId') $ FlexBug.throw $ FlexM.FlexLog "refining" $ "field ids are not in matching order between the structure constructor and its annotated structure type:" <+> pPrint term
-          (fieldId,) <$> synthCheckTerm tyField tmField
+          tyField' <- lift $ transType tyField
+          (fieldId,) <$> synthCheckTerm tyField' tmField
 
     ty <- lift $ transType termAnn
 
     let tm =
           TermStructure
-            { termStructure,
+            { termStructureId,
               termFields = fields,
               termAnn = ty
             }
 
-    -- TODO: include in the refinement that the field values satisfy the
-    -- structure's user-specified refinement
+    -- TODO: include a constraint that the fields satisfy the structure's user
+    -- refinement
 
     mapM_termAnn (mapM_typeAnn $ reflectTermInReft (void <$> tm)) tm
 
@@ -205,7 +213,7 @@ reflectTermInReft tm r = do
   let x = F.reftBind r
   let p = F.reftPred r
   pRefl <-
-    lift . embedTerm $
+    liftFlexM_CheckingM . embedTerm $
       TermPrimitive
         (PrimitiveEq (termVar (fromSymbolToSymId x) sort) tm)
         (typeBit ())
@@ -240,7 +248,7 @@ checkSubtype tmSynth tySynth tyExpect = do
   --  ----------------------------------------------
   --    {x : T | p x} <: {x' : T | p' y'}
   tellCstr
-    =<< ( lift . lift . lift . lift $
+    =<< ( liftFlexM_CheckingM $
             cstrForall xSynth tySynth $
               cstrHead
                 tmSynth

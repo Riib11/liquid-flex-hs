@@ -9,7 +9,7 @@ import qualified Language.Fixpoint.Misc as Misc
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Utils.Files as Files
-import Language.Flex.FlexM (FlexOptions (FlexOptions, sourceFilePath), defaultSourcePos)
+import Language.Flex.FlexM (FlexCtx (FlexCtx, sourceFilePath), defaultSourcePos)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Prelude (preludeDataDecls)
 import Language.Flex.Refining.RefiningM
@@ -35,8 +35,8 @@ makeQuery cstr = do
       forM (Map.toList bindings) \(symId, tm) -> do
         let tm' = void <$> tm
         -- x == tm
-        p <- eqPred (termVar symId (termAnn tm')) tm'
-        pos <- lift . lift $ defaultSourcePos
+        p <- liftFlexM_RefiningM $ eqPred (termVar symId (termAnn tm')) tm'
+        pos <- liftFlexM_RefiningM defaultSourcePos
         return
           F.Q
             { qName = symIdSymbol symId,
@@ -71,7 +71,7 @@ makeQuery cstr = do
 -- | Submit query to LH backend, which checks for validity
 submitQuery :: Query -> RefiningM Result
 submitQuery q = do
-  fp <- liftFlexM . asks $ sourceFilePath
+  fp <- liftFlexM_RefiningM . asks $ sourceFilePath
   liftIO (checkValidWithConfig fp fpConfig q)
 
 fpConfig :: FC.Config

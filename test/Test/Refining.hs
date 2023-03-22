@@ -4,8 +4,8 @@ module Test.Refining where
 
 import Control.Monad
 import Data.List (singleton)
-import Language.Flex.DefaultFlexOptions (defaultFlexOptions)
-import Language.Flex.FlexM (FlexOptions (flexVerbose), runFlexM)
+import Language.Flex.DefaultFlexCtx (defaultFlexCtx)
+import Language.Flex.FlexM (FlexCtx (flexVerbose), runFlexM)
 import Language.Flex.Parsing (parseModuleFile)
 import Language.Flex.Refining (refineModule)
 import Language.Flex.Typing (typeModule)
@@ -56,10 +56,9 @@ makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . Tes
   !_ <- return ()
 
   mdl' <-
-    runFlexM defaultFlexOptions (typeModule mdl) >>= \case
+    runFlexM defaultFlexCtx (typeModule mdl) >>= \case
       Left err -> assertFailure (render $ "typing failure in refinement test:" <+> pPrint err)
       Right (mdl', _env) -> return mdl' -- assertFailure "typing failed in refining test"
-
   !_ <- return ()
 
   putStrLn "[typed module]"
@@ -69,6 +68,6 @@ makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . Tes
 
   !_ <- return ()
 
-  runFlexM defaultFlexOptions {flexVerbose = True} (refineModule mdl') >>= \case
+  runFlexM defaultFlexCtx {flexVerbose = True} (refineModule mdl') >>= \case
     Left err -> when pass $ assertFailure (render . pPrint $ err)
     Right _ -> unless pass $ assertFailure "expected refining to fail"

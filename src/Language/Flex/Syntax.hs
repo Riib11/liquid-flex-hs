@@ -568,7 +568,7 @@ andRefinements [rfn] = rfn
 andRefinements (rfn : rfns) = foldr andRefinement rfn rfns
 
 instance Pretty (Refinement ann) where
-  pPrint (Refinement tm) = "assert" <> parens (pPrint tm)<
+  pPrint (Refinement tm) = "assert" <> parens (pPrint tm)
 
 renameTerm :: Map.Map TermId TermId -> Term r -> Term r
 renameTerm tmIds term = case term of

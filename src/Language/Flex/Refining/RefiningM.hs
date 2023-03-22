@@ -2,6 +2,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
+{-# HLINT ignore "Use camelCase" #-}
+
 module Language.Flex.Refining.RefiningM where
 
 import Control.DeepSeq (NFData)
@@ -15,19 +17,19 @@ import GHC.Generics
 import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
-import Language.Flex.FlexM (FlexLog (FlexLog), FlexM, pprintInline)
+import Language.Flex.FlexM (FlexLog (FlexLog), FlexM, freshSymbol, pprintInline)
 import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, ($$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
-import Utility (comps)
+import Utility (comps, foldrM)
 
 -- ** RefiningM
 
 type RefiningM = StateT RefiningEnv (ReaderT RefiningCtx (ExceptT RefiningError FlexM))
 
-liftFlexM :: FlexM a -> RefiningM a
-liftFlexM = lift . lift . lift
+liftFlexM_RefiningM :: FlexM a -> RefiningM a
+liftFlexM_RefiningM = lift . lift . lift
 
 newtype RefiningError = RefiningError Doc
   deriving (Generic, Show)
@@ -56,7 +58,8 @@ data RefiningCtx = RefiningCtx
     _ctxSymbols :: Map.Map F.Symbol SymId,
     _ctxApplicants :: Map.Map SymId (Base.ApplicantType TypeReft),
     _ctxFunctions :: Map.Map SymId (Base.Function Base.Type),
-    _ctxBindings :: Map.Map SymId (Term TypeReft)
+    _ctxBindings :: Map.Map SymId (Term TypeReft),
+    _ctxStructures :: Map.Map Base.TypeId Base.Structure
   }
 
 data RefiningEnv = RefiningEnv
@@ -67,16 +70,36 @@ makeLenses ''RefiningCtx
 makeLenses ''RefiningEnv
 
 topRefiningCtx :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningCtx
-topRefiningCtx _mdl = do
-  return
+topRefiningCtx Base.Module {..} = do
+  -- TODO: add structures into context
+  -- TODO: add newtypes into context
+  -- TODO: add variants into context
+  -- TODO: add enums into context
+  -- TODO: add functions into context
+  -- TODO: add transforms into context
+  -- TODO: add constants into context
+  foldrM
+    ( \decl ctx -> do
+        case decl of
+          Base.DeclarationStructure struct@Base.Structure {..} -> return $ ctx & ctxStructures %~ Map.insert structureId struct
+          Base.DeclarationNewtype _new -> return ctx
+          Base.DeclarationVariant _vari -> return ctx
+          Base.DeclarationEnum _en -> return ctx
+          Base.DeclarationAlias _al -> return ctx
+          Base.DeclarationFunction _func -> return ctx
+          Base.DeclarationConstant _con -> return ctx
+          Base.DeclarationRefinedType _rt -> return ctx
+    )
     RefiningCtx
       { _ctxTypings = mempty,
         _ctxSymIds = mempty,
-        _ctxSymbols = mempty, 
+        _ctxSymbols = mempty,
         _ctxApplicants = mempty,
         _ctxFunctions = mempty,
-        _ctxBindings = mempty
+        _ctxBindings = mempty,
+        _ctxStructures = mempty
       }
+    moduleDeclarations
 
 topRefiningEnv :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningEnv
 topRefiningEnv _mdl = do
@@ -86,6 +109,11 @@ topRefiningEnv _mdl = do
       }
 
 -- ** Utilities
+
+getStructure structId =
+  asks (^. ctxStructures . at structId) >>= \case
+    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown structure:" <+> pPrint structId
+    Just struct -> return struct
 
 getTyping tmId =
   asks (^. ctxTypings . at tmId)
@@ -136,26 +164,20 @@ introBinding symId tm =
 freshenBind :: F.Reft -> RefiningM F.Reft
 freshenBind r = do
   let x = F.reftBind r
-  x' <- freshSymbol (render $ pprintInline x)
+  x' <- liftFlexM_RefiningM $ freshSymbol (render $ pprintInline x)
   return $ F.substa (\y -> if y == x then x' else y) r
 
 freshenTermId :: Base.TermId -> RefiningM Base.TermId
 freshenTermId = error "TODO: freshenTermId"
 
-freshSymbol :: String -> RefiningM F.Symbol
-freshSymbol str = do
-  i <- gets (^. freshSymbolIndex)
-  modifying freshSymbolIndex (1 +)
-  return $ F.symbol (str <> "#" <> show i)
-
 freshSymId :: String -> RefiningM SymId
 freshSymId str = do
-  sym <- freshSymbol str
+  sym <- liftFlexM_RefiningM $ freshSymbol str
   return $ fromSymbolToSymId sym
 
 freshSymIdTermId :: Base.TermId -> RefiningM SymId
 freshSymIdTermId tmId = do
-  symIdSymbol <- freshSymbol (render . pPrint $ tmId)
+  symIdSymbol <- liftFlexM_RefiningM $ freshSymbol (render . pPrint $ tmId)
   return SymId {symIdSymbol, symIdMaybeTermId = Just tmId}
 
 parsePred :: String -> F.Pred

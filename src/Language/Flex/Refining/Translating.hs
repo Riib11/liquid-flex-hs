@@ -4,15 +4,17 @@ import Control.Lens (At (at), locally, to, (^.), _3)
 import Control.Monad (filterM, foldM, forM, void, when)
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (MonadTrans (lift))
+import Data.Bifunctor (Bifunctor (second))
 import Data.Foldable (foldlM)
 import Data.Functor
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
+import Language.Flex.FlexM (FlexM, freshSymbol)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Embedding (embedTerm, embedType)
-import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshSymbol, freshenBind, freshenTermId, getApplicantType, getFunction, getSymId, introApplicantType, introBinding, introSymId, throwRefiningError)
+import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, introApplicantType, introBinding, introSymId, liftFlexM_RefiningM, throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..), renameTerm)
 import qualified Language.Flex.Syntax as Base
@@ -70,7 +72,14 @@ transTerm term = do
       tm <- transTerm termTerm
       bod <- transTerm termBody
       return $ TermAssert tm bod (termAnn bod)
-    Base.TermStructure _ti _x0 _ty -> error "transTerm"
+    Base.TermStructure {..} -> do
+      fields' <- forM termFields . secondM $ transTerm
+      return
+        TermStructure
+          { termStructureId,
+            termFields = fields',
+            termAnn
+          }
     Base.TermMember _te _fi _ty -> error "transTerm"
     Base.TermNeutral app mb_args mb_cxargs ty -> do
       symId <- getSymId (void app)
@@ -146,93 +155,10 @@ transTerm term = do
     -- invalid
     Base.TermAscribe _te _ty _ty' -> FlexBug.throw $ FlexM.FlexLog "refining" $ "term ascribe should not appear in typed term:" <+> pPrint term
 
--- ** Translate Type
-
-{-
--- | Translate an unrefined type to a refined type. In the refinement, local
--- bindings are accounted for as existentially quantified variables with an
--- equality constraint corresponding to their bound value.
-transType :: Base.Type -> RefiningM TypeReft
-transType ty = do
-  ty' <- go ty
-  -- introduce existential quantifiers and equality constraints for local
-  -- bindings
-  bindings :: [(F.Symbol, (SymId, Term (Type F.Reft), F.Sort))] <-
-    concat
-      -- <$> forM (F.syms ty') \sym -> do
-      --   -- check if mapped to by a SymId
-      --   asks (^. ctxSymbols . at sym) >>= \case
-      --     Nothing -> return []
-      --     Just symId -> do
-      --       -- check if symId maps to a local binding
-      --       asks (^. ctxBindings . at symId) >>= \case
-      --         Nothing -> return []
-      --         Just tm -> return [(sym, (symId, tm, embedType $ termAnn tm))]
-      <$> do
-        -- TODO: just for testing, add use all local bindings
-        bnds <- asks (^. ctxBindings . to Map.toList)
-        forM bnds \(symId, tm) -> do
-          return [(symIdSymbol symId, (symId, tm, embedType $ termAnn tm))]
-
-  eqPreds :: [F.Pred] <-
-    forM bindings \(_sym, (symId, tm, _srt)) ->
-      eqPred (termVar symId (void $ termAnn tm)) (void <$> tm)
-
-  FlexM.tell $ FlexM.FlexLog "refining" $ "transType.eqPreds:" $$ nest 2 (vcat $ F.pprint <$> eqPreds)
-
-  return
-    ty'
-      { typeAnn =
-          F.reft (F.reftBind (typeAnn ty')) $
-            -- exists x1 ... xN . ↵
-            F.pExist ((^. _3) <$$> bindings) $
-              --- x1 == tm1 && ... && xN == tmN && ↵
-              (F.conj . (: eqPreds)) $
-                F.reftPred (typeAnn ty')
-      }
-  where
-    go :: Base.Type -> RefiningM TypeReft
-    go type_ = case type_ of
-      Base.TypeNumber numty n -> do
-        x <- freshSymbol (render $ pPrint type_)
-        let p = case numty of
-              Base.TypeInt ->
-                -- -2^(n-1) < x < 2^(n-1)
-                F.conj
-                  [ F.PAtom F.Le (F.expr (-(2 ^ (n - 1)) :: Int)) (F.expr x),
-                    F.PAtom F.Lt (F.expr x) (F.expr (2 ^ (n - 1) :: Int))
-                  ]
-              Base.TypeUInt ->
-                -- 0 <= x < 2^n
-                F.conj
-                  [ F.PAtom F.Le (F.expr (0 :: Int)) (F.expr x),
-                    F.PAtom F.Lt (F.expr x) (F.expr (2 ^ n :: Int))
-                  ]
-              Base.TypeFloat -> error "TODO: transType TypeFloat"
-        let atomic = case numty of
-              Base.TypeInt -> TypeInt
-              Base.TypeUInt -> TypeInt
-              Base.TypeFloat -> TypeFloat
-        return $ TypeAtomic atomic (F.reft x p)
-      Base.TypeBit -> return $ TypeAtomic TypeBit F.trueReft
-      Base.TypeChar -> return $ TypeAtomic TypeChar F.trueReft
-      Base.TypeArray Base.TypeChar -> return $ TypeAtomic TypeString F.trueReft
-      Base.TypeArray _ty -> error "transType TODO"
-      Base.TypeTuple tys -> typeTuple =<< transType `traverse` tys
-      Base.TypeOptional _ty -> error "transType TODO"
-      Base.TypeNamed _ti -> error "transType TODO"
-      Base.TypeStructure _struc -> error "transType TODO"
-      Base.TypeEnum _en -> error "transType TODO"
-      Base.TypeVariant _vari -> error "transType TODO"
-      Base.TypeNewtype _new -> error "transType TODO"
-      -- invalid
-      Base.TypeUnifyVar _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "type unification variable should not appear in normalized type:" <+> pPrint type_
--}
-
 transType :: Base.Type -> RefiningM TypeReft
 transType type_ = case type_ of
   Base.TypeNumber numty n -> do
-    x <- freshSymbol (render $ pPrint type_)
+    x <- liftFlexM_RefiningM $ freshSymbol (render $ pPrint type_)
     let p = case numty of
           Base.TypeInt ->
             -- -2^(n-1) < x < 2^(n-1)
@@ -259,7 +185,54 @@ transType type_ = case type_ of
   Base.TypeTuple tys -> typeTuple =<< transType `traverse` tys
   Base.TypeOptional _ty -> error "transType TODO"
   Base.TypeNamed _ti -> error "transType TODO"
-  Base.TypeStructure _struc -> error "transType TODO"
+  Base.TypeStructure Base.Structure {structureId = structId} -> do
+    {-
+    Structure {..} <- getStructure structId
+
+    symStruct <- freshSymbol "struct"
+
+    let tyStruct = TypeStructure structureId ()
+
+    -- pEq: struct = S x1 ... xN
+    pEq <-
+      eqPred
+        (termVar (fromSymbolToSymId symStruct) tyStruct)
+        ( TermStructure
+            structureId
+            ( structureFields <&> \(fieldId, ty) ->
+                ( fieldId,
+                  termVar
+                    (fromSymbolToSymId (F.symbol (structureId, fieldId)))
+                    (void ty)
+                )
+            )
+            tyStruct
+        )
+
+    -- pUser
+    let pUser = structureRefinement
+
+    tys <- (liftFlexM_RefiningM . embedType . snd) `traverse` structureFields
+
+    -- p: exists x1 ... xN . pEq(x1, ..., xN) && pUser(x1, ..., xN)
+    let p =
+          F.pExist
+            ( (structureFields `zip` tys)
+                <&> \((fieldId, _tyField), srtField) ->
+                  (F.symbol (structureId, fieldId), srtField)
+            )
+            $ F.conj [pEq, pUser]
+
+    -- r: { struct: S | p(struct) }
+    let r = F.reft symStruct p
+
+    return
+      TypeStructure
+        { typeStructureId = structureId,
+          typeAnn = r
+        }
+    -}
+    error "TODO: transType TypeStructure"
   Base.TypeEnum _en -> error "transType TODO"
   Base.TypeVariant _vari -> error "transType TODO"
   Base.TypeNewtype _new -> error "transType TODO"
@@ -289,25 +262,26 @@ typeTuple tys_ = do
         let tyTuple = TypeTuple (void ty1, void ty2) ()
 
         -- p1(x1, x2): tuple == (x1, x2)
-        tuple <- freshSymbol "tuple"
+        tuple <- liftFlexM_RefiningM $ freshSymbol "tuple"
         p1 <-
-          eqPred
-            (termVar (fromSymbolToSymId tuple) tyTuple)
-            ( TermPrimitive
-                ( PrimitiveTuple
-                    ( fromSymbolToTerm (F.reftBind r1) (void ty1),
-                      fromSymbolToTerm (F.reftBind r2) (void ty2)
-                    )
-                )
-                tyTuple
-            )
+          liftFlexM_RefiningM $
+            eqPred
+              (termVar (fromSymbolToSymId tuple) tyTuple)
+              ( TermPrimitive
+                  ( PrimitiveTuple
+                      ( fromSymbolToTerm (F.reftBind r1) (void ty1),
+                        fromSymbolToTerm (F.reftBind r2) (void ty2)
+                      )
+                  )
+                  tyTuple
+              )
 
         -- p2(x1, x2): r1(x1) && r2(x2)
         let p2 = F.conj $ [ty1, ty2] <&> (F.reftPred . typeAnn)
 
         -- r: { tuple: tyTuple | exists x1 x2 . p1(y1, x2) && p2(y1, x2) }
-        srt1 <- lift . lift . lift $ embedType ty1
-        srt2 <- lift . lift . lift $ embedType ty2
+        srt1 <- liftFlexM_RefiningM $ embedType ty1
+        srt2 <- liftFlexM_RefiningM $ embedType ty2
         let r =
               F.reft tuple $
                 F.pExist [(F.reftBind r1, srt1), (F.reftBind r2, srt2)] $
@@ -326,7 +300,7 @@ typeTuple tys_ = do
 -- | The predicate that asserts that two (embedded) terms are equal.
 --
 -- > eqPred tm1 tm2 = { tm1 == tm2 }
-eqPred :: Term (Type ()) -> Term (Type ()) -> RefiningM F.Pred
+eqPred :: Term (Type ()) -> Term (Type ()) -> FlexM F.Pred
 eqPred tm1 tm2 =
   embedTerm $
     TermPrimitive

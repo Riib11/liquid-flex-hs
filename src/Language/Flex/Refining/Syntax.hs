@@ -14,6 +14,7 @@ import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
+import Data.Void (Void)
 import GHC.Generics
 import GHC.IO.Exception (ExitCode)
 import qualified Language.Fixpoint.Horn.Solve as HS
@@ -70,7 +71,7 @@ type TypeReft = Type F.Reft
 data Type r
   = TypeAtomic {typeAtomic :: AtomicType, typeAnn :: r}
   | TypeTuple {typeTupleComponents :: !(Type r, Type r), typeAnn :: r}
-  | TypeStructure {typeStructure :: Structure, typeAnn :: r} -- TODO: can this be converted to a dataytype be be handled automatically by LH?
+  | TypeStructure {typeStructureId :: TypeId, typeAnn :: r} -- TODO: can this be converted to a dataytype be be handled automatically by LH?
   deriving
     (Eq, Show, Functor, Foldable, Traversable)
 
@@ -83,7 +84,7 @@ instance Pretty (Type F.Reft) where
       TypeChar -> go "char" r
       TypeString -> go "string" r
     TypeTuple (ty1, ty2) r -> go (parens $ (pPrint ty1 <> ",") <+> pPrint ty2) r
-    TypeStructure Structure {..} r -> go (pPrint structureId) r
+    TypeStructure structId r -> go (pPrint structId) r
     where
       go doc r = braces $ pprintInline (F.reftBind r) <+> ":" <+> doc <+> "|" <+> pprintInline (F.reftPred r)
 
@@ -156,15 +157,6 @@ instance F.Subable r => F.Subable (FunctionType r) where
   substf f (FunctionType params outTy) = FunctionType params (F.substf f outTy)
   subst f (FunctionType params outTy) = FunctionType params (F.subst f outTy)
 
--- ** Structure
-
-data Structure = Structure
-  { structureId :: TypeId,
-    structureFields :: [(FieldId, TypeReft)],
-    structureRefinement :: F.Pred
-  }
-  deriving (Eq, Show)
-
 -- ** Variant
 
 data Variant = Variant
@@ -214,7 +206,7 @@ data Primitive r
   | PrimitiveNot (Term r)
   | PrimitiveEq (Term r) (Term r)
   | PrimitiveAdd (Term r) (Term r)
-  deriving (Eq, Show, Functor)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Primitive r) where
   pPrint = \case
@@ -237,8 +229,8 @@ data Term r
   | TermPrimitive {termPrimitive :: !(Primitive r), termAnn :: r}
   | TermLet {termSymId :: !SymId, termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
   | TermAssert {termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
-  | TermStructure {termStructure :: Structure, termFields :: [(FieldId, Term r)], termAnn :: r}
-  deriving (Eq, Show, Functor)
+  | TermStructure {termStructureId :: TypeId, termFields :: [(FieldId, Term r)], termAnn :: r}
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Term r) where
   pPrint = \case
@@ -249,7 +241,7 @@ instance Pretty (Term r) where
     TermPrimitive prim _r -> pPrint prim
     TermLet symId te te' _r -> (text "let" <+> pPrint symId <+> text "=" <+> pPrint te <+> ";") $$ pPrint te'
     TermAssert te te' _r -> (text "assert" <+> pPrint te <+> ";") $$ pPrint te'
-    TermStructure {..} -> parens $ pPrint (structureId termStructure) <+> braces (vcat $ punctuate comma (termFields <&> \(fieldId, tm) -> pPrint fieldId <+> "=" <+> pPrint tm))
+    TermStructure {..} -> parens $ pPrint termStructureId <+> braces (vcat $ punctuate comma (termFields <&> \(fieldId, tm) -> pPrint fieldId <+> "=" <+> pPrint tm))
 
 data SymId = SymId
   { symIdSymbol :: !F.Symbol,
