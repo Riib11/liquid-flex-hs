@@ -30,29 +30,28 @@ makeQuery cstr = do
   --   $ "makeQuery.cstr:" <+> F.pprint cstr
 
   -- TODO: qualifiers should only include top-level stuff (constants?)
-  qualifiers :: [F.Qualifier] <- return mempty
-  -- qualifiers :: [F.Qualifier] <- do
-  --   asks (^. ctxBindings) >>= \bindings ->
-  --     forM (Map.toList bindings) \(symId, tm) -> do
-  --       let tm' = void <$> tm
-  --       -- x == tm
-  --       p <- eqPred (termVar symId (termAnn tm')) tm'
-  --       pos <- lift . lift $ defaultSourcePos
-  --       return
-  --         F.Q
-  --           { qName = symIdSymbol symId,
-  --             qParams = [],
-  --             qBody = p,
-  --             qPos = pos
-  --           }
+  qualifiers :: [F.Qualifier] <- do
+    asks (^. ctxBindings) >>= \bindings ->
+      forM (Map.toList bindings) \(symId, tm) -> do
+        let tm' = void <$> tm
+        -- x == tm
+        p <- eqPred (termVar symId (termAnn tm')) tm'
+        pos <- lift . lift $ defaultSourcePos
+        return
+          F.Q
+            { qName = symIdSymbol symId,
+              qParams = [],
+              qBody = p,
+              qPos = pos
+            }
 
-  -- FlexM.tell
-  --   $ FlexM.FlexLog
-  --     "refining"
-  --   $ "makeQuery.quantifiers:"
-  --     $$ if null qualifiers
-  --       then "EMPTY"
-  --       else nest 2 (vcat $ F.pprint <$> qualifiers)
+  FlexM.tell
+    $ FlexM.FlexLog
+      "refining"
+    $ "makeQuery.quantifiers:"
+      $$ if null qualifiers
+        then "EMPTY"
+        else nest 2 (vcat $ F.pprint <$> qualifiers)
 
   -- TODO: should include transforms
   uninterpreteds <- -- :: HashMap Symbol Sort

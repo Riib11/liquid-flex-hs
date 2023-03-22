@@ -148,6 +148,7 @@ transTerm term = do
 
 -- ** Translate Type
 
+{-
 -- | Translate an unrefined type to a refined type. In the refinement, local
 -- bindings are accounted for as existentially quantified variables with an
 -- equality constraint corresponding to their bound value.
@@ -190,10 +191,6 @@ transType ty = do
                 F.reftPred (typeAnn ty')
       }
   where
-    -- return $
-    --   comps
-    --     (xxx <&> \(sym, tm) -> _)
-    --     _ -- ( ty')
     go :: Base.Type -> RefiningM TypeReft
     go type_ = case type_ of
       Base.TypeNumber numty n -> do
@@ -230,6 +227,44 @@ transType ty = do
       Base.TypeNewtype _new -> error "transType TODO"
       -- invalid
       Base.TypeUnifyVar _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "type unification variable should not appear in normalized type:" <+> pPrint type_
+-}
+
+transType :: Base.Type -> RefiningM TypeReft
+transType type_ = case type_ of
+  Base.TypeNumber numty n -> do
+    x <- freshSymbol (render $ pPrint type_)
+    let p = case numty of
+          Base.TypeInt ->
+            -- -2^(n-1) < x < 2^(n-1)
+            F.conj
+              [ F.PAtom F.Le (F.expr (-(2 ^ (n - 1)) :: Int)) (F.expr x),
+                F.PAtom F.Lt (F.expr x) (F.expr (2 ^ (n - 1) :: Int))
+              ]
+          Base.TypeUInt ->
+            -- 0 <= x < 2^n
+            F.conj
+              [ F.PAtom F.Le (F.expr (0 :: Int)) (F.expr x),
+                F.PAtom F.Lt (F.expr x) (F.expr (2 ^ n :: Int))
+              ]
+          Base.TypeFloat -> error "TODO: transType TypeFloat"
+    let atomic = case numty of
+          Base.TypeInt -> TypeInt
+          Base.TypeUInt -> TypeInt
+          Base.TypeFloat -> TypeFloat
+    return $ TypeAtomic atomic (F.reft x p)
+  Base.TypeBit -> return $ TypeAtomic TypeBit F.trueReft
+  Base.TypeChar -> return $ TypeAtomic TypeChar F.trueReft
+  Base.TypeArray Base.TypeChar -> return $ TypeAtomic TypeString F.trueReft
+  Base.TypeArray _ty -> error "transType TODO"
+  Base.TypeTuple tys -> typeTuple =<< transType `traverse` tys
+  Base.TypeOptional _ty -> error "transType TODO"
+  Base.TypeNamed _ti -> error "transType TODO"
+  Base.TypeStructure _struc -> error "transType TODO"
+  Base.TypeEnum _en -> error "transType TODO"
+  Base.TypeVariant _vari -> error "transType TODO"
+  Base.TypeNewtype _new -> error "transType TODO"
+  -- invalid
+  Base.TypeUnifyVar _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "type unification variable should not appear in normalized type:" <+> pPrint type_
 
 -- ** Basic Types
 

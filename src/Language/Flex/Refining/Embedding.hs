@@ -1,5 +1,6 @@
 module Language.Flex.Refining.Embedding where
 
+import Control.Monad.Writer (WriterT)
 import Data.Foldable (foldlM, foldrM)
 import qualified Data.Map as Map
 import Data.String (IsString (fromString))
@@ -11,6 +12,8 @@ import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
+
+-- type EmbeddingM a = WriterT [(SymId, Term (Type ()))] RefiningM a
 
 embedSymId :: SymId -> RefiningM F.Expr
 embedSymId SymId {..} = return $ F.eVar symIdSymbol

@@ -6,32 +6,37 @@ module Language.Flex.Refining.Check where
 import Control.Lens (at, (^.))
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (lift)
-import Control.Monad.Writer (MonadWriter (tell), WriterT (runWriterT), unless, void)
+import qualified Control.Monad.Writer as Writer
+import qualified Control.Monad.Writer.Class as Writer
 import Data.Bifunctor (Bifunctor (second))
 import Data.Functor
+import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
-import Language.Flex.Refining.Embedding (embedTerm)
+import Language.Flex.Refining.Embedding (embedTerm, embedType)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
-import Language.Flex.Refining.Translating (transType, typeTuple)
+import Language.Flex.Refining.Translating (eqPred, transType, typeTuple)
 import Language.Flex.Refining.Types
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), nest, parens, render, text, vcat, ($$), (<+>))
 import Utility (ticks)
 
-type CheckingM = WriterT CstrMonoid RefiningM
+type CheckingM = Writer.WriterT CstrMonoid RefiningM
 
 runCheckingM :: CheckingM a -> RefiningM (a, Cstr)
-runCheckingM = fmap (second (\(CstrMonoid cs) -> cs)) . runWriterT
+runCheckingM = fmap (second (\(CstrMonoid cs) -> cs)) . Writer.runWriterT
 
 newtype CstrMonoid = CstrMonoid Cstr
 
+mapCstrMonoid :: (Cstr -> Cstr) -> CstrMonoid -> CstrMonoid
+mapCstrMonoid f (CstrMonoid c) = CstrMonoid (f c)
+
 tellCstr :: Cstr -> CheckingM ()
-tellCstr = tell . CstrMonoid
+tellCstr = Writer.tell . CstrMonoid
 
 instance Semigroup CstrMonoid where
   CstrMonoid cstr1 <> CstrMonoid cstr2 = CstrMonoid (andCstr cstr1 cstr2)
@@ -61,20 +66,24 @@ synthCheckTerm tyExpect tm = do
 synthTerm :: Term Base.Type -> CheckingM (Term TypeReft)
 synthTerm term = case term of
   TermNeutral symId args ty -> do
-    -- -- first, check if its a reference to a local binding
-    -- asks (^. ctxBindings . at symId) >>= \case
-    --   -- this neutral form is a reference to a local binding
-    --   Just tm -> do
-    --     unless (null args) $ FlexBug.throw $ FlexM.FlexLog "refining" $ "neutral forms that have as the applicant a reference to a local binding must not have any arguments, because functions cannot be defined locally"
-    --     return tm
-    --   Nothing -> do
-    --     args' <- synthTerm `traverse` args
-    --     -- TODO: for transforms, input values can't affect output refinement
-    --     -- type, BUT, newtype/variant/enum constructors should have their args
-    --     -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
-    --     -- }`
-    --     ty' <- lift $ transType ty
-    --     return $ TermNeutral symId args' ty'
+    {-
+    -- TODO: none of this should be necessary, because lets are converted to lambdas during embedding
+
+    -- first, check if its a reference to a local binding
+    asks (^. ctxBindings . at symId) >>= \case
+      -- this neutral form is a reference to a local binding
+      Just tm -> do
+        unless (null args) $ FlexBug.throw $ FlexM.FlexLog "refining" $ "neutral forms that have as the applicant a reference to a local binding must not have any arguments, because functions cannot be defined locally"
+        return tm
+      Nothing -> do
+        args' <- synthTerm `traverse` args
+        -- TODO: for transforms, input values can't affect output refinement
+        -- type, BUT, newtype/variant/enum constructors should have their args
+        -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
+        -- }`
+        ty' <- lift $ transType ty
+        return $ TermNeutral symId args' ty'
+    -}
 
     -- TODO: this is old version, that doesnt substitute for binding in context
     args' <- synthTerm `traverse` args
@@ -109,12 +118,26 @@ synthTerm term = case term of
   --  - map the SymId to a Term TypeReft via introBinding
   TermLet symId tm bod ty -> do
     tm' <- synthTerm tm
-    bod' <-
-      introSymId symId $
-        introApplicantType symId (Base.ApplicantType $ termAnn tm') $
-          introBinding symId tm' $
-            synthTerm bod
+
+    bod' <- do
+      -- p: symId == tm'
+      p <- lift $ eqPred (termVar symId (void $ termAnn tm')) (void <$> tm')
+      -- the constraint yielded by checking the body must be wrapped in a
+      -- quantification over the binding introduced by the let
+      Writer.censor
+        ( mapCstrMonoid $
+            H.All
+              H.Bind
+                { bSym = symIdSymbol symId,
+                  bSort = embedType $ void $ termAnn tm',
+                  bPred = H.Reft p,
+                  bMeta = RefiningError (pPrint term)
+                }
+        )
+        $ synthTerm bod
+
     ty' <- lift $ transType ty
+
     return $ TermLet symId tm' bod' ty'
 
 -- | Note that most primitive operations are reflected in refinement.
