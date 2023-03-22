@@ -38,7 +38,7 @@ cstrHead tmSynth _eSynth tyExpect eExpect =
           $$ ""
           $$ "was synthesized to sastisfy the refined type"
           $$ ""
-          $$ nest 2 (pPrint (getTermTopR tmSynth))
+          $$ nest 2 (pPrint (termAnn tmSynth))
           $$ ""
           $$ "but it was expected to satisfy the refined type"
           $$ ""
@@ -51,6 +51,6 @@ cstrHead tmSynth _eSynth tyExpect eExpect =
 predReplacingBind :: F.Symbol -> TypeReft -> (F.Sort, H.Pred)
 predReplacingBind x ty =
   ( sortOfType ty,
-    let r = getTypeTopR ty
+    let r = typeAnn ty
      in H.Reft $ subst (F.reftPred r) (F.reftBind r) x
   )

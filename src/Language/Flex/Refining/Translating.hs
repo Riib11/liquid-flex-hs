@@ -14,7 +14,7 @@ import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Embedding (embedTerm, sortOfType)
 import Language.Flex.Refining.RefiningM (RefiningM, freshId', freshId'TermId, freshSymbol, freshenBind, freshenTermId, introApplicantType, introBinding, introId', lookupApplicantType, lookupFunction, lookupId', throwRefiningError)
 import Language.Flex.Refining.Syntax
-import Language.Flex.Syntax (Literal (..))
+import Language.Flex.Syntax (Literal (..), renameTerm)
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render, (<+>))
 import Utility (comps, compsM, foldrM)
@@ -38,7 +38,7 @@ transTerm term = do
                 return $
                   TermPrimitive
                     (PrimitiveTuple (tm1', tm2'))
-                    (Base.TypeTuple [getTermTopR tm1', getTermTopR tm2'])
+                    (Base.TypeTuple [termAnn tm1', termAnn tm2'])
           foldlM f te' tes -- TUPLE: fold left
         Base.PrimitiveTuple _ -> error "IMPOSSIBLE"
         Base.PrimitiveArray tes -> TermPrimitive <$> (PrimitiveArray <$> transTerm `traverse` tes) <*> return ty
@@ -58,18 +58,18 @@ transTerm term = do
         Base.PatternNamed ti _ty -> freshId'TermId ti
         Base.PatternDiscard _ty -> freshId' "discard"
       tm <- transTerm termTerm
-      ty <- transType $ getTermTopR tm
+      ty <- transType $ termAnn tm
       bod <-
         comps
           [ introId' id',
             introApplicantType id' (Base.ApplicantType ty)
           ]
           $ transTerm termBody
-      return $ TermLet id' tm bod (getTermTopR bod)
+      return $ TermLet id' tm bod (termAnn bod)
     Base.TermAssert {termTerm, termBody} -> do
       tm <- transTerm termTerm
       bod <- transTerm termBody
-      return $ TermAssert tm bod (getTermTopR bod)
+      return $ TermAssert tm bod (termAnn bod)
     Base.TermStructure _ti _x0 _ty -> error "transTerm"
     Base.TermMember _te _fi _ty -> error "transTerm"
     Base.TermNeutral app mb_args mb_cxargs ty -> do
@@ -98,35 +98,45 @@ transTerm term = do
         -- where @x'@ and @y'@ are fresh variables substituted in for @x@
         -- and @y@
         Base.ApplicantTypeFunction Base.FunctionType {..} | not functionTypeIsTransform -> do
-          mb_args' <- (transTerm `traverse`) `traverse` mb_args
-          mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
+          -- mb_args' <- (transTerm `traverse`) `traverse` mb_args
+          -- mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
           lookupFunction id' >>= \Base.Function {..} -> do
             -- make fresh versions of arg ids
             -- RefiningM (Map.Map Base.TermId Base.TermId)
-            freshArgIds <-
+            fresheningArgs <-
               Map.fromList
-                <$> case mb_args' of
+                <$> case mb_args of
                   Nothing -> return []
-                  Just args' ->
-                    forM (functionParameters `zip` args') \((tmId, _ty), arg') -> do
-                      tmId' <- freshenTermId tmId
-                      return (tmId, tmId')
+                  Just args ->
+                    forM (functionParameters `zip` args) \((argId, _ty), arg) -> do
+                      argId' <- freshenTermId argId
+                      return (argId, (argId', arg))
 
             -- make fresh version of cxarg ids
-            freshCxargIds <-
-              Map.fromList <$> case (functionContextualParameters, mb_cxargs') of
+            fresheningCxargs <-
+              Map.fromList <$> case (functionContextualParameters, mb_cxargs) of
                 (Nothing, Nothing) -> return []
-                (Just cxparams, Just cxargs') -> forM (cxparams `zip` cxargs') \((_tyId, tmId), _cxarg) -> do
-                  tmId' <- freshenTermId tmId
-                  return (tmId, tmId')
-                _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "function type's contextual parameters doesn't correspond to application's contextual arguments: " <+> pPrint functionContextualParameters <+> "," <+> pPrint mb_cxargs'
+                (Just cxparams, Just cxargs) -> forM (cxparams `zip` cxargs) \((_tyId, argId), cxarg) -> do
+                  argId' <- freshenTermId argId
+                  return (argId, (argId', cxarg))
+                _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "function type's contextual parameters doesn't correspond to application's contextual arguments: " <+> pPrint functionContextualParameters <+> "," <+> pPrint mb_cxargs
 
-            let freshTermIds = Map.union freshArgIds freshCxargIds
+            -- argId => (argId', tm)
+            let freshening = Map.union fresheningArgs fresheningCxargs
 
-            -- substitute via `freshTermIds` in `functionBody`
-            let funBody' = error "TODO:checkpoint"
+            -- argId => argId'
+            let renaming = fst <$> freshening
 
-            transTerm functionBody
+            -- rename via `renaming` in `functionBody`
+            let functionBody' :: Base.Term Base.Type
+                functionBody' =
+                  comps
+                    ( Map.elems freshening <&> \(argId', arg') tm ->
+                        Base.TermLet (Base.PatternNamed argId' (Base.termAnn arg')) arg' tm (Base.termAnn tm)
+                    )
+                    $ renameTerm renaming functionBody
+
+            transTerm functionBody'
         _ -> do
           mb_args' <- (transTerm `traverse`) `traverse` mb_args
           mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
@@ -192,8 +202,8 @@ typeTuple tys_ = do
 
         -- r1(x1)
         -- r2(x2)
-        let r1 = getTypeTopR ty1
-            r2 = getTypeTopR ty2
+        let r1 = typeAnn ty1
+            r2 = typeAnn ty2
 
         -- tyTuple: (ty1, ty2)
         -- unrefined, since only used for embedding
@@ -214,7 +224,7 @@ typeTuple tys_ = do
             )
 
         -- p2(x1, x2): r1(x1) && r2(x2)
-        let p2 = F.conj $ [ty1, ty2] <&> (F.reftPred . getTypeTopR)
+        let p2 = F.conj $ [ty1, ty2] <&> (F.reftPred . typeAnn)
 
         -- r: { tuple: tyTuple | exists x1 x2 . p1(y1, x2) && p2(y1, x2) }
         let r =

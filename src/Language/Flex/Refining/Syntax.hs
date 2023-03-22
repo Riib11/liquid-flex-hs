@@ -1,3 +1,4 @@
+{-# HLINT ignore "Use camelCase" #-}
 module Language.Flex.Refining.Syntax where
 
 import Control.Applicative (Applicative (liftA2))
@@ -65,8 +66,8 @@ type TypeReft = Type_ F.Reft
 -- | TypeVariant
 -- | TypeNewtype
 data Type_ r
-  = TypeAtomic AtomicType r
-  | TypeTuple !(Type_ r, Type_ r) r
+  = TypeAtomic {typeAtomic :: AtomicType, typeAnn :: r}
+  | TypeTuple {typeTupleComponents :: !(Type_ r, Type_ r), typeAnn :: r}
   deriving
     (Eq, Show, Functor, Foldable, Traversable)
 
@@ -85,11 +86,6 @@ instance Pretty (Type_ F.Reft) where
 voidTypeR :: Type_ r -> Type_ ()
 voidTypeR = void
 
-baseTypeReft :: TypeReft -> F.Reft
-baseTypeReft = \case
-  TypeAtomic _ r -> r
-  TypeTuple _ r -> r
-
 data AtomicType
   = TypeInt
   | TypeFloat
@@ -98,21 +94,10 @@ data AtomicType
   | TypeString
   deriving (Eq, Show)
 
-getTypeTopR :: Type_ r -> r
-getTypeTopR = \case
-  TypeAtomic _at r -> r
-  TypeTuple _tys r -> r
-
-setTypeTopR :: Type_ r -> r -> Type_ r
-setTypeTopR ty r = case ty of
-  TypeAtomic at _r' -> TypeAtomic at r
-  TypeTuple tys _r' -> TypeTuple tys r
-
-mapTypeTopR :: (r -> r) -> Type_ r -> Type_ r
-mapTypeTopR f ty = setTypeTopR ty (f (getTypeTopR ty))
-
-mapMTypeTopR :: Functor f => (r -> f r) -> Type_ r -> f (Type_ r)
-mapMTypeTopR k ty = setTypeTopR ty <$> k (getTypeTopR ty)
+mapM_typeAnn :: Functor f => (r -> f r) -> Type_ r -> f (Type_ r)
+mapM_typeAnn k ty = do
+  ann <- k (typeAnn ty)
+  return ty {typeAnn = ann}
 
 typeEqTrue :: TypeReft
 typeEqTrue = typeBit F.trueReft
@@ -248,11 +233,11 @@ instance Pretty (Primitive r) where
 
 -- TODO: structure, member, construct enum, construct variant, match
 data Term r
-  = TermNeutral !Id' [Term r] r
-  | TermLiteral !Literal r
-  | TermPrimitive !(Primitive r) r
-  | TermLet !Id' !(Term r) !(Term r) r
-  | TermAssert !(Term r) !(Term r) r
+  = TermNeutral {termId' :: !Id', termArgs :: [Term r], termAnn :: r}
+  | TermLiteral {termLiteral :: !Literal, termAnn :: r}
+  | TermPrimitive {termPrimitive :: !(Primitive r), termAnn :: r}
+  | TermLet {termId' :: !Id', termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
+  | TermAssert {termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
   deriving (Eq, Show, Functor)
 
 instance Pretty (Term r) where
@@ -274,9 +259,6 @@ data Id' = Id'
 instance Pretty Id' where
   pPrint (Id' sym _m_ti) = pprintInline sym
 
-voidTermTypeR :: Functor t => Term (t r) -> Term (t ())
-voidTermTypeR = fmap void
-
 termVar :: Id' -> r -> Term r
 termVar id' = TermNeutral id' []
 
@@ -286,33 +268,13 @@ fromSymbolToTerm sym = termVar (fromSymbolToId' sym)
 fromSymbolToId' :: F.Symbol -> Id'
 fromSymbolToId' id'Symbol = Id' {id'Symbol, id'MaybeTermId = Nothing}
 
-getTermTopR :: Term r -> r
-getTermTopR = \case
-  TermNeutral _ _ r -> r
-  TermLiteral _lit r -> r
-  TermPrimitive _prim r -> r
-  TermAssert _te _te' r -> r
-  TermLet _ _ _ r -> r
-
-mapTermTopR :: (r -> r) -> Term r -> Term r
-mapTermTopR f = \case
-  TermNeutral ti args r -> TermNeutral ti args (f r)
-  TermLiteral lit r -> TermLiteral lit (f r)
-  TermPrimitive prim r -> TermPrimitive prim (f r)
-  TermAssert tm1 tm2 r -> TermAssert tm1 tm2 (f r)
-  TermLet x tm1 tm2 r -> TermLet x tm1 tm2 (f r)
-
-mapMTermTopR :: Monad m => (r -> m r) -> Term r -> m (Term r)
-mapMTermTopR k = \case
-  TermNeutral ti args r -> TermNeutral ti args <$> k r
-  TermLiteral lit r -> TermLiteral lit <$> k r
-  TermPrimitive prim r -> TermPrimitive prim <$> k r
-  TermAssert tm1 tm2 r -> TermAssert tm1 tm2 <$> k r
-  TermLet x tm1 tm2 r -> TermLet x tm1 tm2 <$> k r
+mapM_termAnn :: Monad m => (r -> m r) -> Term r -> m (Term r)
+mapM_termAnn k tm = do
+  ann <- k (termAnn tm)
+  return tm {termAnn = ann}
 
 -- ** Substitution
 
---
 -- substitute `x` for `y` in `thing` via `Subable`
 subst :: F.Subable a => a -> F.Symbol -> F.Symbol -> a
 subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing

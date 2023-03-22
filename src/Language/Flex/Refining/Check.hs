@@ -76,7 +76,7 @@ synthTerm term = case term of
     -- literals are reflected
     ty' <- lift $ transType ty
     tm' <-
-      mapMTermTopR (mapMTypeTopR (reflectLiteralInReft (void ty') lit)) $
+      mapM_termAnn (mapM_typeAnn (reflectLiteralInReft (void ty') lit)) $
         TermLiteral lit ty'
     return tm'
   TermPrimitive prim ty ->
@@ -95,7 +95,7 @@ synthTerm term = case term of
     tm' <- synthTerm tm
     bod' <-
       introId' id' $
-        introApplicantType id' (Base.ApplicantType $ getTermTopR tm') $
+        introApplicantType id' (Base.ApplicantType $ termAnn tm') $
           introBinding id' tm' $
             synthTerm bod
     ty' <- lift $ transType ty
@@ -126,16 +126,16 @@ synthPrimitive _term ty primitive =
       tm2' <- synthTerm tm2
       let prim = constr tm1' tm2'
       ty' <- lift $ transType ty
-      mapMTermTopR
-        (mapMTypeTopR $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      mapM_termAnn
+        (mapM_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
     go1 constr tm = do
       tm' <- synthTerm tm
       let prim = constr tm'
       ty' <- lift $ transType ty
-      mapMTermTopR
-        (mapMTypeTopR $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      mapM_termAnn
+        (mapM_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
     go3 constr tm1 tm2 tm3 = do
@@ -144,8 +144,8 @@ synthPrimitive _term ty primitive =
       tm3' <- synthTerm tm3
       let prim = constr tm1' tm2' tm3'
       ty' <- lift $ transType ty
-      mapMTermTopR
-        (mapMTypeTopR $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      mapM_termAnn
+        (mapM_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
 -- ** Reflection
@@ -156,7 +156,7 @@ synthPrimitive _term ty primitive =
 -- > reflectTermInReft v { x: a | r } = { x: a | x == v && r }
 reflectTermInReft :: Term (Type_ ()) -> F.Reft -> CheckingM F.Reft
 reflectTermInReft tm r = do
-  let sort = void $ getTermTopR tm
+  let sort = void $ termAnn tm
   let x = F.reftBind r
   let p = F.reftPred r
   pRefl <-
@@ -175,7 +175,7 @@ reflectPrimitiveInReft ty prim = reflectTermInReft (TermPrimitive prim ty)
 -- ** Inferring
 
 inferTerm :: Term TypeReft -> CheckingM TypeReft
-inferTerm = return . getTermTopR
+inferTerm = return . termAnn
 
 -- ** Subtyping
 
@@ -202,7 +202,7 @@ checkSubtype tmSynth tySynth tyExpect = do
         tyExpect
         (subst eExpect xExpect xSynth)
   where
-    rSynth = getTypeTopR tySynth
-    rExpect = getTypeTopR tyExpect
+    rSynth = typeAnn tySynth
+    rExpect = typeAnn tyExpect
     (xSynth, eSynth) = (F.reftBind rSynth, F.reftPred rSynth)
     (xExpect, eExpect) = (F.reftBind rExpect, F.reftPred rExpect)
