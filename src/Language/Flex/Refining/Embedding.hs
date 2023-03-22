@@ -12,15 +12,15 @@ import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
 
-embedId' :: Id' -> RefiningM F.Expr
-embedId' Id' {..} = return $ F.eVar id'Symbol
+embedSymId :: SymId -> RefiningM F.Expr
+embedSymId SymId {..} = return $ F.eVar symIdSymbol
 
 embedTerm :: Term (Type ()) -> RefiningM F.Expr
 embedTerm = \case
   TermLiteral lit _ -> embedLiteral lit
   TermPrimitive prim _ -> embedPrimitive prim
   TermNeutral x args _ -> do
-    x' <- embedId' x
+    x' <- embedSymId x
     args' <- embedTerm `traverse` args
     return
       if null args'
@@ -32,7 +32,7 @@ embedTerm = \case
     tm' <- embedTerm tm
     let sort = embedType (termAnn tm)
     bod' <- embedTerm bod
-    return $ F.eApps (F.ELam (id'Symbol x, sort) bod') [tm']
+    return $ F.eApps (F.ELam (symIdSymbol x, sort) bod') [tm']
 
 embedLiteral :: Literal -> RefiningM F.Expr
 embedLiteral =

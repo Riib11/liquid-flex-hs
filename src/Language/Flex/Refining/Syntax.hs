@@ -233,40 +233,40 @@ instance Pretty (Primitive r) where
 
 -- TODO: structure, member, construct enum, construct variant, match
 data Term r
-  = TermNeutral {termId' :: !Id', termArgs :: [Term r], termAnn :: r}
+  = TermNeutral {termSymId :: !SymId, termArgs :: [Term r], termAnn :: r}
   | TermLiteral {termLiteral :: !Literal, termAnn :: r}
   | TermPrimitive {termPrimitive :: !(Primitive r), termAnn :: r}
-  | TermLet {termId' :: !Id', termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
+  | TermLet {termSymId :: !SymId, termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
   | TermAssert {termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
   deriving (Eq, Show, Functor)
 
 instance Pretty (Term r) where
   pPrint = \case
-    TermNeutral id' tes _r
-      | null tes -> pPrint id'
-      | otherwise -> pPrint id' <> parens (hsep $ punctuate comma $ pPrint <$> tes)
+    TermNeutral symId tes _r
+      | null tes -> pPrint symId
+      | otherwise -> pPrint symId <> parens (hsep $ punctuate comma $ pPrint <$> tes)
     TermLiteral lit _r -> pPrint lit
     TermPrimitive prim _r -> pPrint prim
-    TermLet id' te te' _r -> (text "let" <+> pPrint id' <+> text "=" <+> pPrint te <+> ";") $$ pPrint te'
+    TermLet symId te te' _r -> (text "let" <+> pPrint symId <+> text "=" <+> pPrint te <+> ";") $$ pPrint te'
     TermAssert te te' _r -> (text "assert" <+> pPrint te <+> ";") $$ pPrint te'
 
-data Id' = Id'
-  { id'Symbol :: !F.Symbol,
-    id'MaybeTermId :: !(Maybe TermId)
+data SymId = SymId
+  { symIdSymbol :: !F.Symbol,
+    symIdMaybeTermId :: !(Maybe TermId)
   }
   deriving (Eq, Ord, Show)
 
-instance Pretty Id' where
-  pPrint (Id' sym _m_ti) = pprintInline sym
+instance Pretty SymId where
+  pPrint (SymId sym _m_ti) = pprintInline sym
 
-termVar :: Id' -> r -> Term r
-termVar id' = TermNeutral id' []
+termVar :: SymId -> r -> Term r
+termVar symId = TermNeutral symId []
 
 fromSymbolToTerm :: F.Symbol -> r -> Term r
-fromSymbolToTerm sym = termVar (fromSymbolToId' sym)
+fromSymbolToTerm sym = termVar (fromSymbolToSymId sym)
 
-fromSymbolToId' :: F.Symbol -> Id'
-fromSymbolToId' id'Symbol = Id' {id'Symbol, id'MaybeTermId = Nothing}
+fromSymbolToSymId :: F.Symbol -> SymId
+fromSymbolToSymId symIdSymbol = SymId {symIdSymbol, symIdMaybeTermId = Nothing}
 
 mapM_termAnn :: Monad m => (r -> m r) -> Term r -> m (Term r)
 mapM_termAnn k tm = do
@@ -290,7 +290,7 @@ subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
 -- substTerm tmId tm' term = case term of
 --   TermLiteral {} -> term
 --   TermSymbol {} -> term
---   TermNamed tmId' _ | tmId' == tmId -> tm'
+--   TermNamed tmSymId _ | tmSymId == tmId -> tm'
 --   TermNamed {} -> term
 --   TermPrimitive prim r -> flip TermPrimitive r case prim of
 --     PrimitiveTry te -> PrimitiveTry (go te)

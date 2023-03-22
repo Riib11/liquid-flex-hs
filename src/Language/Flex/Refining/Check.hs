@@ -60,9 +60,9 @@ synthCheckTerm tyExpect tm = do
 
 synthTerm :: Term Base.Type -> CheckingM (Term TypeReft)
 synthTerm term = case term of
-  TermNeutral id' args ty -> do
+  TermNeutral symId args ty -> do
     -- -- first, check if its a reference to a local binding
-    -- asks (^. ctxBindings . at id') >>= \case
+    -- asks (^. ctxBindings . at symId) >>= \case
     --   -- this neutral form is a reference to a local binding
     --   Just tm -> do
     --     unless (null args) $ FlexBug.throw $ FlexM.FlexLog "refining" $ "neutral forms that have as the applicant a reference to a local binding must not have any arguments, because functions cannot be defined locally"
@@ -74,7 +74,7 @@ synthTerm term = case term of
     --     -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
     --     -- }`
     --     ty' <- lift $ transType ty
-    --     return $ TermNeutral id' args' ty'
+    --     return $ TermNeutral symId args' ty'
 
     -- TODO: this is old version, that doesnt substitute for binding in context
     args' <- synthTerm `traverse` args
@@ -83,7 +83,7 @@ synthTerm term = case term of
     -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
     -- }`
     ty' <- lift $ transType ty
-    return $ TermNeutral id' args' ty'
+    return $ TermNeutral symId args' ty'
   TermLiteral lit ty -> do
     -- literals are reflected
     ty' <- lift $ transType ty
@@ -104,18 +104,18 @@ synthTerm term = case term of
     ty' <- inferTerm tm2'
     return $ TermAssert tm1' tm2' ty'
   -- let-bindings introduce the following info into context:
-  --  - map the Base.TermId to a fresh Id' via introId'
-  --  - map the Id' to an ApplicantType via introApplicantType
-  --  - map the Id' to a Term TypeReft via introBinding
-  TermLet id' tm bod ty -> do
+  --  - map the Base.TermId to a fresh SymId via introSymId
+  --  - map the SymId to an ApplicantType via introApplicantType
+  --  - map the SymId to a Term TypeReft via introBinding
+  TermLet symId tm bod ty -> do
     tm' <- synthTerm tm
     bod' <-
-      introId' id' $
-        introApplicantType id' (Base.ApplicantType $ termAnn tm') $
-          introBinding id' tm' $
+      introSymId symId $
+        introApplicantType symId (Base.ApplicantType $ termAnn tm') $
+          introBinding symId tm' $
             synthTerm bod
     ty' <- lift $ transType ty
-    return $ TermLet id' tm' bod' ty'
+    return $ TermLet symId tm' bod' ty'
 
 -- | Note that most primitive operations are reflected in refinement.
 synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term TypeReft)
@@ -178,7 +178,7 @@ reflectTermInReft tm r = do
   pRefl <-
     lift . embedTerm $
       TermPrimitive
-        (PrimitiveEq (termVar (fromSymbolToId' x) sort) tm)
+        (PrimitiveEq (termVar (fromSymbolToSymId x) sort) tm)
         (typeBit ())
   return $ F.reft x (F.conj [pRefl, p])
 

@@ -51,10 +51,10 @@ throwRefiningError msg = throwError $ RefiningError msg
 -- TODO: refined structures and newtypes
 data RefiningCtx = RefiningCtx
   { _ctxTypings :: Map.Map Base.TermId TypeReft,
-    _ctxId's :: Map.Map (Base.Applicant ()) Id',
-    _ctxApplicants :: Map.Map Id' (Base.ApplicantType TypeReft),
-    _ctxFunctions :: Map.Map Id' (Base.Function Base.Type),
-    _ctxBindings :: Map.Map Id' (Term TypeReft)
+    _ctxSymIds :: Map.Map (Base.Applicant ()) SymId,
+    _ctxApplicants :: Map.Map SymId (Base.ApplicantType TypeReft),
+    _ctxFunctions :: Map.Map SymId (Base.Function Base.Type),
+    _ctxBindings :: Map.Map SymId (Term TypeReft)
   }
 
 data RefiningEnv = RefiningEnv
@@ -69,7 +69,7 @@ topRefiningCtx _mdl = do
   return
     RefiningCtx
       { _ctxTypings = mempty,
-        _ctxId's = mempty,
+        _ctxSymIds = mempty,
         _ctxApplicants = mempty,
         _ctxFunctions = mempty,
         _ctxBindings = mempty
@@ -90,36 +90,37 @@ lookupTyping tmId =
       Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown:" <+> pPrint tmId
       Just ty -> return ty
 
-lookupId' app =
-  asks (^. ctxId's . at app) >>= \case
+lookupSymId app =
+  asks (^. ctxSymIds . at app) >>= \case
     Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown:" <+> pPrint app
-    Just id' -> return id'
+    Just symId -> return symId
 
-introId' id' = case id'MaybeTermId id' of
+-- can only introduce SymIds that
+introSymId symId = case symIdMaybeTermId symId of
   Nothing -> id
   Just tmId ->
     locally
-      (ctxId's . at (Base.termIdApplicant tmId (Base.ApplicantType ())))
-      (const $ Just id')
+      (ctxSymIds . at (Base.termIdApplicant tmId (Base.ApplicantType ())))
+      (const $ Just symId)
 
-lookupApplicantType id' =
-  asks (^. ctxApplicants . at id') >>= \case
-    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown applicant id:" <+> pPrint id'
+lookupApplicantType symId =
+  asks (^. ctxApplicants . at symId) >>= \case
+    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown applicant id:" <+> pPrint symId
     Just appTy -> return (Right <$> appTy)
 
-introApplicantType id' appTy =
+introApplicantType symId appTy =
   locally
-    (ctxApplicants . at id')
+    (ctxApplicants . at symId)
     (const $ Just appTy)
 
-lookupFunction id' =
-  asks (^. ctxFunctions . at id') >>= \case
-    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown function id:" <+> pPrint id'
+lookupFunction symId =
+  asks (^. ctxFunctions . at symId) >>= \case
+    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown function id:" <+> pPrint symId
     Just func -> return func
 
-introBinding id' tm =
+introBinding symId tm =
   locally
-    (ctxBindings . at id')
+    (ctxBindings . at symId)
     (const $ Just tm)
 
 freshenBind :: F.Reft -> RefiningM F.Reft
@@ -137,15 +138,15 @@ freshSymbol str = do
   modifying freshSymbolIndex (1 +)
   return $ F.symbol (str <> "#" <> show i)
 
-freshId' :: String -> RefiningM Id'
-freshId' str = do
+freshSymId :: String -> RefiningM SymId
+freshSymId str = do
   sym <- freshSymbol str
-  return $ fromSymbolToId' sym
+  return $ fromSymbolToSymId sym
 
-freshId'TermId :: Base.TermId -> RefiningM Id'
-freshId'TermId tmId = do
-  id'Symbol <- freshSymbol (render . pPrint $ tmId)
-  return Id' {id'Symbol, id'MaybeTermId = Just tmId}
+freshSymIdTermId :: Base.TermId -> RefiningM SymId
+freshSymIdTermId tmId = do
+  symIdSymbol <- freshSymbol (render . pPrint $ tmId)
+  return SymId {symIdSymbol, symIdMaybeTermId = Just tmId}
 
 parsePred :: String -> F.Pred
 parsePred = FP.doParse' FP.predP "parsePred"
