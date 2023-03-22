@@ -11,7 +11,7 @@ import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import qualified Language.Flex.FlexM as FlexM
-import Language.Flex.Refining.Embedding (embedTerm, sortOfType)
+import Language.Flex.Refining.Embedding (embedTerm, embedType)
 import Language.Flex.Refining.RefiningM (RefiningM, freshId', freshId'TermId, freshSymbol, freshenBind, freshenTermId, introApplicantType, introBinding, introId', lookupApplicantType, lookupFunction, lookupId', throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..), renameTerm)
@@ -229,7 +229,7 @@ typeTuple tys_ = do
         -- r: { tuple: tyTuple | exists x1 x2 . p1(y1, x2) && p2(y1, x2) }
         let r =
               F.reft tuple $
-                F.pExist [(F.reftBind r1, sortOfType ty1), (F.reftBind r2, sortOfType ty2)] $
+                F.pExist [(F.reftBind r1, embedType ty1), (F.reftBind r2, embedType ty2)] $
                   F.conj [p1, p2]
 
         -- { tuple: (a1, a2) | p1 && p2 }

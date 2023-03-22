@@ -30,12 +30,9 @@ embedTerm = \case
   -- (let x = a in b) ~~> ((fun x => b) a)
   TermLet x tm bod _ -> do
     tm' <- embedTerm tm
-    let sort = sortOfType (termAnn tm)
+    let sort = embedType (termAnn tm)
     bod' <- embedTerm bod
     return $ F.eApps (F.ELam (id'Symbol x, sort) bod') [tm']
-
-embedType :: Type_ () -> RefiningM F.Sort
-embedType = error "embedType"
 
 embedLiteral :: Literal -> RefiningM F.Expr
 embedLiteral =
@@ -54,7 +51,7 @@ embedPrimitive = \case
     -- let ty2 = termAnn tm2
     e1 <- embedTerm tm1
     e2 <- embedTerm tm2
-    -- return $ constrTuple `F.ETApp` sortOfType ty1 `F.ETApp` sortOfType ty2 `F.EApp` e1 `F.EApp` e2
+    -- return $ constrTuple `F.ETApp` embedType ty1 `F.ETApp` embedType ty2 `F.EApp` e1 `F.EApp` e2
     return $ constrTuple `F.EApp` e1 `F.EApp` e2
   PrimitiveArray _ -> error "embedPrimitive Array"
   PrimitiveIf te te' te2 -> F.EIte <$> embedTerm te <*> embedTerm te' <*> embedTerm te2
@@ -74,12 +71,12 @@ constrTuple = F.eVar tupleConstructorSymbol
 
 -- ** Embedding as Sorts
 
-sortOfType :: Type_ r -> F.Sort
-sortOfType = \case
+embedType :: Type_ r -> F.Sort
+embedType = \case
   TypeAtomic atomic _ -> case atomic of
     TypeInt -> F.intSort
     TypeFloat -> F.realSort
     TypeBit -> F.boolSort
     TypeChar -> F.charSort
     TypeString -> F.strSort
-  TypeTuple (ty1, ty2) _ -> F.fApp (F.fTyconSort tupleFTycon) (sortOfType <$> [ty1, ty2])
+  TypeTuple (ty1, ty2) _ -> F.fApp (F.fTyconSort tupleFTycon) (embedType <$> [ty1, ty2])

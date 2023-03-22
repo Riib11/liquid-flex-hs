@@ -2,7 +2,7 @@ module Language.Flex.Refining.Constraint where
 
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
-import Language.Flex.Refining.Embedding (sortOfType)
+import Language.Flex.Refining.Embedding (embedType)
 import Language.Flex.Refining.RefiningM (RefiningError (RefiningError))
 import Language.Flex.Refining.Syntax
 import Language.Flex.Refining.Types
@@ -50,7 +50,7 @@ cstrHead tmSynth _eSynth tyExpect eExpect =
 -- > predReplacingBind x { y: a | p(y) } = (a, p(x))
 predReplacingBind :: F.Symbol -> TypeReft -> (F.Sort, H.Pred)
 predReplacingBind x ty =
-  ( sortOfType ty,
+  ( embedType ty,
     let r = typeAnn ty
      in H.Reft $ subst (F.reftPred r) (F.reftBind r) x
   )

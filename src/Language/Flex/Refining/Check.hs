@@ -61,20 +61,29 @@ synthCheckTerm tyExpect tm = do
 synthTerm :: Term Base.Type -> CheckingM (Term TypeReft)
 synthTerm term = case term of
   TermNeutral id' args ty -> do
-    -- first, check if its a reference to a local binding
-    asks (^. ctxBindings . at id') >>= \case
-      -- this neutral form is a reference to a local binding
-      Just tm -> do
-        unless (null args) $ FlexBug.throw $ FlexM.FlexLog "refining" $ "neutral forms that have as the applicant a reference to a local binding must not have any arguments, because functions cannot be defined locally"
-        return tm
-      Nothing -> do
-        args' <- synthTerm `traverse` args
-        -- TODO: for transforms, input values can't affect output refinement
-        -- type, BUT, newtype/variant/enum constructors should have their args
-        -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
-        -- }`
-        ty' <- lift $ transType ty
-        return $ TermNeutral id' args' ty'
+    -- -- first, check if its a reference to a local binding
+    -- asks (^. ctxBindings . at id') >>= \case
+    --   -- this neutral form is a reference to a local binding
+    --   Just tm -> do
+    --     unless (null args) $ FlexBug.throw $ FlexM.FlexLog "refining" $ "neutral forms that have as the applicant a reference to a local binding must not have any arguments, because functions cannot be defined locally"
+    --     return tm
+    --   Nothing -> do
+    --     args' <- synthTerm `traverse` args
+    --     -- TODO: for transforms, input values can't affect output refinement
+    --     -- type, BUT, newtype/variant/enum constructors should have their args
+    --     -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
+    --     -- }`
+    --     ty' <- lift $ transType ty
+    --     return $ TermNeutral id' args' ty'
+
+    -- TODO: this is old version, that doesnt substitute for binding in context
+    args' <- synthTerm `traverse` args
+    -- TODO: for transforms, input values can't affect output refinement
+    -- type, BUT, newtype/variant/enum constructors should have their args
+    -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
+    -- }`
+    ty' <- lift $ transType ty
+    return $ TermNeutral id' args' ty'
   TermLiteral lit ty -> do
     -- literals are reflected
     ty' <- lift $ transType ty
