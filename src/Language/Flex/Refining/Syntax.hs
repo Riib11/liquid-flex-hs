@@ -8,6 +8,7 @@ import Control.Monad (foldM, void, when)
 import Control.Monad.Error.Class (MonadError (throwError))
 import Data.Bifunctor (Bifunctor (bimap), second)
 import Data.Foldable (toList)
+import Data.Functor
 import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
@@ -236,6 +237,7 @@ data Term r
   | TermPrimitive {termPrimitive :: !(Primitive r), termAnn :: r}
   | TermLet {termSymId :: !SymId, termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
   | TermAssert {termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
+  | TermStructure {termStructure :: Structure, termFields :: [(FieldId, Term r)], termAnn :: r}
   deriving (Eq, Show, Functor)
 
 instance Pretty (Term r) where
@@ -247,6 +249,7 @@ instance Pretty (Term r) where
     TermPrimitive prim _r -> pPrint prim
     TermLet symId te te' _r -> (text "let" <+> pPrint symId <+> text "=" <+> pPrint te <+> ";") $$ pPrint te'
     TermAssert te te' _r -> (text "assert" <+> pPrint te <+> ";") $$ pPrint te'
+    TermStructure {..} -> parens $ pPrint (structureId termStructure) <+> braces (vcat $ punctuate comma (termFields <&> \(fieldId, tm) -> pPrint fieldId <+> "=" <+> pPrint tm))
 
 data SymId = SymId
   { symIdSymbol :: !F.Symbol,
