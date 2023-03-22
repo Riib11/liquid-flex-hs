@@ -69,9 +69,10 @@ synthTerm term = case term of
         return tm
       Nothing -> do
         args' <- synthTerm `traverse` args
-        -- TODO: for transforms, input values can't affect output refinement type,
-        -- BUT, newtype/variant/enum constructors should have their args reflected
-        -- in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c) }
+        -- TODO: for transforms, input values can't affect output refinement
+        -- type, BUT, newtype/variant/enum constructors should have their args
+        -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
+        -- }`
         ty' <- lift $ transType ty
         return $ TermNeutral id' args' ty'
   TermLiteral lit ty -> do
