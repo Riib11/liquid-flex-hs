@@ -58,6 +58,7 @@ reflect _everything_ from Flex, such as statements a-normal types, etc.
 type TypeReft = Type F.Reft
 
 -- TODO: handle more advanced types
+-- TODO: can structure and newtype be merged for the refinement phase?
 
 -- | TypeArray
 -- | TypeOptional
@@ -68,6 +69,7 @@ type TypeReft = Type F.Reft
 data Type r
   = TypeAtomic {typeAtomic :: AtomicType, typeAnn :: r}
   | TypeTuple {typeTupleComponents :: !(Type r, Type r), typeAnn :: r}
+  | TypeStructure {typeStructure :: Structure, typeAnn :: r} -- TODO: can this be converted to a dataytype be be handled automatically by LH?
   deriving
     (Eq, Show, Functor, Foldable, Traversable)
 
@@ -80,11 +82,9 @@ instance Pretty (Type F.Reft) where
       TypeChar -> go "char" r
       TypeString -> go "string" r
     TypeTuple (ty1, ty2) r -> go (parens $ (pPrint ty1 <> ",") <+> pPrint ty2) r
+    TypeStructure Structure {..} r -> go (pPrint structureId) r
     where
       go doc r = braces $ pprintInline (F.reftBind r) <+> ":" <+> doc <+> "|" <+> pprintInline (F.reftPred r)
-
-voidTypeR :: Type r -> Type ()
-voidTypeR = void
 
 data AtomicType
   = TypeInt
@@ -159,10 +159,8 @@ instance F.Subable r => F.Subable (FunctionType r) where
 
 data Structure = Structure
   { structureId :: TypeId,
-    structureIsMessage :: Bool,
-    structureMaybeExtensionId :: Maybe TypeId,
     structureFields :: [(FieldId, TypeReft)],
-    structureRefinement :: F.Expr
+    structureRefinement :: F.Pred
   }
   deriving (Eq, Show)
 
