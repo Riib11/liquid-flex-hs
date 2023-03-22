@@ -20,6 +20,7 @@ import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, ($$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
+import Utility (comps)
 
 -- ** RefiningM
 
@@ -52,6 +53,7 @@ throwRefiningError msg = throwError $ RefiningError msg
 data RefiningCtx = RefiningCtx
   { _ctxTypings :: Map.Map Base.TermId TypeReft,
     _ctxSymIds :: Map.Map (Base.Applicant ()) SymId,
+    _ctxSymbols :: Map.Map F.Symbol SymId,
     _ctxApplicants :: Map.Map SymId (Base.ApplicantType TypeReft),
     _ctxFunctions :: Map.Map SymId (Base.Function Base.Type),
     _ctxBindings :: Map.Map SymId (Term TypeReft)
@@ -84,26 +86,33 @@ topRefiningEnv _mdl = do
 
 -- ** Utilities
 
-lookupTyping tmId =
+getTyping tmId =
   asks (^. ctxTypings . at tmId)
     >>= \case
       Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown:" <+> pPrint tmId
       Just ty -> return ty
 
-lookupSymId app =
+getSymId app =
   asks (^. ctxSymIds . at app) >>= \case
     Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown:" <+> pPrint app
     Just symId -> return symId
 
--- can only introduce SymIds that
-introSymId symId = case symIdMaybeTermId symId of
-  Nothing -> id
-  Just tmId ->
-    locally
-      (ctxSymIds . at (Base.termIdApplicant tmId (Base.ApplicantType ())))
-      (const $ Just symId)
+-- can only introduce SymIds that have a TermId
+-- TODO: bug if try to introduce SymId without a TermId?
+introSymId symId =
+  comps
+    [ case symIdMaybeTermId symId of
+        Nothing -> id
+        Just tmId ->
+          locally
+            (ctxSymIds . at (Base.termIdApplicant tmId (Base.ApplicantType ())))
+            (const $ Just symId),
+      locally
+        (ctxSymbols . at (symIdSymbol symId))
+        (const $ Just symId)
+    ]
 
-lookupApplicantType symId =
+getApplicantType symId =
   asks (^. ctxApplicants . at symId) >>= \case
     Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown applicant id:" <+> pPrint symId
     Just appTy -> return (Right <$> appTy)
@@ -113,7 +122,7 @@ introApplicantType symId appTy =
     (ctxApplicants . at symId)
     (const $ Just appTy)
 
-lookupFunction symId =
+getFunction symId =
   asks (^. ctxFunctions . at symId) >>= \case
     Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown function id:" <+> pPrint symId
     Just func -> return func

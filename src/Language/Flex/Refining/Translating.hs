@@ -1,7 +1,7 @@
 module Language.Flex.Refining.Translating where
 
 import Control.Lens (At (at), locally, (^.))
-import Control.Monad (foldM, forM, void, when)
+import Control.Monad (filterM, foldM, forM, void, when)
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Foldable (foldlM)
@@ -12,7 +12,7 @@ import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Embedding (embedTerm, embedType)
-import Language.Flex.Refining.RefiningM (RefiningM, freshSymId, freshSymIdTermId, freshSymbol, freshenBind, freshenTermId, introApplicantType, introBinding, introSymId, lookupApplicantType, lookupFunction, lookupSymId, throwRefiningError)
+import Language.Flex.Refining.RefiningM (RefiningM, freshSymId, freshSymIdTermId, freshSymbol, freshenBind, freshenTermId, getApplicantType, getFunction, getSymId, introApplicantType, introBinding, introSymId, throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..), renameTerm)
 import qualified Language.Flex.Syntax as Base
@@ -73,11 +73,11 @@ transTerm term = do
     Base.TermStructure _ti _x0 _ty -> error "transTerm"
     Base.TermMember _te _fi _ty -> error "transTerm"
     Base.TermNeutral app mb_args mb_cxargs ty -> do
-      symId <- lookupSymId (void app)
+      symId <- getSymId (void app)
       -- note that we avoid inserting the globally-known refinement types here,
       -- since we will do that in the refining step anyway, and we must provide a
       -- `Base.Type` right now anyway since we're producing a `Term Base.Type`
-      lookupApplicantType symId >>= \case
+      getApplicantType symId >>= \case
         -- Function application is inlined. For example, given
         --
         -- @
@@ -100,7 +100,7 @@ transTerm term = do
         Base.ApplicantTypeFunction Base.FunctionType {..} | not functionTypeIsTransform -> do
           -- mb_args' <- (transTerm `traverse`) `traverse` mb_args
           -- mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
-          lookupFunction symId >>= \Base.Function {..} -> do
+          getFunction symId >>= \Base.Function {..} -> do
             -- make fresh versions of arg ids
             -- RefiningM (Map.Map Base.TermId Base.TermId)
             fresheningArgs <-
@@ -156,7 +156,9 @@ transType ty = do
   ty' <- go ty
   -- introduce existential quantifiers and equality constraints for local
   -- bindings
-  let xs = F.syms ty'
+  syms <-
+    flip filterM (F.syms ty') \sym -> do
+      error "CHECKPOINT"
   -- for each symbol that is in the type and also is a local binding
   error "CHECKPOINT"
   where
