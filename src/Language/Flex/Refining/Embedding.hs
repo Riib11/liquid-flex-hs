@@ -88,20 +88,29 @@ embedType = \case
     TypeChar -> return F.charSort
     TypeString -> return F.strSort
   TypeTuple (ty1, ty2) _ -> F.fApp (F.fTyconSort tupleFTycon) <$> (embedType `traverse` [ty1, ty2])
-  TypeStructure structId _ -> F.fTyconSort <$> structureFTycon structId
+  TypeStructure Base.Structure {..} _ _ -> F.fTyconSort <$> structureFTycon structureId
 
 -- ** Datatypes
 
+-- TODO: change this to be polymorphic so refined argumen types are handled automatically
 structureDataDecl :: Base.Structure -> FlexM F.DataDecl
-structureDataDecl struct@Base.Structure {..} =
+structureDataDecl Base.Structure {..} =
   do
     ddTyCon <- structureFTycon structureId
     dcName <- structureSymbol structureId
-    dcFields <- forM structureFields \(fieldId, ty) -> do
-      dfName <- structureFieldSymbol struct fieldId
+    dcFields <- forM structureFields \(fieldId, _ty) -> do
+      dfName <- structureFieldSymbol structureId fieldId
       dfSort <- embedType $ error "TODO: structureDataDecl"
       return F.DField {dfName, dfSort}
-    return F.DDecl {ddTyCon, ddVars = 0, ddCtors = [F.DCtor {dcName, dcFields}]}
+    return
+      F.DDecl
+        { ddTyCon,
+          -- each type variable corresponds to a field, so refinements don't
+          -- have to be translated/embedded from base Flex when introducing the
+          -- structure's data declaration
+          ddVars = length structureFields,
+          ddCtors = [F.DCtor {dcName, dcFields}]
+        }
 
 structureSymbol :: Base.TypeId -> FlexM F.LocSymbol
 structureSymbol structId = defaultLocated $ F.symbol structId
@@ -116,5 +125,5 @@ structureConstructorSymbol = structureSymbol
 structureConstructorExpr :: Base.TypeId -> FlexM F.Expr
 structureConstructorExpr structId = F.eVar <$> structureConstructorSymbol structId
 
-structureFieldSymbol :: Base.Structure -> Base.FieldId -> FlexM F.LocSymbol
-structureFieldSymbol Base.Structure {..} fieldId = defaultLocated $ F.symbol (structureId, fieldId)
+structureFieldSymbol :: Base.TypeId -> Base.FieldId -> FlexM F.LocSymbol
+structureFieldSymbol structId fieldId = defaultLocated $ F.symbol (structId, fieldId)

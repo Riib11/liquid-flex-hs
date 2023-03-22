@@ -241,6 +241,46 @@ transType type_ = case type_ of
 
 -- ** Basic Types
 
+-- | Refined structure type.
+typeStructure :: Base.Structure -> [(Base.FieldId, TypeReft)] -> RefiningM TypeReft
+typeStructure struct@Base.Structure {..} fieldTys = do
+  symStruct <- liftFlexM_RefiningM $ freshSymbol "struct"
+
+  -- tyStruct: S a1 ... aN
+  let tyStruct = TypeStructure struct (second void <$> fieldTys) ()
+
+  -- p1(struct, x1, ..., xN): p1(x1, ..., xN): struct = S a1 ... aN
+  p1 <-
+    liftFlexM_RefiningM $
+      eqPred
+        (termVar (fromSymbolToSymId symStruct) tyStruct)
+        ( TermStructure
+            structureId
+            ( fieldTys <&> \(fieldId, ty) ->
+                ( fieldId,
+                  fromSymbolToTerm (F.reftBind (typeAnn ty)) (void ty)
+                )
+            )
+            tyStruct
+        )
+
+  -- p2(x1, ..., xN): r1(x1) && ... && rN(xN)
+  let p2 = F.conj $ fieldTys <&> \(_, ty) -> F.reftPred $ typeAnn ty
+
+  -- p(struct): exists x1, ..., xN . p1(struct, x1, ..., xN) && p2(x1, ..., xN)
+  fieldSrts <- secondM (liftFlexM_RefiningM . embedType) `traverse` fieldTys
+  let p =
+        F.pExist
+          ( fieldSrts <&> \(fieldId, srt) ->
+              (F.symbol (structureId, fieldId), srt)
+          )
+          $ F.conj [p1, p2]
+
+  -- r: { struct: S a1 ... aN | p(struct) }
+  let r = F.reft symStruct p
+
+  return $ TypeStructure struct fieldTys r
+
 -- | Refined tuple type.
 --
 -- > typeTuple [.., { xI: aI | pI(xI) }, ...] = { tuple: (..., aI, ...) | (tuple
@@ -257,16 +297,17 @@ typeTuple tys_ = do
         let r1 = typeAnn ty1
             r2 = typeAnn ty2
 
+        symTuple <- liftFlexM_RefiningM $ freshSymbol "tuple"
+
         -- tyTuple: (ty1, ty2)
         -- unrefined, since only used for embedding
         let tyTuple = TypeTuple (void ty1, void ty2) ()
 
-        -- p1(x1, x2): tuple == (x1, x2)
-        tuple <- liftFlexM_RefiningM $ freshSymbol "tuple"
+        -- p1(tuple, x1, x2): tuple == (x1, x2)
         p1 <-
           liftFlexM_RefiningM $
             eqPred
-              (termVar (fromSymbolToSymId tuple) tyTuple)
+              (termVar (fromSymbolToSymId symTuple) tyTuple)
               ( TermPrimitive
                   ( PrimitiveTuple
                       ( fromSymbolToTerm (F.reftBind r1) (void ty1),
@@ -276,14 +317,14 @@ typeTuple tys_ = do
                   tyTuple
               )
 
-        -- p2(x1, x2): r1(x1) && r2(x2)
+        -- p2(tuple, x1, x2): r1(x1) && r2(x2)
         let p2 = F.conj $ [ty1, ty2] <&> (F.reftPred . typeAnn)
 
         -- r: { tuple: tyTuple | exists x1 x2 . p1(y1, x2) && p2(y1, x2) }
         srt1 <- liftFlexM_RefiningM $ embedType ty1
         srt2 <- liftFlexM_RefiningM $ embedType ty2
         let r =
-              F.reft tuple $
+              F.reft symTuple $
                 F.pExist [(F.reftBind r1, srt1), (F.reftBind r2, srt2)] $
                   F.conj [p1, p2]
 
