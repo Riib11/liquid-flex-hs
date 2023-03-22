@@ -61,14 +61,14 @@ introTerm tmId type_ m = do
     Base.TypeUnifyVar {} -> FlexBug.throw $ FlexM.FlexLog "refining" $ "should not `introTerm` with a unification type varaint during refining" <+> pPrint type_
     -- fallthrough
     _ -> do
-      ty <- transType type_
+      ty <- liftFlexM_RefiningM $ transType type_
       locally ctxTypings (Map.insert tmId ty) m
 
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
 check label term type_ = do
   tm <- transTerm term
   FlexM.debug $ FlexM.FlexLog "refining" $ "[check] transTerm term  =" <+> pPrint tm
-  ty <- transType type_
+  ty <- liftFlexM_RefiningM $ transType type_
   FlexM.debug $ FlexM.FlexLog "refining" $ "[check] transType type_ =" <+> pPrint ty
   (_, cstr) <- runCheckingM $ synthCheckTerm ty tm
   query <- makeQuery cstr

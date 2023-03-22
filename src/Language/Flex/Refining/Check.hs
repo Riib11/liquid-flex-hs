@@ -78,11 +78,11 @@ synthTerm term = case term of
     -- type, BUT, newtype/variant/enum constructors should have their args
     -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
     -- }`
-    ty' <- lift $ transType ty
+    ty' <- liftFlexM_CheckingM $ transType ty
     return $ TermNeutral symId args' ty'
   TermLiteral lit ty -> do
     -- literals are reflected
-    ty' <- lift $ transType ty
+    ty' <- liftFlexM_CheckingM $ transType ty
     tm' <-
       mapM_termAnn (mapM_typeAnn (reflectLiteralInReft (void ty') lit)) $
         TermLiteral lit ty'
@@ -124,7 +124,7 @@ synthTerm term = case term of
         )
         $ synthTerm bod
 
-    ty' <- lift $ transType ty
+    ty' <- liftFlexM_CheckingM $ transType ty
 
     return $ TermLet symId tm' bod' ty'
   TermStructure {..} -> do
@@ -137,10 +137,10 @@ synthTerm term = case term of
         (termFields `zip` structureFields)
         \((fieldId, tmField), (fieldId', tyField)) -> do
           unless (fieldId == fieldId') $ FlexBug.throw $ FlexM.FlexLog "refining" $ "field ids are not in matching order between the structure constructor and its annotated structure type:" <+> pPrint term
-          tyField' <- lift $ transType tyField
+          tyField' <- liftFlexM_CheckingM $ transType tyField
           (fieldId,) <$> synthCheckTerm tyField' tmField
 
-    ty <- lift $ transType termAnn
+    ty <- liftFlexM_CheckingM $ transType termAnn
 
     let tm =
           TermStructure
@@ -163,7 +163,7 @@ synthPrimitive _term ty primitive =
       ty1 <- inferTerm tm1'
       tm2' <- synthTerm tm2
       ty2 <- inferTerm tm2'
-      tyTuple <- lift $ typeTuple [ty1, ty2]
+      tyTuple <- liftFlexM_CheckingM $ typeTuple [ty1, ty2]
       return $ TermPrimitive (PrimitiveTuple (tm1', tm2')) tyTuple
     PrimitiveIf tm1 tm2 tm3 -> go3 PrimitiveIf tm1 tm2 tm3
     PrimitiveAnd tm1 tm2 -> go2 PrimitiveAnd tm1 tm2
@@ -178,7 +178,7 @@ synthPrimitive _term ty primitive =
       tm1' <- synthTerm tm1
       tm2' <- synthTerm tm2
       let prim = constr tm1' tm2'
-      ty' <- lift $ transType ty
+      ty' <- liftFlexM_CheckingM $ transType ty
       mapM_termAnn
         (mapM_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
@@ -186,7 +186,7 @@ synthPrimitive _term ty primitive =
     go1 constr tm = do
       tm' <- synthTerm tm
       let prim = constr tm'
-      ty' <- lift $ transType ty
+      ty' <- liftFlexM_CheckingM $ transType ty
       mapM_termAnn
         (mapM_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
@@ -196,7 +196,7 @@ synthPrimitive _term ty primitive =
       tm2' <- synthTerm tm2
       tm3' <- synthTerm tm3
       let prim = constr tm1' tm2' tm3'
-      ty' <- lift $ transType ty
+      ty' <- liftFlexM_CheckingM $ transType ty
       mapM_termAnn
         (mapM_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'

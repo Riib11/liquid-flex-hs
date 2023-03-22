@@ -60,7 +60,7 @@ transTerm term = do
         Base.PatternNamed ti _ty -> freshSymIdTermId ti
         Base.PatternDiscard _ty -> freshSymId "discard"
       tm <- transTerm termTerm
-      ty <- transType $ termAnn tm
+      ty <- liftFlexM_RefiningM $ transType $ termAnn tm
       bod <-
         comps
           [ introSymId symId,
@@ -155,10 +155,10 @@ transTerm term = do
     -- invalid
     Base.TermAscribe _te _ty _ty' -> FlexBug.throw $ FlexM.FlexLog "refining" $ "term ascribe should not appear in typed term:" <+> pPrint term
 
-transType :: Base.Type -> RefiningM TypeReft
+transType :: Base.Type -> FlexM TypeReft
 transType type_ = case type_ of
   Base.TypeNumber numty n -> do
-    x <- liftFlexM_RefiningM $ freshSymbol (render $ pPrint type_)
+    x <- freshSymbol (render $ pPrint type_)
     let p = case numty of
           Base.TypeInt ->
             -- -2^(n-1) < x < 2^(n-1)
@@ -285,9 +285,9 @@ typeStructure struct@Base.Structure {..} fieldTys = do
 --
 -- > typeTuple [.., { xI: aI | pI(xI) }, ...] = { tuple: (..., aI, ...) | (tuple
 -- > == (..., xI, ....)) && ... && pI(xI) && .... }
-typeTuple :: [TypeReft] -> RefiningM TypeReft
+typeTuple :: [TypeReft] -> FlexM TypeReft
 typeTuple tys_ = do
-  let go :: TypeReft -> TypeReft -> RefiningM TypeReft
+  let go :: TypeReft -> TypeReft -> FlexM TypeReft
       go ty1 ty2 = do
         -- ty1: { x1: a1 | r1(x1) }
         -- ty2: { x2: a2 | r2(x2) }
@@ -297,7 +297,7 @@ typeTuple tys_ = do
         let r1 = typeAnn ty1
             r2 = typeAnn ty2
 
-        symTuple <- liftFlexM_RefiningM $ freshSymbol "tuple"
+        symTuple <- freshSymbol "tuple"
 
         -- tyTuple: (ty1, ty2)
         -- unrefined, since only used for embedding
@@ -305,24 +305,23 @@ typeTuple tys_ = do
 
         -- p1(tuple, x1, x2): tuple == (x1, x2)
         p1 <-
-          liftFlexM_RefiningM $
-            eqPred
-              (termVar (fromSymbolToSymId symTuple) tyTuple)
-              ( TermPrimitive
-                  ( PrimitiveTuple
-                      ( fromSymbolToTerm (F.reftBind r1) (void ty1),
-                        fromSymbolToTerm (F.reftBind r2) (void ty2)
-                      )
-                  )
-                  tyTuple
-              )
+          eqPred
+            (termVar (fromSymbolToSymId symTuple) tyTuple)
+            ( TermPrimitive
+                ( PrimitiveTuple
+                    ( fromSymbolToTerm (F.reftBind r1) (void ty1),
+                      fromSymbolToTerm (F.reftBind r2) (void ty2)
+                    )
+                )
+                tyTuple
+            )
 
         -- p2(tuple, x1, x2): r1(x1) && r2(x2)
         let p2 = F.conj $ [ty1, ty2] <&> (F.reftPred . typeAnn)
 
         -- r: { tuple: tyTuple | exists x1 x2 . p1(y1, x2) && p2(y1, x2) }
-        srt1 <- liftFlexM_RefiningM $ embedType ty1
-        srt2 <- liftFlexM_RefiningM $ embedType ty2
+        srt1 <- embedType ty1
+        srt2 <- embedType ty2
         let r =
               F.reft symTuple $
                 F.pExist [(F.reftBind r1, srt1), (F.reftBind r2, srt2)] $
