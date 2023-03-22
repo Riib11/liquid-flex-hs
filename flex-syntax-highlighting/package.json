@@ -1,0 +1,25 @@
+{
+  "name": "flex-syntax-highlighting",
+  "displayName": "flex-syntax-highlighting",
+  "description": "Syntax highlighting for the Flex programming language.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.76.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "flex",
+      "aliases": ["Flex", "flex"],
+      "extensions": [".flex"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "flex",
+      "scopeName": "source.flex",
+      "path": "./syntaxes/flex.tmLanguage.json"
+    }]
+  }
+}

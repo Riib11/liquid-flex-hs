@@ -1,0 +1,59 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Flex",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [{
+				"name": "comment.line.flex",
+				"begin": "//",
+				"end": "\\n",
+				"patterns": [
+					{
+						"name": "comment.line.flex",
+						"match": "\\\\."
+					}
+				]
+			},{
+				"name": "keyword.control.flex",
+				"match": "\\b(let|if|then|else|assert|try|function|transform|message|struct|newtype|variant|enum|module|where|as|type|const|giving|int([0-9]+)|float([0-9]+)|string|char|bit|cast|match|with|given)\\b"
+			},{
+				"name": "constant.numeric.flex",
+				"match": "(\\d+(?:\\.\\d+)?)"
+			},{
+				"name": "constant.other",
+				"match": "(true|false|some|none)"
+			}]
+		},
+		"strings": {
+			"name": "string.quoted.double.flex",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.flex",
+					"match": "\\\\."
+				}
+			]
+		},
+		"character": {
+			"name": "string.quoted.single.flex",
+			"begin": "'",
+			"end": "'",
+			"patterns": [
+				{
+					"name": "constant.character.escape.flex",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.flex"
+}
