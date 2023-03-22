@@ -15,7 +15,7 @@ import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render)
 embedId' :: Id' -> RefiningM F.Expr
 embedId' Id' {..} = return $ F.eVar id'Symbol
 
-embedTerm :: Term (Type_ ()) -> RefiningM F.Expr
+embedTerm :: Term (Type ()) -> RefiningM F.Expr
 embedTerm = \case
   TermLiteral lit _ -> embedLiteral lit
   TermPrimitive prim _ -> embedPrimitive prim
@@ -43,7 +43,7 @@ embedLiteral =
     Base.LiteralChar c -> F.expr (pack [c])
     Base.LiteralString s -> F.expr (pack s)
 
-embedPrimitive :: Primitive (Type_ ()) -> RefiningM F.Expr
+embedPrimitive :: Primitive (Type ()) -> RefiningM F.Expr
 embedPrimitive = \case
   PrimitiveTry _ -> error "embedPrimitive Try"
   PrimitiveTuple (tm1, tm2) -> do
@@ -71,7 +71,7 @@ constrTuple = F.eVar tupleConstructorSymbol
 
 -- ** Embedding as Sorts
 
-embedType :: Type_ r -> F.Sort
+embedType :: Type r -> F.Sort
 embedType = \case
   TypeAtomic atomic _ -> case atomic of
     TypeInt -> F.intSort

@@ -245,7 +245,7 @@ typeTuple tys_ = do
 -- | The predicate that asserts that two (embedded) terms are equal.
 --
 -- > eqPred tm1 tm2 = { tm1 == tm2 }
-eqPred :: Term (Type_ ()) -> Term (Type_ ()) -> RefiningM F.Pred
+eqPred :: Term (Type ()) -> Term (Type ()) -> RefiningM F.Pred
 eqPred tm1 tm2 =
   embedTerm $
     TermPrimitive

@@ -55,7 +55,7 @@ reflect _everything_ from Flex, such as statements a-normal types, etc.
 
 -- ** Type
 
-type TypeReft = Type_ F.Reft
+type TypeReft = Type F.Reft
 
 -- TODO: handle more advanced types
 
@@ -65,13 +65,13 @@ type TypeReft = Type_ F.Reft
 -- | TypeEnumerated
 -- | TypeVariant
 -- | TypeNewtype
-data Type_ r
+data Type r
   = TypeAtomic {typeAtomic :: AtomicType, typeAnn :: r}
-  | TypeTuple {typeTupleComponents :: !(Type_ r, Type_ r), typeAnn :: r}
+  | TypeTuple {typeTupleComponents :: !(Type r, Type r), typeAnn :: r}
   deriving
     (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty (Type_ F.Reft) where
+instance Pretty (Type F.Reft) where
   pPrint = \case
     TypeAtomic at r -> case at of
       TypeInt -> go "int" r
@@ -83,7 +83,7 @@ instance Pretty (Type_ F.Reft) where
     where
       go doc r = braces $ pprintInline (F.reftBind r) <+> ":" <+> doc <+> "|" <+> pprintInline (F.reftPred r)
 
-voidTypeR :: Type_ r -> Type_ ()
+voidTypeR :: Type r -> Type ()
 voidTypeR = void
 
 data AtomicType
@@ -94,7 +94,7 @@ data AtomicType
   | TypeString
   deriving (Eq, Show)
 
-mapM_typeAnn :: Functor f => (r -> f r) -> Type_ r -> f (Type_ r)
+mapM_typeAnn :: Functor f => (r -> f r) -> Type r -> f (Type r)
 mapM_typeAnn k ty = do
   ann <- k (typeAnn ty)
   return ty {typeAnn = ann}
@@ -105,10 +105,10 @@ typeEqTrue = typeBit F.trueReft
 typeEqFalse :: TypeReft
 typeEqFalse = typeBit F.falseReft
 
-typeInt :: r -> Type_ r
+typeInt :: r -> Type r
 typeInt = TypeAtomic TypeInt
 
-typeBit :: r -> Type_ r
+typeBit :: r -> Type r
 typeBit = TypeAtomic TypeBit
 
 typeChar :: F.Reft -> TypeReft
@@ -134,22 +134,22 @@ primitiveSourcePos label =
 
 -- Liquid Flex's function types are simple in that the they cannot express
 -- dependency of one type's refinement on a preceeding parameter's value.
-type FunctionType = FunctionType_ F.Reft
+type FunctionTypeReft = FunctionType F.Reft
 
-data FunctionType_ r = FunctionType
-  { functionTypeParameters :: ![Type_ r],
-    functionTypeOutput :: !(Type_ r)
+data FunctionType r = FunctionType
+  { functionTypeParameters :: ![Type r],
+    functionTypeOutput :: !(Type r)
   }
   deriving (Eq, Show)
 
 -- | Subable (Subtypeable)
-instance F.Subable r => F.Subable (Type_ r) where
+instance F.Subable r => F.Subable (Type r) where
   syms = foldMap F.syms
   substa f = fmap (F.substa f)
   substf f = fmap (F.substf f)
   subst f = fmap (F.subst f)
 
-instance F.Subable r => F.Subable (FunctionType_ r) where
+instance F.Subable r => F.Subable (FunctionType r) where
   syms (FunctionType _params outTy) = F.syms outTy
   substa f (FunctionType params outTy) = FunctionType params (F.substa f outTy)
   substf f (FunctionType params outTy) = FunctionType params (F.substf f outTy)

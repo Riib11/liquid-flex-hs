@@ -170,7 +170,7 @@ synthPrimitive _term ty primitive =
 -- refinement that the value is equal to the (embedded) term.
 --
 -- > reflectTermInReft v { x: a | r } = { x: a | x == v && r }
-reflectTermInReft :: Term (Type_ ()) -> F.Reft -> CheckingM F.Reft
+reflectTermInReft :: Term (Type ()) -> F.Reft -> CheckingM F.Reft
 reflectTermInReft tm r = do
   let sort = void $ termAnn tm
   let x = F.reftBind r
@@ -182,10 +182,10 @@ reflectTermInReft tm r = do
         (typeBit ())
   return $ F.reft x (F.conj [pRefl, p])
 
-reflectLiteralInReft :: Type_ () -> Literal -> F.Reft -> CheckingM F.Reft
+reflectLiteralInReft :: Type () -> Literal -> F.Reft -> CheckingM F.Reft
 reflectLiteralInReft ty lit = reflectTermInReft (TermLiteral lit ty)
 
-reflectPrimitiveInReft :: Type_ () -> Primitive (Type_ ()) -> F.Reft -> CheckingM F.Reft
+reflectPrimitiveInReft :: Type () -> Primitive (Type ()) -> F.Reft -> CheckingM F.Reft
 reflectPrimitiveInReft ty prim = reflectTermInReft (TermPrimitive prim ty)
 
 -- ** Inferring
