@@ -4,11 +4,12 @@ module Language.Flex.FlexM where
 
 import Control.Lens
 import Control.Monad.IO.Class
-import Control.Monad.Reader (ReaderT (runReaderT))
+import Control.Monad.Reader (MonadReader, ReaderT (runReaderT), asks)
 import Control.Monad.Trans (MonadTrans)
 import Control.Monad.Writer (MonadWriter, WriterT (runWriterT), when)
 import qualified Control.Monad.Writer.Class as Writer
 import Data.Foldable (traverse_)
+import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.PrettyPrint as F
 import Text.PrettyPrint.HughesPJ hiding ((<>))
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
@@ -39,6 +40,16 @@ runFlexM opts@FlexOptions {..} m = do
   (a, logs) <- runWriterT (runReaderT m opts)
   when flexVerbose $ (putStrLn . render . pPrint) `traverse_` logs
   return a
+
+defaultSourcePos :: MonadReader FlexOptions m => m F.SourcePos
+defaultSourcePos = do
+  fp <- asks sourceFilePath
+  return
+    F.SourcePos
+      { sourceName = fp,
+        sourceLine = F.mkPos 1,
+        sourceColumn = F.mkPos 1
+      }
 
 data FlexLog = FlexLog
   { logLabel :: Doc,

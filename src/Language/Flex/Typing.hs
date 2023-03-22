@@ -14,6 +14,7 @@ import Control.Monad.Reader (MonadReader (ask, local), MonadTrans (lift), Reader
 import Control.Monad.State (StateT (runStateT), gets)
 import Data.Bifunctor (Bifunctor (second))
 import Data.Foldable (traverse_)
+import Data.Functor ((<&>))
 import qualified Data.Map as Map
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set

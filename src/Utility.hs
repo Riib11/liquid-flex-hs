@@ -24,6 +24,11 @@ asUncurry f g = curry (uncurry f . g)
 
 infixr 0 <$$>
 
+(<$$$>) :: (Functor f1, Functor f2, Functor f3) => (a -> b) -> f1 (f2 (f3 a)) -> f1 (f2 (f3 b))
+(<$$$>) f = (((f <$>) <$>) <$>)
+
+infixr 0 <$$$>
+
 (=<<<) :: Monad m => (a -> m b) -> m (m a) -> m b
 k =<<< mma = do
   ma <- mma
@@ -49,9 +54,6 @@ infixr 0 =<<$>
 ($>) = flip (<$)
 
 infixl 4 $>
-
-(<&>) :: Functor f => f a -> (a -> b) -> f b
-(<&>) = flip (<$>)
 
 mapTupleM :: Monad m => (a -> m a') -> (b -> m b') -> (a, b) -> m (a', b')
 mapTupleM fa fb = uncurry (liftM2 (,)) . bimap fa fb

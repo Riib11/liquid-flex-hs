@@ -1,6 +1,6 @@
 module Language.Flex.Refining.Translating where
 
-import Control.Lens (At (at), locally, (^.))
+import Control.Lens (At (at), locally, to, (^.), _3)
 import Control.Monad (filterM, foldM, forM, void, when)
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (MonadTrans (lift))
@@ -12,12 +12,12 @@ import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Embedding (embedTerm, embedType)
-import Language.Flex.Refining.RefiningM (RefiningM, freshSymId, freshSymIdTermId, freshSymbol, freshenBind, freshenTermId, getApplicantType, getFunction, getSymId, introApplicantType, introBinding, introSymId, throwRefiningError)
+import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshSymbol, freshenBind, freshenTermId, getApplicantType, getFunction, getSymId, introApplicantType, introBinding, introSymId, throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..), renameTerm)
 import qualified Language.Flex.Syntax as Base
-import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), render, (<+>))
-import Utility (comps, compsM, foldrM)
+import Text.PrettyPrint.HughesPJClass
+import Utility
 
 -- ** Translate Term
 
@@ -156,12 +156,44 @@ transType ty = do
   ty' <- go ty
   -- introduce existential quantifiers and equality constraints for local
   -- bindings
-  syms <-
-    flip filterM (F.syms ty') \sym -> do
-      error "CHECKPOINT"
-  -- for each symbol that is in the type and also is a local binding
-  error "CHECKPOINT"
+  bindings :: [(F.Symbol, (SymId, Term (Type F.Reft), F.Sort))] <-
+    concat
+      -- <$> forM (F.syms ty') \sym -> do
+      --   -- check if mapped to by a SymId
+      --   asks (^. ctxSymbols . at sym) >>= \case
+      --     Nothing -> return []
+      --     Just symId -> do
+      --       -- check if symId maps to a local binding
+      --       asks (^. ctxBindings . at symId) >>= \case
+      --         Nothing -> return []
+      --         Just tm -> return [(sym, (symId, tm, embedType $ termAnn tm))]
+      <$> do
+        -- TODO: just for testing, add use all local bindings
+        bnds <- asks (^. ctxBindings . to Map.toList)
+        forM bnds \(symId, tm) -> do
+          return [(symIdSymbol symId, (symId, tm, embedType $ termAnn tm))]
+
+  eqPreds :: [F.Pred] <-
+    forM bindings \(_sym, (symId, tm, _srt)) ->
+      eqPred (termVar symId (void $ termAnn tm)) (void <$> tm)
+
+  FlexM.tell $ FlexM.FlexLog "refining" $ "transType.eqPreds:" $$ nest 2 (vcat $ F.pprint <$> eqPreds)
+
+  return
+    ty'
+      { typeAnn =
+          F.reft (F.reftBind (typeAnn ty')) $
+            -- exists x1 ... xN . ↵
+            F.pExist ((^. _3) <$$> bindings) $
+              --- x1 == tm1 && ... && xN == tmN && ↵
+              (F.conj . (: eqPreds)) $
+                F.reftPred (typeAnn ty')
+      }
   where
+    -- return $
+    --   comps
+    --     (xxx <&> \(sym, tm) -> _)
+    --     _ -- ( ty')
     go :: Base.Type -> RefiningM TypeReft
     go type_ = case type_ of
       Base.TypeNumber numty n -> do

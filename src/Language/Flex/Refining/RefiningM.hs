@@ -72,6 +72,7 @@ topRefiningCtx _mdl = do
     RefiningCtx
       { _ctxTypings = mempty,
         _ctxSymIds = mempty,
+        _ctxSymbols = mempty, 
         _ctxApplicants = mempty,
         _ctxFunctions = mempty,
         _ctxBindings = mempty

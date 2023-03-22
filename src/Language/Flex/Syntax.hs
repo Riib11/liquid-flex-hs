@@ -3,6 +3,7 @@
 module Language.Flex.Syntax where
 
 import Data.Bifunctor (Bifunctor (bimap, second))
+import Data.Functor ((<&>))
 import Data.List (intercalate)
 import qualified Data.Map as Map
 import Text.PrettyPrint.HughesPJClass (Doc, Pretty (pPrint), braces, brackets, colon, comma, doubleQuotes, hsep, nest, parens, punctuate, quotes, text, vcat, ($$), (<+>))
