@@ -37,6 +37,10 @@ embedTerm = \case
     sort <- lift . lift . lift $ embedType (termAnn tm)
     bod' <- embedTerm bod
     return $ F.eApps (F.ELam (symIdSymbol x, sort) bod') [tm']
+  TermStructure {..} -> do
+    structExpr <- lift . lift . lift $ structureConstructorExpr termStructure
+    termFields' <- embedTerm `traverse` (snd <$> termFields)
+    return $ F.eApps structExpr termFields'
 
 embedLiteral :: Literal -> RefiningM F.Expr
 embedLiteral =
@@ -55,8 +59,8 @@ embedPrimitive = \case
     -- let ty2 = termAnn tm2
     e1 <- embedTerm tm1
     e2 <- embedTerm tm2
-    -- return $ constrTuple `F.ETApp` embedType ty1 `F.ETApp` embedType ty2 `F.EApp` e1 `F.EApp` e2
-    return $ constrTuple `F.EApp` e1 `F.EApp` e2
+    -- return $ tupleConstructorExpr `F.ETApp` embedType ty1 `F.ETApp` embedType ty2 `F.EApp` e1 `F.EApp` e2
+    return $ tupleConstructorExpr `F.EApp` e1 `F.EApp` e2
   PrimitiveArray _ -> error "embedPrimitive Array"
   PrimitiveIf te te' te2 -> F.EIte <$> embedTerm te <*> embedTerm te' <*> embedTerm te2
   PrimitiveAnd te te' -> F.PAnd <$> embedTerm `traverse` [te, te']
@@ -70,8 +74,8 @@ embedTermId tmId = return $ fromString (render . pPrint $ tmId)
 
 -- *** Primitive Constructors
 
-constrTuple :: F.Expr
-constrTuple = F.eVar tupleTermConstructorSymbol
+tupleConstructorExpr :: F.Expr
+tupleConstructorExpr = F.eVar tupleTermConstructorSymbol
 
 -- ** Embedding as Sorts
 
@@ -108,6 +112,9 @@ structureFTycon Structure {..} = F.symbolFTycon <$> defaultLocated (F.symbol str
 -- TODO: could this cause issues since uses the same symbol as the FTycon?
 structureConstructorSymbol :: Structure -> FlexM F.LocSymbol
 structureConstructorSymbol = structureSymbol
+
+structureConstructorExpr :: Structure -> FlexM F.Expr
+structureConstructorExpr struct = F.eVar <$> structureConstructorSymbol struct
 
 structureFieldSymbol :: Structure -> Base.FieldId -> FlexM F.LocSymbol
 structureFieldSymbol Structure {..} fieldId = defaultLocated $ F.symbol (structureId, fieldId)

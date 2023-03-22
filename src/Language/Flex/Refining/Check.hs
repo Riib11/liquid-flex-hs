@@ -3,7 +3,9 @@
 module Language.Flex.Refining.Check where
 
 -- TODO: rename this module to "Refining"
+
 import Control.Lens (at, (^.))
+import Control.Monad
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (lift)
 import qualified Control.Monad.Writer as Writer
@@ -23,7 +25,7 @@ import Language.Flex.Refining.Types
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), nest, parens, render, text, vcat, ($$), (<+>))
-import Utility (ticks)
+import Utility (for, ticks)
 
 type CheckingM = Writer.WriterT CstrMonoid RefiningM
 
@@ -66,26 +68,6 @@ synthCheckTerm tyExpect tm = do
 synthTerm :: Term Base.Type -> CheckingM (Term TypeReft)
 synthTerm term = case term of
   TermNeutral symId args ty -> do
-    {-
-    -- TODO: none of this should be necessary, because lets are converted to lambdas during embedding
-
-    -- first, check if its a reference to a local binding
-    asks (^. ctxBindings . at symId) >>= \case
-      -- this neutral form is a reference to a local binding
-      Just tm -> do
-        unless (null args) $ FlexBug.throw $ FlexM.FlexLog "refining" $ "neutral forms that have as the applicant a reference to a local binding must not have any arguments, because functions cannot be defined locally"
-        return tm
-      Nothing -> do
-        args' <- synthTerm `traverse` args
-        -- TODO: for transforms, input values can't affect output refinement
-        -- type, BUT, newtype/variant/enum constructors should have their args
-        -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
-        -- }`
-        ty' <- lift $ transType ty
-        return $ TermNeutral symId args' ty'
-    -}
-
-    -- TODO: this is old version, that doesnt substitute for binding in context
     args' <- synthTerm `traverse` args
     -- TODO: for transforms, input values can't affect output refinement
     -- type, BUT, newtype/variant/enum constructors should have their args
@@ -140,6 +122,29 @@ synthTerm term = case term of
     ty' <- lift $ transType ty
 
     return $ TermLet symId tm' bod' ty'
+  TermStructure {..} -> do
+    -- reflect as you'd expect
+
+    fields <-
+      forM
+        (termFields `zip` structureFields termStructure)
+        \((fieldId, tmField), (fieldId', tyField)) -> do
+          unless (fieldId == fieldId') $ FlexBug.throw $ FlexM.FlexLog "refining" $ "field ids are not in matching order between the structure constructor and its annotated structure type:" <+> pPrint term
+          (fieldId,) <$> synthCheckTerm tyField tmField
+
+    ty <- lift $ transType termAnn
+
+    let tm =
+          TermStructure
+            { termStructure,
+              termFields = fields,
+              termAnn = ty
+            }
+
+    -- TODO: include in the refinement that the field values satisfy the
+    -- structure's user-specified refinement
+
+    mapM_termAnn (mapM_typeAnn $ reflectTermInReft (void <$> tm)) tm
 
 -- | Note that most primitive operations are reflected in refinement.
 synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term TypeReft)
