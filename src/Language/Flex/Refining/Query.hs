@@ -25,10 +25,7 @@ import Text.PrettyPrint.HughesPJ
 makeQuery :: Cstr -> RefiningM Query
 makeQuery cstr = do
   -- WARNING: this can be a very big debug
-  -- FlexM.tell
-  --   $ FlexM.FlexLog
-  --     "refining"
-  --   $ "makeQuery.cstr:" <+> F.pprint cstr
+  FlexM.debug False $ FlexM.FlexLog "refining" $ "[makeQuery.cstr]" <+> F.pprint cstr
 
   -- TODO: qualifiers should only include top-level stuff (constants?)
   qualifiers :: [F.Qualifier] <- do
@@ -58,13 +55,7 @@ makeQuery cstr = do
           preludeDataDecls
         ]
 
-  FlexM.tell
-    $ FlexM.FlexLog
-      "refining"
-    $ "makeQuery.quantifiers:"
-      $$ if null qualifiers
-        then "EMPTY"
-        else nest 2 (vcat $ F.pprint <$> qualifiers)
+  FlexM.debug False $ FlexM.FlexLog "refining" $ "[makeQuery.quantifiers]" $$ if null qualifiers then "EMPTY" else nest 2 (vcat $ F.pprint <$> qualifiers)
 
   -- TODO: should include transforms
   uninterpreteds <- -- :: HashMap Symbol Sort
