@@ -21,7 +21,7 @@ import Language.Flex.Refining.Constraint
 import Language.Flex.Refining.Logic (conjPred)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
-import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, transType, tupleTypeReft)
+import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, transTerm, transType, tupleTypeReft)
 import Language.Flex.Refining.Types
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
@@ -90,10 +90,6 @@ synthTerm term = do
       tm2' <- synthTerm tm2
       ty' <- inferTerm tm2'
       return $ TermAssert tm1' tm2' ty'
-    -- let-bindings introduce the following info into context:
-    --  - map the Base.TermId to a fresh SymId via introSymId
-    --  - map the SymId to an ApplicantType via introApplicantType
-    --  - map the SymId to a Term TypeReft via introBinding
     TermLet symId tm bod ty -> do
       tm' <- synthTerm tm
 
@@ -142,6 +138,47 @@ synthTerm term = do
 
       -- TODO: include a constraint that the fields satisfy the structure's user
       -- refinement
+
+      -- get the refinement of the structure
+      Base.RefinedType {..} <- getRefinedType structureId
+
+      -- convert
+      --
+      -- @
+      --   assert(p(x, y, z))
+      -- @
+      --
+      -- into
+      --
+      -- @
+      --   let x = a; let y = b; let z = c; p(x, y, z)
+      -- @
+      --
+      -- and then check that this term satisfies refinement type
+      --
+      -- @
+      --   { VV: bit | VV == true }
+      -- @
+      tmReft'' <-
+        foldr
+          ( \(fieldId, tmField) te ->
+              TermLet
+                SymId
+                  { symIdSymbol = F.symbol (structureId, fieldId),
+                    symIdMaybeTermId = Nothing
+                  }
+                tmField
+                te
+                Base.TypeBit
+          )
+          <$> (lift . transTerm $ Base.unRefinement refinedTypeRefinement)
+          <*> return termFields
+
+      -- check that tmReft'' satisfies { VV: bit | VV == true }
+      void $
+        synthCheckTerm
+          (TypeAtomic TypeBit F.trueReft)
+          tmReft''
 
       mapM_termAnn (mapM_typeAnn $ reflectTermInReft (void <$> tm)) tm
 

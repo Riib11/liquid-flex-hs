@@ -59,7 +59,8 @@ data RefiningCtx = RefiningCtx
     _ctxApplicants :: Map.Map SymId (Base.ApplicantType TypeReft),
     _ctxFunctions :: Map.Map SymId (Base.Function Base.Type),
     _ctxBindings :: Map.Map SymId (Term TypeReft),
-    _ctxStructures :: Map.Map Base.TypeId Base.Structure
+    _ctxStructures :: Map.Map Base.TypeId Base.Structure,
+    _ctxRefinedTypes :: Map.Map Base.TypeId (Base.RefinedType Base.Type)
   }
 
 data RefiningEnv = RefiningEnv
@@ -80,14 +81,16 @@ topRefiningCtx Base.Module {..} = do
   foldrM
     ( \decl ctx -> do
         case decl of
-          Base.DeclarationStructure struct@Base.Structure {..} -> return $ ctx & ctxStructures %~ Map.insert structureId struct
+          Base.DeclarationStructure struct@Base.Structure {..} ->
+            return $ ctx & ctxStructures %~ Map.insert structureId struct
           Base.DeclarationNewtype _new -> return ctx
           Base.DeclarationVariant _vari -> return ctx
           Base.DeclarationEnum _en -> return ctx
           Base.DeclarationAlias _al -> return ctx
           Base.DeclarationFunction _func -> return ctx
           Base.DeclarationConstant _con -> return ctx
-          Base.DeclarationRefinedType _rt -> return ctx
+          Base.DeclarationRefinedType reftTy@Base.RefinedType {..} ->
+            return $ ctx & ctxRefinedTypes %~ Map.insert refinedTypeId reftTy
     )
     RefiningCtx
       { _ctxTypings = mempty,
@@ -96,7 +99,8 @@ topRefiningCtx Base.Module {..} = do
         _ctxApplicants = mempty,
         _ctxFunctions = mempty,
         _ctxBindings = mempty,
-        _ctxStructures = mempty
+        _ctxStructures = mempty,
+        _ctxRefinedTypes = mempty
       }
     moduleDeclarations
 
@@ -111,6 +115,12 @@ getStructure structId =
   asks (^. ctxStructures . at structId) >>= \case
     Nothing -> FlexM.throw $ "unknown structure:" <+> pPrint structId
     Just struct -> return struct
+
+getRefinedType structId =
+  asks (^. ctxRefinedTypes . at structId)
+    >>= \case
+      Nothing -> FlexM.throw $ "unknown structure id:" <+> pPrint structId
+      Just reftTy -> return reftTy
 
 getTyping tmId =
   asks (^. ctxTypings . at tmId)

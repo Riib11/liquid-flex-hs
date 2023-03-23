@@ -553,7 +553,7 @@ instance Pretty Literal where
 
 -- ** Refinement
 
-newtype Refinement ann = Refinement (Term ann)
+newtype Refinement ann = Refinement {unRefinement :: Term ann}
   deriving (Eq, Show, Functor, Traversable, Foldable)
 
 trueRefinement :: Refinement ()
