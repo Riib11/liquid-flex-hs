@@ -10,7 +10,7 @@ import Control.Monad
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class
 import Control.Monad.Reader (MonadReader (local, reader), ReaderT (runReaderT), asks)
-import Control.Monad.State (MonadState, StateT, evalStateT, gets)
+import Control.Monad.State (MonadState, StateT, evalStateT, gets, modify')
 import Control.Monad.Trans (MonadTrans, lift)
 import Control.Monad.Writer (MonadWriter, WriterT (runWriterT), when)
 import qualified Control.Monad.Writer.Class as Writer
@@ -39,13 +39,13 @@ newtype FlexM a = FlexM (StateT FlexEnv (ReaderT FlexCtx (WriterT [FlexLog] (Exc
 
 data FlexCtx = FlexCtx
   { flexVerbose :: Bool,
-    flexSourceFilePath :: FilePath,
-    _flexStack :: FlexMark
+    flexSourceFilePath :: FilePath
   }
 
 data FlexEnv = FlexEnv
   { _flexFreshSymbolIndex :: Int,
-    _flexTrace' :: [FlexMark]
+    _flexTrace' :: [FlexMark],
+    _flexStack :: FlexMark
   }
 
 data FlexLog = FlexLog
@@ -123,7 +123,8 @@ initFlexEnv =
   return
     ( FlexEnv
         { _flexFreshSymbolIndex = 0,
-          _flexTrace' = []
+          _flexTrace' = mempty,
+          _flexStack = mempty
         }
     )
 
@@ -140,14 +141,23 @@ flexTrace = flexTrace' . (. reverse)
 
 -- | This has to be FlexM because that's the only way to use Reader effect
 -- properly.
-markSection :: [FlexMarkStep] -> FlexM a -> FlexM a
-markSection steps =
-  local (flexStack %~ (\(FlexMark steps') -> FlexMark (steps' <> steps)))
+markSection :: MonadFlex m => [FlexMarkStep] -> m a -> m a
+markSection steps m = do
+  -- count how many steps on stack at start
+  n <- liftFlex $ gets (^. flexStack . to (\(FlexMark steps') -> length steps'))
+  -- push stack
+  liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (steps' <> steps)))
+  -- compute internal result
+  a <- m
+  -- pop stack
+  liftFlex $ modify' (flexStack %~ (\(FlexMark steps'') -> FlexMark (take n steps'')))
+  -- return internal result
+  return a
 
 mark :: MonadFlex m => [FlexMarkStep] -> m ()
 mark steps = liftFlex do
   -- prepend new stack to trace
-  FlexMark steps' <- asks (^. flexStack)
+  FlexMark steps' <- gets (^. flexStack)
   let stack' = FlexMark $ steps' <> steps
   flexTrace %= (stack' :)
   tell . pPrint . Dynamic $ stack'
@@ -155,12 +165,12 @@ mark steps = liftFlex do
 -- uses current stack as log mark
 tell :: MonadFlex m => Doc -> m ()
 tell doc = do
-  stack <- liftFlex $ asks (^. flexStack)
+  stack <- liftFlex $ gets (^. flexStack)
   liftFlex $ Writer.tell [FlexLog {logMark = stack, logBody = doc}]
 
 debug :: MonadFlex m => Bool -> Doc -> m ()
 debug isActive doc = do
-  stack <- liftFlex $ asks (^. flexStack)
+  stack <- liftFlex $ gets (^. flexStack)
   when isActive . liftFlex . liftIO . putStrLn . render . ("● " <+>) . pPrint . Static $
     FlexLog {logMark = stack, logBody = doc}
 
@@ -171,7 +181,7 @@ debugMark isActive = debug isActive . pPrint . Dynamic
 throw :: MonadFlex m => Doc -> m a
 throw doc = liftFlex do
   trace <- gets (^. flexTrace)
-  stack <- asks (^. flexStack)
+  stack <- gets (^. flexStack)
   throwError
     FlexLog
       { logMark = stack,
@@ -195,7 +205,7 @@ instance Pretty (Static FlexLog) where
   pPrint (Static (FlexLog {..})) = pPrint (Static logMark) $$ nest 2 logBody
 
 instance Pretty (Static FlexMark) where
-  pPrint (Static (FlexMark steps)) = brackets $ vcat $ punctuate "." $ pPrint . Static <$> steps
+  pPrint (Static (FlexMark steps)) = brackets $ hcat $ punctuate "." $ pPrint . Static <$> steps
 
 instance Pretty (Static FlexMarkStep) where
   pPrint (Static (FlexMarkStep {..})) = text flexMarkStepLabel

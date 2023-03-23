@@ -248,18 +248,17 @@ inlineStructureExtension structs extIdStack struct = do
           return struct {structureFields}
 
 typeModule :: Module () -> FlexM (Either TypingError (Module Type, TypingEnv))
-typeModule mdl =
-  FlexM.markSection [FlexM.FlexMarkStep "typeModule" . Just $ pPrint mdl] do
-    case topTypingCtx mdl of
+typeModule mdl = FlexM.markSection [FlexM.FlexMarkStep "typeModule" . Just $ pPrint mdl] do
+  case topTypingCtx mdl of
+    Left err -> return . Left $ err
+    Right r -> case topTypingEnv mdl of
       Left err -> return . Left $ err
-      Right r -> case topTypingEnv mdl of
-        Left err -> return . Left $ err
-        Right s -> do
-          runExceptT $ flip runReaderT r $ flip runStateT s $ do
-            mdl' <- procModule mdl
-            mdl'' <- defaultType `traverse` mdl'
-            assertNormalModule mdl''
-            return mdl''
+      Right s -> do
+        runExceptT $ flip runReaderT r $ flip runStateT s $ do
+          mdl' <- procModule mdl
+          mdl'' <- defaultType `traverse` mdl'
+          assertNormalModule mdl''
+          return mdl''
 
 -- ** Processing
 

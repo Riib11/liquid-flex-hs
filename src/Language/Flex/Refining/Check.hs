@@ -15,7 +15,7 @@ import Data.Bifunctor (Bifunctor (second))
 import Data.Functor
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
-import Language.Flex.FlexM (FlexM)
+import Language.Flex.FlexM (FlexM, markSection)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
 import Language.Flex.Refining.Logic (conjPred)
@@ -31,7 +31,8 @@ import Utility (for, ticks)
 type CheckingM = Writer.WriterT CstrMonoid RefiningM
 
 runCheckingM :: CheckingM a -> RefiningM (a, Cstr)
-runCheckingM = fmap (second (\(CstrMonoid cs) -> cs)) . Writer.runWriterT
+runCheckingM m = FlexM.markSection [FlexM.FlexMarkStep "runCheckingM" Nothing] do
+  second (\(CstrMonoid cs) -> cs) <$> Writer.runWriterT m
 
 newtype CstrMonoid = CstrMonoid Cstr
 

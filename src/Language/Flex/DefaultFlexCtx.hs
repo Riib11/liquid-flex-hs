@@ -6,8 +6,7 @@ defaultFlexCtx :: FlexCtx
 defaultFlexCtx =
   FlexCtx
     { flexVerbose = False,
-      flexSourceFilePath = "<empty>",
-      _flexStack = mempty
+      flexSourceFilePath = "<empty>"
     }
 
 -- -- for debugging
@@ -15,6 +14,5 @@ defaultFlexCtx =
 -- defaultFlexCtx =
 --   FlexCtx
 --     { flexVerbose = True,
---       flexSourceFilePath = "<empty>",
---       _flexStack = mempty
+--       flexSourceFilePath = "<empty>"
 --     }

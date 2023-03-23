@@ -70,6 +70,6 @@ makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . Tes
 
   !_ <- return ()
 
-  runFlexM defaultFlexCtx {flexVerbose = False} (refineModule mdl') >>= \case
+  runFlexM defaultFlexCtx {flexVerbose = True} (refineModule mdl') >>= \case
     Left err -> when pass $ assertFailure (render . pPrint $ err)
     Right _ -> unless pass $ assertFailure "expected refining to fail"
