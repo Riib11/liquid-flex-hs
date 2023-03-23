@@ -1,13 +1,28 @@
 module Language.Flex.FlexBug where
 
-import Language.Flex.FlexM (FlexLog (..))
+import Control.Lens
+import Control.Monad.Error.Class (MonadError (throwError))
+import Control.Monad.Reader.Class (asks)
+import Control.Monad.State (gets)
+import Language.Flex.FlexM
 import System.IO.Unsafe (unsafePerformIO)
-import Text.PrettyPrint.HughesPJ (braces, brackets, render, text, vcat, ($$), (<+>))
+import Text.PrettyPrint.HughesPJ
+import Text.PrettyPrint.HughesPJClass
+import Prelude hiding ((<>))
 
-throw :: FlexLog -> a
-throw (FlexLog {..}) =
-  error . render $
-    text (replicate 40 '=')
-      $$ brackets (text "bug:" <+> logLabel)
-      $$ logBody
-      $$ text (replicate 40 '=')
+-- prints the message and trace
+throw :: MonadFlex m => Doc -> m a
+throw doc = liftFlex do
+  trace <- gets (^. flexTrace)
+  stack <- asks (^. flexStack)
+  throwError
+    FlexLog
+      { logMark = stack,
+        logBody =
+          vcat
+            [ "[ bug: message ]" <> text (replicate 40 '='),
+              doc,
+              "[ bug: trace ]" <> text (replicate 40 '='),
+              vcat $ fmap ("[>]" <+>) $ pPrint <$> trace
+            ]
+      }

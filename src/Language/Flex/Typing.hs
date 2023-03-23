@@ -3,6 +3,8 @@
 {-# HLINT ignore "Use lambda-case" #-}
 {-# HLINT ignore "Use ++" #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
+{-# HLINT ignore "Use :" #-}
+
 module Language.Flex.Typing where
 
 import Control.Category ((>>>))
@@ -142,7 +144,7 @@ topTypingCtx Module {..} = do
           struct' <- inlineStructureExtension structs [] struct
           (ctx &) $
             addType structureId (normType $ TypeStructure struct')
-        DeclarationNewtype newty@Newtype {..} -> do
+        DeclarationNewtype newty@Newtype {..} ->
           (ctx &) . compsM $
             [ addType newtypeId (normType $ TypeNewtype newty),
               addApplicant
@@ -151,38 +153,41 @@ topTypingCtx Module {..} = do
                 )
             ]
         DeclarationVariant varnt@Variant {..} ->
-          (ctx &) . compsM . concat $
-            [ [addType variantId (normType $ TypeVariant varnt)],
-              variantConstructors <&> \(constrId, tyParams) ->
-                addApplicant
-                  Applicant
-                    { applicantMaybeTypeId = Just variantId,
-                      applicantTermId = constrId,
-                      applicantAnn =
-                        ApplicantTypeVariantConstructor
-                          (normType <$> varnt)
-                          constrId
-                          (normType <$> tyParams)
-                    }
-            ]
+          ((ctx &) . compsM)
+            ( concat
+                [ [addType variantId (normType $ TypeVariant varnt)],
+                  variantConstructors <&> \(constrId, tyParams) ->
+                    addApplicant
+                      Applicant
+                        { applicantMaybeTypeId = Just variantId,
+                          applicantTermId = constrId,
+                          applicantAnn =
+                            ApplicantTypeVariantConstructor
+                              (normType <$> varnt)
+                              constrId
+                              (normType <$> tyParams)
+                        }
+                ]
+            )
         DeclarationEnum enum@Enum {..} ->
-          (ctx &) . compsM . concat $
-            [ [addType enumId (normType $ TypeEnum enum)],
-              enumConstructors <&> \(constrId, _) ->
-                addApplicant
-                  Applicant
-                    { applicantMaybeTypeId = Just enumId,
-                      applicantTermId = constrId,
-                      applicantAnn =
-                        ApplicantTypeEnumConstructor
-                          (normType <$> enum)
-                          constrId
-                    }
-            ]
+          ((ctx &) . compsM)
+            ( [addType enumId (normType $ TypeEnum enum)]
+                ++ ( enumConstructors <&> \(constrId, _) ->
+                       addApplicant
+                         Applicant
+                           { applicantMaybeTypeId = Just enumId,
+                             applicantTermId = constrId,
+                             applicantAnn =
+                               ApplicantTypeEnumConstructor
+                                 (normType <$> enum)
+                                 constrId
+                           }
+                   )
+            )
         DeclarationAlias Alias {..} ->
           (ctx &) $
             addType aliasId (normType aliasType)
-        DeclarationFunction Function {..} -> do
+        DeclarationFunction Function {..} ->
           (ctx &) $
             addApplicant
               Applicant
@@ -244,17 +249,16 @@ inlineStructureExtension structs extIdStack struct = do
           return struct {structureFields}
 
 typeModule :: Module () -> FlexM (Either TypingError (Module Type, TypingEnv))
-typeModule mdl = do
-  case topTypingCtx mdl of
+typeModule mdl = case topTypingCtx mdl of
+  Left err -> return . Left $ err
+  Right r -> case topTypingEnv mdl of
     Left err -> return . Left $ err
-    Right r -> case topTypingEnv mdl of
-      Left err -> return . Left $ err
-      Right s -> do
-        runExceptT $ flip runReaderT r $ flip runStateT s $ do
-          mdl' <- procModule mdl
-          mdl'' <- defaultType `traverse` mdl'
-          assertNormalModule mdl''
-          return mdl''
+    Right s -> do
+      runExceptT $ flip runReaderT r $ flip runStateT s $ do
+        mdl' <- procModule mdl
+        mdl'' <- defaultType `traverse` mdl'
+        assertNormalModule mdl''
+        return mdl''
 
 -- ** Processing
 
@@ -379,15 +383,9 @@ synthCheckTerm ty tm = do
 -- ** Checking
 
 checkTerm :: Type -> Term TypeM -> TypingM ()
-checkTerm ty tm = do
-  FlexM.debug False $
-    FlexM.FlexLog "typing" $
-      "[checkTerm]"
-        $$ (nest 2 . vcat)
-          [ "|- " <> pPrint tm,
-            ":? " <> pPrint ty
-          ]
-  unify ty =<< join (inferTerm tm)
+checkTerm tyExpect tm = FlexM.mark [hsep ["checkTerm", pPrint tyExpect, ":?", pPrint tm]] do
+  tySynth <- inferTerm tm
+  unify tyExpect =<< tySynth
 
 checkPattern' :: TypingM Type -> Pattern () -> TypingM (Pattern TypeM)
 checkPattern' tyM pat = do
@@ -694,7 +692,7 @@ satisfiesUnifyConstraint ty = \case
       | all (`elem` [TypeInt, TypeUInt]) [numty1, numty2] -> True
       | all (`elem` [TypeFloat]) [numty1, numty2] -> True
     (TypeUnifyVar _ mb_uc, _) -> maybe True (satisfiesUnifyConstraint ty') mb_uc
-    -- FlexBug.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
+    -- TODO: FlexBug.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
     _uc -> False
   UnifyConstraintNumeric -> case ty of
     TypeNumber _ _ -> True
@@ -702,47 +700,39 @@ satisfiesUnifyConstraint ty = \case
 
 -- | <expected type> ~? <synthesized type>
 unify :: Type -> Type -> TypingM ()
--- TypeUnifyVar
-unify ty1@(TypeUnifyVar uv mb_uc) ty2@ty = substUnifyVar ty1 ty2 uv mb_uc ty
-unify ty1@ty ty2@(TypeUnifyVar uv mb_uc) = substUnifyVar ty1 ty2 uv mb_uc ty
--- simple types
-unify ty1@(TypeNumber numty1 size1) ty2@(TypeNumber numty2 size2) = unless (numty1 == numty2 && size1 == size2) $ throwUnifyError ty1 ty2 Nothing
-unify TypeBit TypeBit = return ()
-unify TypeChar TypeChar = return ()
--- complex types
-unify (TypeArray ty1) (TypeArray ty2) = unify ty1 ty2
-unify (TypeTuple tys1) (TypeTuple tys2) = uncurry unify `traverse_` (tys1 `zip` tys2)
-unify (TypeOptional ty1) (TypeOptional ty2) = unify ty1 ty2
-unify (TypeStructure struct1) (TypeStructure struct2) | structureId struct1 == structureId struct2 = return ()
-unify (TypeEnum enum1) (TypeEnum enum2) | enumId enum1 == enumId enum2 = return ()
-unify (TypeVariant varnt1) (TypeVariant varnt2) | variantId varnt1 == variantId varnt2 = return ()
-unify (TypeNewtype newty1) (TypeNewtype newty2) | newtypeId newty1 == newtypeId newty2 = return ()
--- invalid types
--- TODO: remove when confirm deletions of Type*Constructor types
--- unify ty@(TypeFunction {}) _ = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeFunction`:" <+> ticks (pPrint ty)
--- unify _ ty@(TypeFunction {}) = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeFunction`:" <+> ticks (pPrint ty)
--- unify ty@TypeVariantConstuctor {} _ = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeVariantConstructor`:" <+> ticks (pPrint ty)
--- unify _ ty@TypeVariantConstuctor {} = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeVariantConstructor`:" <+> ticks (pPrint ty)
--- unify ty@TypeEnumConstructor {} _ = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeEnumConstructor`:" <+> ticks (pPrint ty)
--- unify _ ty@TypeEnumConstructor {} = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeEnumConstructor`:" <+> ticks (pPrint ty)
--- unify ty@TypeNewtypeConstructor {} _ = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeNewtypeConstructor`:" <+> ticks (pPrint ty)
--- unify _ ty@TypeNewtypeConstructor {} = FlexBug.throw $ FlexLog "typing" $ "should never try to unify with `TypeNewtypeConstructor`:" <+> ticks (pPrint ty)
-unify ty@TypeNamed {} _ = FlexBug.throw $ FlexLog "typing" $ "`TypeNamed` should never appear in a normalized type:" <+> ticks (pPrint ty)
-unify _ ty@TypeNamed {} = FlexBug.throw $ FlexLog "typing" $ "`TypeNamed` should never appear in a normalized type:" <+> ticks (pPrint ty)
--- non-unifiable types
-unify tyExpect tySynth = throwUnifyError tyExpect tySynth Nothing
+unify type1 type2 = FlexM.mark [hsep ["unify", pPrint type1, pPrint type2]] $
+  case (type1, type2) of
+    -- TypeUnifyVar
+    (TypeUnifyVar uv mb_uc, ty) -> substUnifyVar type1 type2 uv mb_uc ty
+    (ty, TypeUnifyVar uv mb_uc) -> substUnifyVar type1 type2 uv mb_uc ty
+    -- simple types
+    (TypeNumber numty1 size1, TypeNumber numty2 size2) -> unless (numty1 == numty2 && size1 == size2) $ throwUnifyError type1 type2 Nothing
+    (TypeBit, TypeBit) -> return ()
+    (TypeChar, TypeChar) -> return ()
+    -- complex types
+    (TypeArray ty1, TypeArray ty2) -> unify ty1 ty2
+    (TypeTuple tys1, TypeTuple tys2) -> uncurry unify `traverse_` (tys1 `zip` tys2)
+    (TypeOptional ty1, TypeOptional ty2) -> unify ty1 ty2
+    (TypeStructure struct1, TypeStructure struct2) | structureId struct1 == structureId struct2 -> return ()
+    (TypeEnum enum1, TypeEnum enum2) | enumId enum1 == enumId enum2 -> return ()
+    (TypeVariant varnt1, TypeVariant varnt2) | variantId varnt1 == variantId varnt2 -> return ()
+    (TypeNewtype newty1, TypeNewtype newty2) | newtypeId newty1 == newtypeId newty2 -> return ()
+    (ty@TypeNamed {}, _) -> FlexBug.throw $ "`TypeNamed` should never appear in a normalized type:" <+> ticks (pPrint ty)
+    (_, ty@TypeNamed {}) -> FlexBug.throw $ "`TypeNamed` should never appear in a normalized type:" <+> ticks (pPrint ty)
+    -- non-unifiable types
+    (tyExpect, tySynth) -> throwUnifyError tyExpect tySynth Nothing
 
 substUnifyVar :: Type -> Type -> UnifyVar -> Maybe UnifyConstraint -> Type -> TypingM ()
-substUnifyVar ty1 ty2 uv mb_uc ty = do
+substUnifyVar ty1 ty2 uv mb_uc ty = FlexM.mark [hsep ["substUnifyVar", pPrint ty1, pPrint ty2, pPrint uv, pPrint mb_uc, pPrint ty]] do
   -- check if uv1 occurs in ty2
   when (uv `unifyVarOccursInType` ty) $ throwUnifyError ty1 ty2 (Just "fails occurs check")
   case mb_uc of
     Nothing -> return ()
     -- check if ty satisfies the constraints uc
     Just uc -> unless (ty `satisfiesUnifyConstraint` uc) $ throwUnifyError ty1 ty2 (Just $ "it does not satisfy unification constraint:" <+> pPrint uc)
-  modifying (envUnification . at uv) \case
-    Just ty' -> FlexBug.throw $ FlexLog "typing" $ "trying to substitute" <+> ticks (pPrint uv) <+> "for" <+> ticks (pPrint ty) <+> ", but it's already be substituted for" <+> pPrint ty'
-    Nothing -> Just ty
+  modifyingM (envUnification . at uv) \case
+    Just ty' -> FlexBug.throw $ "trying to substitute" <+> ticks (pPrint uv) <+> "for" <+> ticks (pPrint ty) <+> ", but it's already be substituted for" <+> pPrint ty'
+    Nothing -> return $ Just ty
 
 throwUnifyError :: Type -> Type -> Maybe Doc -> TypingM a
 throwUnifyError tyExpect tySynth mb_msg =
@@ -807,11 +797,6 @@ isNormalType = \case
   TypeEnum {} -> return True
   TypeVariant {} -> return True
   TypeNewtype {} -> return True
-
--- TypeFunction {} -> return True
--- TypeVariantConstuctor {} -> return True
--- TypeEnumConstructor {} -> return True
--- TypeNewtypeConstructor {} -> return True
 
 -- | A concrete type has no type unifications variables left
 isConcreteType :: Type -> Bool

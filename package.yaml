@@ -73,6 +73,8 @@ default-extensions:
 - BangPatterns
 - GeneralizedNewtypeDeriving
 - ViewPatterns
+- DerivingStrategies
+- ConstraintKinds
 
 library:
   source-dirs: src

@@ -35,7 +35,7 @@ checkModule Base.Module {..} = do
 
 checkDeclaration :: Base.Declaration Base.Type -> RefiningM ()
 checkDeclaration decl = do
-  FlexM.debug True $ FlexM.FlexLog "refining" $ "[checkDeclaration]" $$ nest 2 (pPrint decl)
+  FlexM.debug True $ "[checkDeclaration]" $$ nest 2 (pPrint decl)
   case decl of
     Base.DeclarationFunction Base.Function {..} -> do
       for functionParameters (check label functionBody functionOutput) $
@@ -60,18 +60,18 @@ introTerm tmId type_ m = do
     -- TODO: introduce field accessor as uninterpreted function (?), and assert refinemnt on it
     Base.TypeNewtype _new -> error "introTerm"
     -- invalid
-    Base.TypeUnifyVar {} -> FlexBug.throw $ FlexM.FlexLog "refining" $ "should not `introTerm` with a unification type varaint during refining" <+> pPrint type_
+    Base.TypeUnifyVar {} -> FlexBug.throw $ "should not `introTerm` with a unification type varaint during refining" <+> pPrint type_
     -- fallthrough
     _ -> do
-      ty <- liftFlexM_RefiningM $ transType type_
+      ty <- liftFlex $ transType type_
       locally ctxTypings (Map.insert tmId ty) m
 
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
 check label term type_ = do
   tm <- transTerm term
-  FlexM.debug False $ FlexM.FlexLog "refining" $ "[check] transTerm term  =" <+> pPrint tm
-  ty <- liftFlexM_RefiningM $ transType type_
-  FlexM.debug False $ FlexM.FlexLog "refining" $ "[check] transType type_ =" <+> pPrint ty
+  FlexM.debug False $ "[check] transTerm term  =" <+> pPrint tm
+  ty <- liftFlex $ transType type_
+  FlexM.debug False $ "[check] transType type_ =" <+> pPrint ty
   (_, cstr) <- runCheckingM $ synthCheckTerm ty tm
   query <- makeQuery cstr
   result <- submitQuery query

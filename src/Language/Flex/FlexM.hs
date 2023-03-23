@@ -5,10 +5,12 @@
 module Language.Flex.FlexM where
 
 import Control.Lens
+import Control.Monad
+import Control.Monad.Except (ExceptT, MonadError, runExceptT)
 import Control.Monad.IO.Class
-import Control.Monad.Reader (MonadReader, ReaderT (runReaderT), asks)
-import Control.Monad.State (StateT, evalStateT, gets)
-import Control.Monad.Trans (MonadTrans)
+import Control.Monad.Reader (MonadReader (local), ReaderT (runReaderT), asks)
+import Control.Monad.State (MonadState, StateT, evalStateT, gets)
+import Control.Monad.Trans (MonadTrans, lift)
 import Control.Monad.Writer (MonadWriter, WriterT (runWriterT), when)
 import qualified Control.Monad.Writer.Class as Writer
 import Data.Foldable (traverse_)
@@ -21,35 +23,84 @@ import Prelude hiding (log)
 
 -- | The `FlexM` monad is the base monad under which all the impure comptuations
 -- are done in this implementation.
-type FlexM = StateT FlexEnv (ReaderT FlexCtx (WriterT [FlexLog] IO))
+newtype FlexM a = FlexM (StateT FlexEnv (ReaderT FlexCtx (WriterT [FlexLog] (ExceptT FlexLog IO))) a)
+  deriving newtype
+    ( Functor,
+      Applicative,
+      Monad,
+      MonadState FlexEnv,
+      MonadReader FlexCtx,
+      MonadError FlexLog,
+      MonadWriter [FlexLog],
+      MonadIO
+    )
 
 data FlexCtx = FlexCtx
   { flexVerbose :: Bool,
-    sourceFilePath :: FilePath
+    flexSourceFilePath :: FilePath,
+    _flexStack :: FlexMark
   }
 
 data FlexEnv = FlexEnv
-  { _freshSymbolIndex :: Int
+  { _flexFreshSymbolIndex :: Int,
+    _flexTrace' :: [FlexMark]
   }
 
 data FlexLog = FlexLog
-  { logLabel :: Doc,
+  { -- | a "path" to where the log's source
+    logMark :: FlexMark,
+    -- | main content of the log
     logBody :: Doc
   }
   deriving (Show)
 
+newtype FlexMark = FlexMark [String]
+  deriving newtype (Show, Semigroup, Monoid)
+
+data FlexMarkStep = FlexMarkStep
+  { -- | Static indication of where this step arises (e.g. function name, local
+    -- definition name)
+    flexMarkStepLabel :: String,
+    -- | Dynamic index of relevant runtime values at this step (e.g. arguments
+    -- to function, value of local definition)
+    flexmarkStepIndex :: Maybe Doc
+  }
+
+-- | Apparently I can't use Monad as superclass here, since then in the instance
+-- for `MonadFlex' (t m)` it requires as a premise `Monad (t m)` which fails
+-- termination checking since `t m` is as big as the output constrained type.
+class MonadFlex' m where
+  liftFlex :: FlexM a -> m a
+
+instance (Monad m, MonadTrans t, MonadFlex' m) => MonadFlex' (t m) where
+  liftFlex = lift . liftFlex
+
+instance MonadFlex' FlexM where
+  liftFlex = id
+
+type MonadFlex m = (Monad m, MonadFlex' m)
+
+-- instance MonadFlex FlexM
+
+liftAFlex :: MonadFlex m => (FlexM a -> FlexM b) -> m a -> m b
+liftAFlex k ma = liftFlex . k . return =<< ma
+
+makeLenses ''FlexCtx
 makeLenses ''FlexEnv
 
 runFlexM :: FlexCtx -> FlexM a -> IO a
-runFlexM ctx@FlexCtx {..} m = do
+runFlexM ctx@FlexCtx {..} (FlexM m) = do
   env <- initFlexEnv
-  (a, logs) <- runWriterT (runReaderT (evalStateT m env) ctx)
+  (a, logs) <-
+    runExceptT (runWriterT (runReaderT (evalStateT m env) ctx)) >>= \case
+      Left log -> error $ render $ "[error: runFlexM]" $$ pPrint log
+      Right result -> return result
   when flexVerbose $ (putStrLn . render . pPrint) `traverse_` logs
   return a
 
-defaultSourcePos :: MonadReader FlexCtx m => m F.SourcePos
+defaultSourcePos :: MonadFlex m => m F.SourcePos
 defaultSourcePos = do
-  fp <- asks sourceFilePath
+  fp <- liftFlex $ asks flexSourceFilePath
   return
     F.SourcePos
       { sourceName = fp,
@@ -57,7 +108,7 @@ defaultSourcePos = do
         sourceColumn = F.mkPos 1
       }
 
-defaultLocated :: MonadReader FlexCtx f => a -> f (F.Located a)
+defaultLocated :: MonadFlex m => a -> m (F.Located a)
 defaultLocated a = do
   pos <- defaultSourcePos
   return F.Loc {loc = pos, locE = pos, val = a}
@@ -66,31 +117,58 @@ initFlexEnv :: IO FlexEnv
 initFlexEnv =
   return
     ( FlexEnv
-        { _freshSymbolIndex = 0
+        { _flexFreshSymbolIndex = 0,
+          _flexTrace' = []
         }
     )
 
-freshSymbol :: String -> FlexM F.Symbol
+freshSymbol :: MonadFlex m => String -> m F.Symbol
 freshSymbol str = do
-  i <- gets (^. freshSymbolIndex)
-  modifying freshSymbolIndex (1 +)
+  i <- liftFlex $ gets (^. flexFreshSymbolIndex)
+  liftFlex $ modifying flexFreshSymbolIndex (1 +)
   return $ F.symbol (str <> "#" <> show i)
 
-tell :: MonadWriter [FlexLog] m => FlexLog -> m ()
-tell log = Writer.tell [log]
+-- | Implicitly use flexTrace' by reversing it, since it is built up with most
+-- recent stacks at the beginning of the trace list
+flexTrace :: Lens' FlexEnv [FlexMark]
+flexTrace = flexTrace' . (. reverse)
 
-debug :: MonadIO m => Bool -> FlexLog -> m ()
-debug isActive log =
-  when isActive . liftIO $
-    putStrLn (render . pPrint $ log)
+mark :: MonadFlex m => [Doc] -> m a -> m a
+mark docs m = do
+  ( liftAFlex . local $
+      -- append label to stack
+      flexStack %~ (<> FlexMark (renderInline <$> docs))
+    )
+    do
+      liftFlex do
+        -- prepend new stack to trace
+        stack <- asks (^. flexStack)
+        flexTrace %= (stack :)
+      m
+
+-- uses current stack as log mark
+tell :: MonadFlex m => Doc -> m ()
+tell doc = do
+  stack <- liftFlex $ asks (^. flexStack)
+  liftFlex $ Writer.tell [FlexLog {logMark = stack, logBody = doc}]
+
+debug :: MonadFlex m => Bool -> Doc -> m ()
+debug isActive doc = do
+  stack <- liftFlex $ asks (^. flexStack)
+  when isActive . liftFlex . liftIO . putStrLn . render . pPrint $
+    FlexLog {logMark = stack, logBody = doc}
 
 instance Pretty FlexLog where
-  pPrint FlexLog {..} =
-    let str = render $ brackets logLabel
-     in text str $$ nest 2 logBody
+  pPrint FlexLog {..} = pPrint logMark $$ nest 2 logBody
+
+instance Pretty FlexMark where
+  pPrint (FlexMark strs) = brackets $ vcat $ punctuate "." $ text <$> strs
 
 pprintInline :: F.PPrint a => a -> Doc
 pprintInline =
   text
-    . PJ.renderStyle (PJ.style {PJ.mode = PJ.OneLineMode})
+    . PJ.renderStyle PJ.style {PJ.mode = PJ.OneLineMode}
     . F.pprint
+
+renderInline :: Doc -> String
+renderInline = fullRender OneLineMode 0 0 (\_td s -> s) ""

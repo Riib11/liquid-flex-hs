@@ -10,7 +10,7 @@ import qualified Language.Fixpoint.Misc as Misc
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Utils.Files as Files
-import Language.Flex.FlexM (FlexCtx (FlexCtx, sourceFilePath), defaultSourcePos)
+import Language.Flex.FlexM (FlexCtx (FlexCtx, flexSourceFilePath), defaultSourcePos)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Prelude (preludeDataDecls)
 import Language.Flex.Refining.RefiningM
@@ -23,18 +23,15 @@ import Text.PrettyPrint.HughesPJ
 -- )`
 -- TODO: as `qualifiers` argument, give all local bindings
 makeQuery :: Cstr -> RefiningM Query
-makeQuery cstr = do
-  -- WARNING: this can be a very big debug
-  FlexM.debug False $ FlexM.FlexLog "refining" $ "[makeQuery.cstr]" <+> F.pprint cstr
-
+makeQuery cstr = FlexM.mark [hsep ["makeQuery", F.pprint cstr]] do
   -- TODO: qualifiers should only include top-level stuff (constants?)
   qualifiers :: [F.Qualifier] <- do
     asks (^. ctxBindings) >>= \bindings ->
       forM (Map.toList bindings) \(symId, tm) -> do
         let tm' = void <$> tm
         -- x == tm
-        p <- liftFlexM_RefiningM $ eqPred (termVar symId (termAnn tm')) tm'
-        pos <- liftFlexM_RefiningM defaultSourcePos
+        p <- liftFlex $ eqPred (termVar symId (termAnn tm')) tm'
+        pos <- liftFlex defaultSourcePos
         return
           F.Q
             { qName = symIdSymbol symId,
@@ -48,14 +45,16 @@ makeQuery cstr = do
       asks (^. ctxStructures) >>= \structs -> do
         forM
           (Map.elems structs)
-          (liftFlexM_RefiningM . structureDataDecl)
+          (liftFlex . structureDataDecl)
     return $
       concat
         [ structDataDecls,
           preludeDataDecls
         ]
 
-  FlexM.debug False $ FlexM.FlexLog "refining" $ "[makeQuery.quantifiers]" $$ if null qualifiers then "EMPTY" else nest 2 (vcat $ F.pprint <$> qualifiers)
+  -- TODO: use new marking style (do that first)
+  -- FlexM.mark ["quantifiers"]
+  FlexM.debug False $ "[makeQuery.quantifiers]" $$ if null qualifiers then "EMPTY" else nest 2 (vcat $ F.pprint <$> qualifiers)
 
   -- TODO: should include transforms
   uninterpreteds <- -- :: HashMap Symbol Sort
@@ -75,7 +74,7 @@ makeQuery cstr = do
 -- | Submit query to LH backend, which checks for validity
 submitQuery :: Query -> RefiningM Result
 submitQuery q = do
-  fp <- liftFlexM_RefiningM . asks $ sourceFilePath
+  fp <- liftFlex . asks $ flexSourceFilePath
   liftIO (checkValidWithConfig fp fpConfig q)
 
 fpConfig :: FC.Config

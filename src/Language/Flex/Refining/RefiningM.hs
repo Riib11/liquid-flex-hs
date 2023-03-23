@@ -28,8 +28,8 @@ import Utility (comps, foldrM)
 
 type RefiningM = StateT RefiningEnv (ReaderT RefiningCtx (ExceptT RefiningError FlexM))
 
-liftFlexM_RefiningM :: FlexM a -> RefiningM a
-liftFlexM_RefiningM = lift . lift . lift
+liftFlex :: FlexM a -> RefiningM a
+liftFlex = lift . lift . lift
 
 newtype RefiningError = RefiningError Doc
   deriving (Generic, Show)
@@ -63,8 +63,7 @@ data RefiningCtx = RefiningCtx
   }
 
 data RefiningEnv = RefiningEnv
-  { _freshSymbolIndex :: Int
-  }
+  {}
 
 makeLenses ''RefiningCtx
 makeLenses ''RefiningEnv
@@ -104,26 +103,24 @@ topRefiningCtx Base.Module {..} = do
 topRefiningEnv :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningEnv
 topRefiningEnv _mdl = do
   return
-    RefiningEnv
-      { _freshSymbolIndex = 0
-      }
+    RefiningEnv {}
 
 -- ** Utilities
 
 getStructure structId =
   asks (^. ctxStructures . at structId) >>= \case
-    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown structure:" <+> pPrint structId
+    Nothing -> FlexBug.throw $ "unknown structure:" <+> pPrint structId
     Just struct -> return struct
 
 getTyping tmId =
   asks (^. ctxTypings . at tmId)
     >>= \case
-      Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown:" <+> pPrint tmId
+      Nothing -> FlexBug.throw $ "unknown:" <+> pPrint tmId
       Just ty -> return ty
 
 getSymId app =
   asks (^. ctxSymIds . at app) >>= \case
-    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown:" <+> pPrint app
+    Nothing -> FlexBug.throw $ "unknown:" <+> pPrint app
     Just symId -> return symId
 
 -- can only introduce SymIds that have a TermId
@@ -143,7 +140,7 @@ introSymId symId =
 
 getApplicantType symId =
   asks (^. ctxApplicants . at symId) >>= \case
-    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown applicant id:" <+> pPrint symId
+    Nothing -> FlexBug.throw $ "unknown applicant id:" <+> pPrint symId
     Just appTy -> return (Right <$> appTy)
 
 introApplicantType symId appTy =
@@ -153,7 +150,7 @@ introApplicantType symId appTy =
 
 getFunction symId =
   asks (^. ctxFunctions . at symId) >>= \case
-    Nothing -> FlexBug.throw $ FlexLog "refining" $ "unknown function id:" <+> pPrint symId
+    Nothing -> FlexBug.throw $ "unknown function id:" <+> pPrint symId
     Just func -> return func
 
 introBinding symId tm =
@@ -164,7 +161,7 @@ introBinding symId tm =
 freshenBind :: F.Reft -> RefiningM F.Reft
 freshenBind r = do
   let x = F.reftBind r
-  x' <- liftFlexM_RefiningM $ freshSymbol (render $ pprintInline x)
+  x' <- liftFlex $ freshSymbol (render $ pprintInline x)
   return $ F.substa (\y -> if y == x then x' else y) r
 
 freshenTermId :: Base.TermId -> RefiningM Base.TermId
@@ -172,12 +169,12 @@ freshenTermId = error "TODO: freshenTermId"
 
 freshSymId :: String -> RefiningM SymId
 freshSymId str = do
-  sym <- liftFlexM_RefiningM $ freshSymbol str
+  sym <- liftFlex $ freshSymbol str
   return $ fromSymbolToSymId sym
 
 freshSymIdTermId :: Base.TermId -> RefiningM SymId
 freshSymIdTermId tmId = do
-  symIdSymbol <- liftFlexM_RefiningM $ freshSymbol (render . pPrint $ tmId)
+  symIdSymbol <- liftFlex $ freshSymbol (render . pPrint $ tmId)
   return SymId {symIdSymbol, symIdMaybeTermId = Just tmId}
 
 parsePred :: String -> F.Pred

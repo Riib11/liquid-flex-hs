@@ -13,11 +13,11 @@ import Data.String (IsString (fromString))
 import Data.Text (pack)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
-import Language.Flex.FlexM (FlexM, defaultLocated, freshSymbol)
+import Language.Flex.FlexM (FlexM, MonadFlex, defaultLocated, freshSymbol)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Logic (conjPred)
 import Language.Flex.Refining.Prelude (tupleFTycon, tupleTermConstructorSymbol)
-import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, introApplicantType, introBinding, introSymId, liftFlexM_RefiningM, throwRefiningError)
+import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, introApplicantType, introBinding, introSymId, liftFlex, throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..), renameTerm)
 import qualified Language.Flex.Syntax as Base
@@ -27,14 +27,14 @@ import Utility
 -- ** Translate Term
 
 transTerm :: Base.Term Base.Type -> RefiningM (Term Base.Type)
-transTerm term = do
-  FlexM.debug False . FlexM.FlexLog "refining" $ "[transTerm]" <+> pPrint term
+transTerm term = FlexM.mark ["transTerm" <+> pPrint term] do
+  FlexM.debug False $ pPrint term
   case term of
     Base.TermLiteral lit ty -> return $ TermLiteral lit ty
     Base.TermPrimitive prim ty ->
       case prim of
         Base.PrimitiveTry te -> TermPrimitive <$> (PrimitiveTry <$> transTerm te) <*> return ty
-        Base.PrimitiveTuple tes | length tes < 2 -> FlexBug.throw $ FlexM.FlexLog "refining" "attempted to transTerm on a Base.PrimitiveTuple that has length terms < 2"
+        Base.PrimitiveTuple tes | length tes < 2 -> FlexBug.throw "attempted to transTerm on a Base.PrimitiveTuple that has length terms < 2"
         Base.PrimitiveTuple (te : tes) -> do
           te' <- transTerm te
           let f :: Term Base.Type -> Base.Term Base.Type -> RefiningM (Term Base.Type)
@@ -54,7 +54,7 @@ transTerm term = do
         Base.PrimitiveEq te te' -> TermPrimitive <$> (PrimitiveEq <$> transTerm te <*> transTerm te') <*> return ty
         Base.PrimitiveAdd te te' -> TermPrimitive <$> (PrimitiveAdd <$> transTerm te <*> transTerm te') <*> return ty
         -- invalid
-        Base.PrimitiveCast _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "PrimitiveCast should not appear in typed term:" <+> pPrint term
+        Base.PrimitiveCast _ -> FlexBug.throw $ "PrimitiveCast should not appear in typed term:" <+> pPrint term
     -- local binding is added to refinement context during refinement checking,
     -- not translation (since the implementation of the let needs to be checked
     -- first)
@@ -63,7 +63,7 @@ transTerm term = do
         Base.PatternNamed ti _ty -> freshSymIdTermId ti
         Base.PatternDiscard _ty -> freshSymId "discard"
       tm <- transTerm termTerm
-      ty <- liftFlexM_RefiningM $ transType $ termAnn tm
+      ty <- transType $ termAnn tm
       bod <-
         comps
           [ introSymId symId,
@@ -84,81 +84,84 @@ transTerm term = do
             termAnn
           }
     Base.TermMember _te _fi _ty -> error "transTerm"
-    Base.TermNeutral app mb_args mb_cxargs ty -> do
-      symId <- getSymId (void app)
-      -- note that we avoid inserting the globally-known refinement types here,
-      -- since we will do that in the refining step anyway, and we must provide a
-      -- `Base.Type` right now anyway since we're producing a `Term Base.Type`
-      getApplicantType symId >>= \case
-        -- Function application is inlined. For example, given
-        --
-        -- @
-        --    function f(x: bit) -> bit {
-        --      let y = !x;
-        --      y
-        --    }
-        -- @
-        --
-        -- then the application @f(true)@ is inlined to be
-        --
-        -- @
-        --    let x' = true;
-        --    let y' = !x';
-        --    y'
-        -- @
-        --
-        -- where @x'@ and @y'@ are fresh variables substituted in for @x@
-        -- and @y@
-        Base.ApplicantTypeFunction Base.FunctionType {..} | not functionTypeIsTransform -> do
-          -- mb_args' <- (transTerm `traverse`) `traverse` mb_args
-          -- mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
-          getFunction symId >>= \Base.Function {..} -> do
-            -- make fresh versions of arg ids
-            -- RefiningM (Map.Map Base.TermId Base.TermId)
-            fresheningArgs <-
-              Map.fromList
-                <$> case mb_args of
-                  Nothing -> return []
-                  Just args ->
-                    forM (functionParameters `zip` args) \((argId, _ty), arg) -> do
-                      argSymId <- freshenTermId argId
-                      return (argId, (argSymId, arg))
-
-            -- make fresh version of cxarg ids
-            fresheningCxargs <-
-              Map.fromList <$> case (functionContextualParameters, mb_cxargs) of
-                (Nothing, Nothing) -> return []
-                (Just cxparams, Just cxargs) -> forM (cxparams `zip` cxargs) \((_tyId, argId), cxarg) -> do
-                  argSymId <- freshenTermId argId
-                  return (argId, (argSymId, cxarg))
-                _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "function type's contextual parameters doesn't correspond to application's contextual arguments: " <+> pPrint functionContextualParameters <+> "," <+> pPrint mb_cxargs
-
-            -- argId => (argSymId, tm)
-            let freshening = Map.union fresheningArgs fresheningCxargs
-
-            -- argId => argSymId
-            let renaming = fst <$> freshening
-
-            -- rename via `renaming` in `functionBody`
-            let functionBody' :: Base.Term Base.Type
-                functionBody' =
-                  comps
-                    ( Map.elems freshening <&> \(argSymId, arg') tm ->
-                        Base.TermLet (Base.PatternNamed argSymId (Base.termAnn arg')) arg' tm (Base.termAnn tm)
-                    )
-                    $ renameTerm renaming functionBody
-
-            transTerm functionBody'
-        _ -> do
-          mb_args' <- (transTerm `traverse`) `traverse` mb_args
-          mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
-          let args'' = fromMaybe [] mb_args' ++ fromMaybe [] mb_cxargs'
-          return $ TermNeutral symId args'' ty
+    Base.TermNeutral app mb_args mb_cxargs ty -> transNeutral app mb_args mb_cxargs ty
     Base.TermMatch _te _x0 _ty -> error "transTerm"
     -- invalid
-    Base.TermAscribe _te _ty _ty' -> FlexBug.throw $ FlexM.FlexLog "refining" $ "term ascribe should not appear in typed term:" <+> pPrint term
+    Base.TermAscribe _te _ty _ty' -> FlexBug.throw $ "term ascribe should not appear in typed term:" <+> pPrint term
 
-transType :: Base.Type -> FlexM TypeReft
+transNeutral :: Base.Applicant a -> Maybe [Base.Term Base.Type] -> Maybe [Base.Term Base.Type] -> Base.Type -> RefiningM (Term Base.Type)
+transNeutral app mb_args mb_cxargs ty = do
+  symId <- getSymId (void app)
+  -- note that we avoid inserting the globally-known refinement types here,
+  -- since we will do that in the refining step anyway, and we must provide a
+  -- `Base.Type` right now anyway since we're producing a `Term Base.Type`
+  getApplicantType symId >>= \case
+    -- Function application is inlined. For example, given
+    --
+    -- @
+    --    function f(x: bit) -> bit {
+    --      let y = !x;
+    --      y
+    --    }
+    -- @
+    --
+    -- then the application @f(true)@ is inlined to be
+    --
+    -- @
+    --    let x' = true;
+    --    let y' = !x';
+    --    y'
+    -- @
+    --
+    -- where @x'@ and @y'@ are fresh variables substituted in for @x@
+    -- and @y@
+    Base.ApplicantTypeFunction Base.FunctionType {..} | not functionTypeIsTransform -> do
+      -- mb_args' <- (transTerm `traverse`) `traverse` mb_args
+      -- mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
+      getFunction symId >>= \Base.Function {..} -> do
+        -- make fresh versions of arg ids
+        -- RefiningM (Map.Map Base.TermId Base.TermId)
+        fresheningArgs <-
+          Map.fromList
+            <$> case mb_args of
+              Nothing -> return []
+              Just args ->
+                forM (functionParameters `zip` args) \((argId, _ty), arg) -> do
+                  argSymId <- freshenTermId argId
+                  return (argId, (argSymId, arg))
+
+        -- make fresh version of cxarg ids
+        fresheningCxargs <-
+          Map.fromList <$> case (functionContextualParameters, mb_cxargs) of
+            (Nothing, Nothing) -> return []
+            (Just cxparams, Just cxargs) -> forM (cxparams `zip` cxargs) \((_tyId, argId), cxarg) -> do
+              argSymId <- freshenTermId argId
+              return (argId, (argSymId, cxarg))
+            _ -> FlexBug.throw $ "function type's contextual parameters doesn't correspond to application's contextual arguments: " <+> pPrint functionContextualParameters <+> "," <+> pPrint mb_cxargs
+
+        -- argId => (argSymId, tm)
+        let freshening = Map.union fresheningArgs fresheningCxargs
+
+        -- argId => argSymId
+        let renaming = fst <$> freshening
+
+        -- rename via `renaming` in `functionBody`
+        let functionBody' :: Base.Term Base.Type
+            functionBody' =
+              comps
+                ( Map.elems freshening <&> \(argSymId, arg') tm ->
+                    Base.TermLet (Base.PatternNamed argSymId (Base.termAnn arg')) arg' tm (Base.termAnn tm)
+                )
+                $ renameTerm renaming functionBody
+
+        transTerm functionBody'
+    _ -> do
+      mb_args' <- (transTerm `traverse`) `traverse` mb_args
+      mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
+      let args'' = fromMaybe [] mb_args' ++ fromMaybe [] mb_cxargs'
+      return $ TermNeutral symId args'' ty
+
+transType :: MonadFlex m => Base.Type -> m TypeReft
 transType type_ = case type_ of
   Base.TypeNumber numty n -> do
     x <- freshSymbol (render $ pPrint type_)
@@ -195,14 +198,14 @@ transType type_ = case type_ of
   Base.TypeVariant _vari -> error "transType TODO"
   Base.TypeNewtype _new -> error "transType TODO"
   -- invalid
-  Base.TypeUnifyVar _ _ -> FlexBug.throw $ FlexM.FlexLog "refining" $ "type unification variable should not appear in normalized type:" <+> pPrint type_
+  Base.TypeUnifyVar _ _ -> FlexBug.throw $ "type unification variable should not appear in normalized type:" <+> pPrint type_
 
 -- ** Basic Refinement Types
 
 -- | Refined structure type.
 --
 -- > structureTypeReft ... = ... TODO
-structureTypeReft :: Base.Structure -> [(Base.FieldId, TypeReft)] -> FlexM TypeReft
+structureTypeReft :: MonadFlex m => Base.Structure -> [(Base.FieldId, TypeReft)] -> m TypeReft
 structureTypeReft struct@Base.Structure {..} fieldTys = do
   symStruct <- freshSymbol "struct"
 
@@ -245,9 +248,9 @@ structureTypeReft struct@Base.Structure {..} fieldTys = do
 -- > tupleTypeReft [.., { xI: aI | pI(xI) }, ...] = { tuple: (((a1, a2), ...), aN) |
 -- > (tuple
 -- > == (((x1, x2), ...), xN)  ) && ... && pI(xI) && .... }
-tupleTypeReft :: [TypeReft] -> FlexM TypeReft
+tupleTypeReft :: forall m. MonadFlex m => [TypeReft] -> m TypeReft
 tupleTypeReft tys_ = do
-  let go :: TypeReft -> TypeReft -> FlexM TypeReft
+  let go :: TypeReft -> TypeReft -> m TypeReft
       go ty1 ty2 = do
         -- ty1: { x1: a1 | r1(x1) }
         -- ty2: { x2: a2 | r2(x2) }
@@ -300,7 +303,7 @@ tupleTypeReft tys_ = do
 -- | The predicate that asserts that two (embedded) terms are equal.
 --
 -- > eqPred tm1 tm2 = { tm1 == tm2 }
-eqPred :: Term (Type ()) -> Term (Type ()) -> FlexM F.Pred
+eqPred :: MonadFlex m => Term (Type ()) -> Term (Type ()) -> m F.Pred
 eqPred tm1 tm2 =
   embedTerm $
     TermPrimitive
@@ -335,10 +338,10 @@ eqPred tm1 tm2 =
 
 -- Embedding doesn't require RefiningM.
 
-embedSymId :: SymId -> FlexM F.Expr
+embedSymId :: MonadFlex m => SymId -> m F.Expr
 embedSymId SymId {..} = return $ F.eVar symIdSymbol
 
-embedTerm :: Term (Type ()) -> FlexM F.Expr
+embedTerm :: MonadFlex m => Term (Type ()) -> m F.Expr
 embedTerm = \case
   TermLiteral lit _ -> embedLiteral lit
   TermPrimitive prim _ -> embedPrimitive prim
@@ -361,7 +364,7 @@ embedTerm = \case
     termFields' <- embedTerm `traverse` (snd <$> termFields)
     return $ F.eApps structExpr termFields'
 
-embedLiteral :: Literal -> FlexM F.Expr
+embedLiteral :: MonadFlex m => Literal -> m F.Expr
 embedLiteral =
   return . \case
     Base.LiteralInteger n -> F.expr n
@@ -370,7 +373,7 @@ embedLiteral =
     Base.LiteralChar c -> F.expr (pack [c])
     Base.LiteralString s -> F.expr (pack s)
 
-embedPrimitive :: Primitive (Type ()) -> FlexM F.Expr
+embedPrimitive :: MonadFlex m => Primitive (Type ()) -> m F.Expr
 embedPrimitive = \case
   PrimitiveTry _ -> error "embedPrimitive Try"
   PrimitiveTuple (tm1, tm2) -> do
@@ -387,7 +390,7 @@ embedPrimitive = \case
   PrimitiveEq te te' -> F.PAtom F.Eq <$> embedTerm te <*> embedTerm te'
   PrimitiveAdd te te' -> F.EBin F.Plus <$> embedTerm te <*> embedTerm te'
 
-embedTermId :: Base.TermId -> FlexM F.Symbol
+embedTermId :: MonadFlex m => Base.TermId -> m F.Symbol
 embedTermId tmId = return $ fromString (render . pPrint $ tmId)
 
 -- *** Primitive Constructors
@@ -397,7 +400,7 @@ tupleConstructorExpr = F.eVar tupleTermConstructorSymbol
 
 -- ** Embedding as Sorts
 
-embedType :: Type r -> FlexM F.Sort
+embedType :: MonadFlex m => Type r -> m F.Sort
 embedType = \case
   TypeAtomic atomic _ -> case atomic of
     TypeInt -> return F.intSort
@@ -411,7 +414,7 @@ embedType = \case
 -- ** Datatypes
 
 -- TODO: change this to be polymorphic so refined argumen types are handled automatically
-structureDataDecl :: Base.Structure -> FlexM F.DataDecl
+structureDataDecl :: MonadFlex m => Base.Structure -> m F.DataDecl
 structureDataDecl Base.Structure {..} =
   do
     ddTyCon <- structureFTycon structureId
@@ -428,18 +431,18 @@ structureDataDecl Base.Structure {..} =
           ddCtors = [F.DCtor {dcName, dcFields}]
         }
 
-structureSymbol :: Base.TypeId -> FlexM F.LocSymbol
+structureSymbol :: MonadFlex m => Base.TypeId -> m F.LocSymbol
 structureSymbol structId = defaultLocated $ F.symbol structId
 
-structureFTycon :: Base.TypeId -> FlexM F.FTycon
+structureFTycon :: MonadFlex m => Base.TypeId -> m F.FTycon
 structureFTycon structId = F.symbolFTycon <$> defaultLocated (F.symbol structId)
 
 -- TODO: could this cause issues since uses the same symbol as the FTycon?
-structureConstructorSymbol :: Base.TypeId -> FlexM F.LocSymbol
+structureConstructorSymbol :: MonadFlex m => Base.TypeId -> m F.LocSymbol
 structureConstructorSymbol = structureSymbol
 
-structureConstructorExpr :: Base.TypeId -> FlexM F.Expr
+structureConstructorExpr :: MonadFlex m => Base.TypeId -> m F.Expr
 structureConstructorExpr structId = F.eVar <$> structureConstructorSymbol structId
 
-structureFieldSymbol :: Base.TypeId -> Base.FieldId -> FlexM F.LocSymbol
+structureFieldSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
 structureFieldSymbol structId fieldId = defaultLocated $ F.symbol (structId, fieldId)

@@ -2,7 +2,7 @@ module Language.Flex.Refining.Constraint where
 
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
-import Language.Flex.FlexM (FlexM)
+import Language.Flex.FlexM (FlexM, MonadFlex)
 import Language.Flex.Refining.RefiningM (RefiningError (RefiningError))
 import Language.Flex.Refining.Syntax
 import Language.Flex.Refining.Translating (embedType)
@@ -21,7 +21,7 @@ andCstrs = H.CAnd
 -- | The constraint that `forall { x: a | p(x) }, q(x)`
 --
 -- > cstrForall x { y: a | p(y) } q(x) = forall { x: a | p(x) }, q(x)
-cstrForall :: F.Symbol -> TypeReft -> Cstr -> FlexM Cstr
+cstrForall :: MonadFlex m => F.Symbol -> TypeReft -> Cstr -> m Cstr
 cstrForall x ty cstr = do
   (s, p) <- predReplacingBind x ty
   return $ H.All (H.Bind x s p (RefiningError "cstrForall")) cstr
@@ -47,7 +47,7 @@ cstrHead tmSynth _eSynth tyExpect eExpect =
 -- | The sorted and predicate `(a, p(x))`
 --
 -- > predReplacingBind x { y: a | p(y) } = (a, p(x))
-predReplacingBind :: F.Symbol -> TypeReft -> FlexM (F.Sort, H.Pred)
+predReplacingBind :: MonadFlex m => F.Symbol -> TypeReft -> m (F.Sort, H.Pred)
 predReplacingBind x ty = do
   ty' <- embedType ty
   return
