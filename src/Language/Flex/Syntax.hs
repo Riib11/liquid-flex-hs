@@ -71,6 +71,9 @@ instance F.Symbolic TypeId where
 instance F.Symbolic TermId where
   symbol (TermId x) = F.symbol x
 
+instance F.Symbolic FieldId where
+  symbol (FieldId y) = F.symbol y
+
 instance F.Symbolic (TypeId, FieldId) where
   symbol (TypeId x, FieldId y) = F.symbol $ x <> "#" <> y
 

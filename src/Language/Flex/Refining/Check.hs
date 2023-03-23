@@ -159,20 +159,38 @@ synthTerm term = do
       -- @
       --   { VV: bit | VV == true }
       -- @
-      tmReft'' <-
-        foldr
-          ( \(fieldId, tmField) te ->
-              TermLet
-                SymId
-                  { symIdSymbol = F.symbol (structureId, fieldId),
-                    symIdMaybeTermId = Nothing
-                  }
-                tmField
-                te
-                Base.TypeBit
-          )
-          <$> (lift . transTerm $ Base.unRefinement refinedTypeRefinement)
-          <*> return termFields
+      tmReft'' <- do
+        let tm =
+              foldr
+                ( \(fieldId, tmField) te ->
+                    TermLet
+                      SymId
+                        { symIdSymbol = F.symbol fieldId,
+                          symIdMaybeTermId = Nothing
+                        }
+                      tmField
+                      te
+                      _ -- Base.TypeBit
+                )
+                (Base.unRefinement refinedTypeRefinement)
+                _termFields
+        -- TODO: can't actually use transTerm here because im in
+        -- checking! the stuff that's added into context by transTerm
+        -- isn't done in synthTerm
+        _
+      -- foldl
+      --   ( \te (fieldId, tmField) ->
+      --       TermLet
+      --         SymId
+      --           { symIdSymbol = F.symbol fieldId,
+      --             symIdMaybeTermId = Nothing
+      --           }
+      --         tmField
+      --         te
+      --         Base.TypeBit
+      --   )
+      --   <$> (lift . transTerm $ Base.unRefinement refinedTypeRefinement)
+      --   <*> return termFields
 
       -- check that tmReft'' satisfies { VV: bit | VV == true }
       void $
