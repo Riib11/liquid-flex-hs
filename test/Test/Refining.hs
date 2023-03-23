@@ -20,7 +20,9 @@ test =
   TestLabel "refining" $
     TestList $
       concat
-        if False
+        -- full = True
+        -- single = False
+        if True
           then
             [ let !fps =
                     unsafePerformIO $

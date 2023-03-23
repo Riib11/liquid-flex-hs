@@ -20,7 +20,7 @@ import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, fre
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..), renameTerm)
 import qualified Language.Flex.Syntax as Base
-import Text.PrettyPrint.HughesPJClass
+import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
 
 -- ** Translate Term
@@ -377,8 +377,6 @@ embedPrimitive :: MonadFlex m => Primitive (Type ()) -> m F.Expr
 embedPrimitive = \case
   PrimitiveTry _ -> error "embedPrimitive Try"
   PrimitiveTuple (tm1, tm2) -> do
-    -- let ty1 = termAnn tm1
-    -- let ty2 = termAnn tm2
     e1 <- embedTerm tm1
     e2 <- embedTerm tm2
     return $ tupleConstructorExpr `F.EApp` e1 `F.EApp` e2
@@ -446,3 +444,9 @@ structureConstructorExpr structId = F.eVar <$> structureConstructorSymbol struct
 
 structureFieldSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
 structureFieldSymbol structId fieldId = defaultLocated $ F.symbol (structId, fieldId)
+
+-- TODO: choose better name standardization than this
+structureMemberSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
+structureMemberSymbol structId fieldId =
+  defaultLocated $
+    F.symbol (render $ "get-" <> pPrint structId <> "#" <> pPrint fieldId)
