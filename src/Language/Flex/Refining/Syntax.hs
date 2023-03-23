@@ -221,14 +221,15 @@ instance Pretty (Primitive r) where
 
 -- ** Term
 
--- TODO: structure, member, construct enum, construct variant, match
+-- TODO: construct enum, construct variant, match
 data Term r
   = TermNeutral {termSymId :: !SymId, termArgs :: [Term r], termAnn :: r}
   | TermLiteral {termLiteral :: !Literal, termAnn :: r}
   | TermPrimitive {termPrimitive :: !(Primitive r), termAnn :: r}
   | TermLet {termSymId :: !SymId, termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
   | TermAssert {termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
-  | TermStructure {termStructureId :: TypeId, termFields :: [(FieldId, Term r)], termAnn :: r}
+  | TermStructure {termStructureId :: !TypeId, termFields :: ![(FieldId, Term r)], termAnn :: r}
+  | TermMember {termStructureId :: !TypeId, termTerm :: !(Term r), termFieldId :: !Base.FieldId, termAnn :: r}
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Term r) where
