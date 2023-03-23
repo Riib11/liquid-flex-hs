@@ -8,7 +8,6 @@ import Control.Monad.State (StateT (runStateT))
 import Data.Foldable (foldrM)
 import qualified Data.Map as Map
 import qualified Language.Fixpoint.Types as F
-import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexM)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Check (runCheckingM, synthCheckTerm)
@@ -21,7 +20,7 @@ import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 import Utility (for)
 
 refineModule :: Base.Module Base.Type -> FlexM (Either RefiningError ((), RefiningEnv))
-refineModule mdl = do
+refineModule mdl = FlexM.markSection [FlexM.FlexMarkStep "refineModule" Nothing] do
   runExceptT
     ((,) <$> topRefiningCtx mdl <*> topRefiningEnv mdl)
     >>= \case
@@ -35,7 +34,7 @@ checkModule Base.Module {..} = do
 
 checkDeclaration :: Base.Declaration Base.Type -> RefiningM ()
 checkDeclaration decl = do
-  FlexM.debug True $ "[checkDeclaration]" $$ nest 2 (pPrint decl)
+  FlexM.mark [FlexM.FlexMarkStep "checkDeclaration" . Just $ pPrint decl]
   case decl of
     Base.DeclarationFunction Base.Function {..} -> do
       for functionParameters (check label functionBody functionOutput) $
@@ -60,7 +59,7 @@ introTerm tmId type_ m = do
     -- TODO: introduce field accessor as uninterpreted function (?), and assert refinemnt on it
     Base.TypeNewtype _new -> error "introTerm"
     -- invalid
-    Base.TypeUnifyVar {} -> FlexBug.throw $ "should not `introTerm` with a unification type varaint during refining" <+> pPrint type_
+    Base.TypeUnifyVar {} -> FlexM.throw $ "should not `introTerm` with a unification type varaint during refining" <+> pPrint type_
     -- fallthrough
     _ -> do
       ty <- liftFlex $ transType type_
@@ -68,10 +67,10 @@ introTerm tmId type_ m = do
 
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
 check label term type_ = do
+  FlexM.mark [FlexM.FlexMarkStep "check" . Just $ pPrint term <+> ":?" <+> pPrint type_]
   tm <- transTerm term
-  FlexM.debug False $ "[check] transTerm term  =" <+> pPrint tm
   ty <- liftFlex $ transType type_
-  FlexM.debug False $ "[check] transType type_ =" <+> pPrint ty
+  FlexM.debugMark True . FlexM.FlexMarkStep "transType type_" . Just $ pPrint ty
   (_, cstr) <- runCheckingM $ synthCheckTerm ty tm
   query <- makeQuery cstr
   result <- submitQuery query

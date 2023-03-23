@@ -8,7 +8,10 @@ import Control.Monad.Reader (MonadReader (ask, local), asks)
 import Control.Monad.State (MonadState (get, put))
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
+import qualified Language.Fixpoint.Types as F
+import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.PrettyPrint.HughesPJClass (Doc)
+import Text.PrettyPrint.HughesPJClass hiding ((<>))
 
 unimplemented :: String -> a
 unimplemented str = error $ "unimplemented: " <> str
@@ -225,3 +228,14 @@ foldr' f ta b = foldr f b ta
 
 for :: Foldable t => t a -> b -> (a -> b -> b) -> b
 for ta b f = foldr f b ta
+
+-- ** Pretty-Printing Utilities
+
+pprintInline :: F.PPrint a => a -> Doc
+pprintInline =
+  text
+    . PJ.renderStyle PJ.style {PJ.mode = PJ.OneLineMode}
+    . F.pprint
+
+renderInline :: Doc -> String
+renderInline = fullRender OneLineMode 0 0 (\_td s -> s) ""

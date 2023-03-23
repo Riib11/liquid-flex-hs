@@ -12,7 +12,6 @@ import Data.Maybe (fromMaybe)
 import Data.String (IsString (fromString))
 import Data.Text (pack)
 import qualified Language.Fixpoint.Types as F
-import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexM, MonadFlex, defaultLocated, freshSymbol)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Logic (conjPred)
@@ -27,14 +26,15 @@ import Utility
 -- ** Translate Term
 
 transTerm :: Base.Term Base.Type -> RefiningM (Term Base.Type)
-transTerm term = FlexM.mark ["transTerm" <+> pPrint term] do
-  FlexM.debug False $ pPrint term
+transTerm term = do
+  FlexM.mark [FlexM.FlexMarkStep "transTerm" . Just $ pPrint term]
+  FlexM.debugMark False $ FlexM.FlexMarkStep "term" . Just $ pPrint term
   case term of
     Base.TermLiteral lit ty -> return $ TermLiteral lit ty
     Base.TermPrimitive prim ty ->
       case prim of
         Base.PrimitiveTry te -> TermPrimitive <$> (PrimitiveTry <$> transTerm te) <*> return ty
-        Base.PrimitiveTuple tes | length tes < 2 -> FlexBug.throw "attempted to transTerm on a Base.PrimitiveTuple that has length terms < 2"
+        Base.PrimitiveTuple tes | length tes < 2 -> FlexM.throw "attempted to transTerm on a Base.PrimitiveTuple that has length terms < 2"
         Base.PrimitiveTuple (te : tes) -> do
           te' <- transTerm te
           let f :: Term Base.Type -> Base.Term Base.Type -> RefiningM (Term Base.Type)
@@ -54,7 +54,7 @@ transTerm term = FlexM.mark ["transTerm" <+> pPrint term] do
         Base.PrimitiveEq te te' -> TermPrimitive <$> (PrimitiveEq <$> transTerm te <*> transTerm te') <*> return ty
         Base.PrimitiveAdd te te' -> TermPrimitive <$> (PrimitiveAdd <$> transTerm te <*> transTerm te') <*> return ty
         -- invalid
-        Base.PrimitiveCast _ -> FlexBug.throw $ "PrimitiveCast should not appear in typed term:" <+> pPrint term
+        Base.PrimitiveCast _ -> FlexM.throw $ "PrimitiveCast should not appear in typed term:" <+> pPrint term
     -- local binding is added to refinement context during refinement checking,
     -- not translation (since the implementation of the let needs to be checked
     -- first)
@@ -87,7 +87,7 @@ transTerm term = FlexM.mark ["transTerm" <+> pPrint term] do
     Base.TermNeutral app mb_args mb_cxargs ty -> transNeutral app mb_args mb_cxargs ty
     Base.TermMatch _te _x0 _ty -> error "transTerm"
     -- invalid
-    Base.TermAscribe _te _ty _ty' -> FlexBug.throw $ "term ascribe should not appear in typed term:" <+> pPrint term
+    Base.TermAscribe _te _ty _ty' -> FlexM.throw $ "term ascribe should not appear in typed term:" <+> pPrint term
 
 transNeutral :: Base.Applicant a -> Maybe [Base.Term Base.Type] -> Maybe [Base.Term Base.Type] -> Base.Type -> RefiningM (Term Base.Type)
 transNeutral app mb_args mb_cxargs ty = do
@@ -137,7 +137,7 @@ transNeutral app mb_args mb_cxargs ty = do
             (Just cxparams, Just cxargs) -> forM (cxparams `zip` cxargs) \((_tyId, argId), cxarg) -> do
               argSymId <- freshenTermId argId
               return (argId, (argSymId, cxarg))
-            _ -> FlexBug.throw $ "function type's contextual parameters doesn't correspond to application's contextual arguments: " <+> pPrint functionContextualParameters <+> "," <+> pPrint mb_cxargs
+            _ -> FlexM.throw $ "function type's contextual parameters doesn't correspond to application's contextual arguments: " <+> pPrint functionContextualParameters <+> "," <+> pPrint mb_cxargs
 
         -- argId => (argSymId, tm)
         let freshening = Map.union fresheningArgs fresheningCxargs
@@ -198,7 +198,7 @@ transType type_ = case type_ of
   Base.TypeVariant _vari -> error "transType TODO"
   Base.TypeNewtype _new -> error "transType TODO"
   -- invalid
-  Base.TypeUnifyVar _ _ -> FlexBug.throw $ "type unification variable should not appear in normalized type:" <+> pPrint type_
+  Base.TypeUnifyVar _ _ -> FlexM.throw $ "type unification variable should not appear in normalized type:" <+> pPrint type_
 
 -- ** Basic Refinement Types
 

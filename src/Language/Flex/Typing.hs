@@ -20,7 +20,6 @@ import Data.Functor ((<&>))
 import qualified Data.Map as Map
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
-import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexLog (FlexLog), FlexM)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Syntax
@@ -249,16 +248,18 @@ inlineStructureExtension structs extIdStack struct = do
           return struct {structureFields}
 
 typeModule :: Module () -> FlexM (Either TypingError (Module Type, TypingEnv))
-typeModule mdl = case topTypingCtx mdl of
-  Left err -> return . Left $ err
-  Right r -> case topTypingEnv mdl of
-    Left err -> return . Left $ err
-    Right s -> do
-      runExceptT $ flip runReaderT r $ flip runStateT s $ do
-        mdl' <- procModule mdl
-        mdl'' <- defaultType `traverse` mdl'
-        assertNormalModule mdl''
-        return mdl''
+typeModule mdl =
+  FlexM.markSection [FlexM.FlexMarkStep "typeModule" . Just $ pPrint mdl] do
+    case topTypingCtx mdl of
+      Left err -> return . Left $ err
+      Right r -> case topTypingEnv mdl of
+        Left err -> return . Left $ err
+        Right s -> do
+          runExceptT $ flip runReaderT r $ flip runStateT s $ do
+            mdl' <- procModule mdl
+            mdl'' <- defaultType `traverse` mdl'
+            assertNormalModule mdl''
+            return mdl''
 
 -- ** Processing
 
@@ -268,104 +269,106 @@ procModule (Module {..}) = do
   return $ Module {moduleId, moduleDeclarations = decls}
 
 procDeclaration :: Declaration () -> TypingM (Declaration Type)
-procDeclaration decl = case decl of
-  DeclarationStructure (Structure {..}) ->
-    return . toDeclaration $
-      Structure
-        { structureId,
-          structureIsMessage,
-          structureMaybeExtensionId,
-          structureFields
-        }
-  DeclarationNewtype (Newtype {..}) ->
-    return . toDeclaration $
-      Newtype
-        { newtypeId,
-          newtypeConstructorId,
-          newtypeFieldId,
-          newtypeType
-        }
-  DeclarationVariant (Variant {..}) ->
-    return . toDeclaration $
-      Variant
-        { variantId,
-          variantConstructors
-        }
-  DeclarationEnum (Enum {..}) ->
-    return . toDeclaration $
-      Enum
-        { enumId,
-          enumType,
-          enumConstructors
-        }
-  DeclarationAlias (Alias {..}) ->
-    return . toDeclaration $
-      Alias
-        { aliasId,
-          aliasType
-        }
-  DeclarationFunction (Function {..}) -> do
-    body <-
-      sequence
-        =<< (
-              -- intro params
-              foldr'
-                ( \(tmIdArg, tyArg) m -> do
-                    -- check that transform's param types are messages
-                    when functionIsTransform do
-                      tyArg
-                        >>= \case
-                          TypeStructure Structure {..} | structureIsMessage -> return ()
-                          _ -> throwTypingError "a transform can have only message type parameters" (pure . toSyntax $ decl)
+procDeclaration decl = do
+  FlexM.mark [FlexM.FlexMarkStep "procDeclaration" . Just $ pPrint decl]
+  case decl of
+    DeclarationStructure (Structure {..}) ->
+      return . toDeclaration $
+        Structure
+          { structureId,
+            structureIsMessage,
+            structureMaybeExtensionId,
+            structureFields
+          }
+    DeclarationNewtype (Newtype {..}) ->
+      return . toDeclaration $
+        Newtype
+          { newtypeId,
+            newtypeConstructorId,
+            newtypeFieldId,
+            newtypeType
+          }
+    DeclarationVariant (Variant {..}) ->
+      return . toDeclaration $
+        Variant
+          { variantId,
+            variantConstructors
+          }
+    DeclarationEnum (Enum {..}) ->
+      return . toDeclaration $
+        Enum
+          { enumId,
+            enumType,
+            enumConstructors
+          }
+    DeclarationAlias (Alias {..}) ->
+      return . toDeclaration $
+        Alias
+          { aliasId,
+            aliasType
+          }
+    DeclarationFunction (Function {..}) -> do
+      body <-
+        sequence
+          =<< (
+                -- intro params
+                foldr'
+                  ( \(tmIdArg, tyArg) m -> do
+                      -- check that transform's param types are messages
+                      when functionIsTransform do
+                        tyArg
+                          >>= \case
+                            TypeStructure Structure {..} | structureIsMessage -> return ()
+                            _ -> throwTypingError "a transform can have only message type parameters" (pure . toSyntax $ decl)
 
-                    introTerm tmIdArg tyArg m
-                )
-                (second normType <$> functionParameters)
-                $
-                -- intro contextual params
-                maybe id (foldr' (uncurry (introCxparam (pure $ toSyntax decl)))) functionContextualParameters
-                $ synthCheckTerm functionOutput functionBody
-            )
-    return . toDeclaration $
-      Function
-        { functionId,
-          functionIsTransform,
-          functionParameters,
-          functionContextualParameters,
-          functionOutput,
-          functionBody = body
-        }
-  DeclarationConstant (Constant {..}) -> do
-    ty <- normType constantType
-    body <- sequence =<< synthCheckTerm ty constantBody
-    return . toDeclaration $
-      Constant
-        { constantId,
-          constantType = ty,
-          constantBody = body
-        }
-  DeclarationRefinedType (RefinedType {..}) -> do
-    let m_rfn = sequence =<< synthRefinement refinedTypeRefinement
-    rfn <-
-      lookupType refinedTypeId >>>= \case
-        TypeStructure struct ->
-          foldr'
-            ( \(fieldId, ty) ->
-                introTerm (fromFieldIdToTermId fieldId) (normType ty)
-            )
-            (structureFields struct)
-            m_rfn
-        TypeNewtype newty ->
-          introTerm
-            (fromFieldIdToTermId $ newtypeFieldId newty)
-            (normType $ newtypeType newty)
-            m_rfn
-        ty -> throwTypingError ("cannot declare refinement for" <+> pPrint ty <+> "; can only refine structures and newtypes") (pure . toSyntax $ decl)
-    return . DeclarationRefinedType $
-      RefinedType
-        { refinedTypeId,
-          refinedTypeRefinement = rfn
-        }
+                      introTerm tmIdArg tyArg m
+                  )
+                  (second normType <$> functionParameters)
+                  $
+                  -- intro contextual params
+                  maybe id (foldr' (uncurry (introCxparam (pure $ toSyntax decl)))) functionContextualParameters
+                  $ synthCheckTerm functionOutput functionBody
+              )
+      return . toDeclaration $
+        Function
+          { functionId,
+            functionIsTransform,
+            functionParameters,
+            functionContextualParameters,
+            functionOutput,
+            functionBody = body
+          }
+    DeclarationConstant (Constant {..}) -> do
+      ty <- normType constantType
+      body <- sequence =<< synthCheckTerm ty constantBody
+      return . toDeclaration $
+        Constant
+          { constantId,
+            constantType = ty,
+            constantBody = body
+          }
+    DeclarationRefinedType (RefinedType {..}) -> do
+      let m_rfn = sequence =<< synthRefinement refinedTypeRefinement
+      rfn <-
+        lookupType refinedTypeId >>>= \case
+          TypeStructure struct ->
+            foldr'
+              ( \(fieldId, ty) ->
+                  introTerm (fromFieldIdToTermId fieldId) (normType ty)
+              )
+              (structureFields struct)
+              m_rfn
+          TypeNewtype newty ->
+            introTerm
+              (fromFieldIdToTermId $ newtypeFieldId newty)
+              (normType $ newtypeType newty)
+              m_rfn
+          ty -> throwTypingError ("cannot declare refinement for" <+> pPrint ty <+> "; can only refine structures and newtypes") (pure . toSyntax $ decl)
+      return . DeclarationRefinedType $
+        RefinedType
+          { refinedTypeId,
+            refinedTypeRefinement = rfn
+          }
 
 -- ** Synthesizing then Checking
 
@@ -383,7 +386,8 @@ synthCheckTerm ty tm = do
 -- ** Checking
 
 checkTerm :: Type -> Term TypeM -> TypingM ()
-checkTerm tyExpect tm = FlexM.mark [hsep ["checkTerm", pPrint tyExpect, ":?", pPrint tm]] do
+checkTerm tyExpect tm = do
+  FlexM.mark [FlexM.FlexMarkStep "checkTerm" . Just $ pPrint tm <+> ":?" <+> pPrint tyExpect]
   tySynth <- inferTerm tm
   unify tyExpect =<< tySynth
 
@@ -692,7 +696,7 @@ satisfiesUnifyConstraint ty = \case
       | all (`elem` [TypeInt, TypeUInt]) [numty1, numty2] -> True
       | all (`elem` [TypeFloat]) [numty1, numty2] -> True
     (TypeUnifyVar _ mb_uc, _) -> maybe True (satisfiesUnifyConstraint ty') mb_uc
-    -- TODO: FlexBug.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
+    -- TODO: FlexM.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
     _uc -> False
   UnifyConstraintNumeric -> case ty of
     TypeNumber _ _ -> True
@@ -700,10 +704,11 @@ satisfiesUnifyConstraint ty = \case
 
 -- | <expected type> ~? <synthesized type>
 unify :: Type -> Type -> TypingM ()
-unify type1 type2 = FlexM.mark [hsep ["unify", pPrint type1, pPrint type2]] $
+unify type1 type2 = do
+  FlexM.mark [FlexM.FlexMarkStep "unify" . Just $ pPrint type1 <+> "~?" <+> pPrint type2]
   case (type1, type2) of
     -- TypeUnifyVar
-    (TypeUnifyVar uv mb_uc, ty) -> substUnifyVar type1 type2 uv mb_uc ty
+    (TypeUnifyVar uv mb_uc, ty) -> substUnifyVar type1 type2 uv mb_uc ty -- substitute uv for ty while unifying type1 and type2
     (ty, TypeUnifyVar uv mb_uc) -> substUnifyVar type1 type2 uv mb_uc ty
     -- simple types
     (TypeNumber numty1 size1, TypeNumber numty2 size2) -> unless (numty1 == numty2 && size1 == size2) $ throwUnifyError type1 type2 Nothing
@@ -717,21 +722,23 @@ unify type1 type2 = FlexM.mark [hsep ["unify", pPrint type1, pPrint type2]] $
     (TypeEnum enum1, TypeEnum enum2) | enumId enum1 == enumId enum2 -> return ()
     (TypeVariant varnt1, TypeVariant varnt2) | variantId varnt1 == variantId varnt2 -> return ()
     (TypeNewtype newty1, TypeNewtype newty2) | newtypeId newty1 == newtypeId newty2 -> return ()
-    (ty@TypeNamed {}, _) -> FlexBug.throw $ "`TypeNamed` should never appear in a normalized type:" <+> ticks (pPrint ty)
-    (_, ty@TypeNamed {}) -> FlexBug.throw $ "`TypeNamed` should never appear in a normalized type:" <+> ticks (pPrint ty)
+    (ty@TypeNamed {}, _) -> FlexM.throw $ "`TypeNamed` should never appear in a normalized type:" <+> ticks (pPrint ty)
+    (_, ty@TypeNamed {}) -> FlexM.throw $ "`TypeNamed` should never appear in a normalized type:" <+> ticks (pPrint ty)
     -- non-unifiable types
     (tyExpect, tySynth) -> throwUnifyError tyExpect tySynth Nothing
 
+-- uv{mb_uc} := ty (during: type1 ~ type2)
 substUnifyVar :: Type -> Type -> UnifyVar -> Maybe UnifyConstraint -> Type -> TypingM ()
-substUnifyVar ty1 ty2 uv mb_uc ty = FlexM.mark [hsep ["substUnifyVar", pPrint ty1, pPrint ty2, pPrint uv, pPrint mb_uc, pPrint ty]] do
-  -- check if uv1 occurs in ty2
-  when (uv `unifyVarOccursInType` ty) $ throwUnifyError ty1 ty2 (Just "fails occurs check")
+substUnifyVar type1 type2 uv mb_uc ty = do
+  FlexM.mark [FlexM.FlexMarkStep "substUnifyVar" . Just $ pPrint (TypeUnifyVar uv mb_uc) <+> ":=" <+> pPrint ty $$ (nest 2 . parens $ "during:" <+> pPrint type1 <+> "~?" <+> pPrint type2)]
+  -- check if uv1 occurs in type2
+  when (uv `unifyVarOccursInType` ty) $ throwUnifyError type1 type2 (Just "fails occurs check")
   case mb_uc of
     Nothing -> return ()
     -- check if ty satisfies the constraints uc
-    Just uc -> unless (ty `satisfiesUnifyConstraint` uc) $ throwUnifyError ty1 ty2 (Just $ "it does not satisfy unification constraint:" <+> pPrint uc)
+    Just uc -> unless (ty `satisfiesUnifyConstraint` uc) $ throwUnifyError type1 type2 (Just $ "it does not satisfy unification constraint:" <+> pPrint uc)
   modifyingM (envUnification . at uv) \case
-    Just ty' -> FlexBug.throw $ "trying to substitute" <+> ticks (pPrint uv) <+> "for" <+> ticks (pPrint ty) <+> ", but it's already be substituted for" <+> pPrint ty'
+    Just ty' -> FlexM.throw $ "trying to substitute" <+> ticks (pPrint uv) <+> "for" <+> ticks (pPrint ty) <+> ", but it's already be substituted for" <+> pPrint ty'
     Nothing -> return $ Just ty
 
 throwUnifyError :: Type -> Type -> Maybe Doc -> TypingM a

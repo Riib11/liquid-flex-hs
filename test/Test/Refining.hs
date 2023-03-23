@@ -20,20 +20,22 @@ test =
   TestLabel "refining" $
     TestList $
       concat
-      -- [ let !fps =
-      --         unsafePerformIO $
-      --           fmap concat . sequence $
-      --             [getDirectoryFilesBySuffix dir_examples_refining ".flex"]
-      --    in makeTest_refineModule True <$> fps,
-      --   let !fps =
-      --         unsafePerformIO $
-      --           fmap concat . sequence $
-      --             [getDirectoryFilesBySuffix dir_examples_refining_fail ".flex"]
-      --    in makeTest_refineModule False <$> fps
-      -- ]
-      $
-        singleton $
-          [makeTest_refineModule True "examples/refining/Structures.flex"]
+        if True
+          then
+            [ let !fps =
+                    unsafePerformIO $
+                      fmap concat . sequence $
+                        [getDirectoryFilesBySuffix dir_examples_refining ".flex"]
+               in makeTest_refineModule True <$> fps,
+              let !fps =
+                    unsafePerformIO $
+                      fmap concat . sequence $
+                        [getDirectoryFilesBySuffix dir_examples_refining_fail ".flex"]
+               in makeTest_refineModule False <$> fps
+            ]
+          else
+            singleton $
+              [makeTest_refineModule True "examples/refining/Structures.flex"]
 
 makeTest_refineModule :: Bool -> FilePath -> Test
 makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . TestCase $ do
@@ -68,6 +70,6 @@ makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . Tes
 
   !_ <- return ()
 
-  runFlexM defaultFlexCtx {flexVerbose = True} (refineModule mdl') >>= \case
+  runFlexM defaultFlexCtx {flexVerbose = False} (refineModule mdl') >>= \case
     Left err -> when pass $ assertFailure (render . pPrint $ err)
     Right _ -> unless pass $ assertFailure "expected refining to fail"

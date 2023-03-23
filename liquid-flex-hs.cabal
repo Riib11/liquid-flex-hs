@@ -27,7 +27,6 @@ library
   exposed-modules:
       Data.List2
       Language.Flex.DefaultFlexCtx
-      Language.Flex.FlexBug
       Language.Flex.FlexM
       Language.Flex.Lexing
       Language.Flex.Parsing

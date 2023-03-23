@@ -23,13 +23,16 @@ import Text.PrettyPrint.HughesPJ
 -- )`
 -- TODO: as `qualifiers` argument, give all local bindings
 makeQuery :: Cstr -> RefiningM Query
-makeQuery cstr = FlexM.mark [hsep ["makeQuery", F.pprint cstr]] do
+makeQuery cstr = do
+  -- TODO: this is too big to log
+  -- FlexM.mark [FlexM.FlexMarkStep "makeQuery" . Just $ F.pprint cstr]
+  FlexM.mark [FlexM.FlexMarkStep "makeQuery" Nothing]
   -- TODO: qualifiers should only include top-level stuff (constants?)
   qualifiers :: [F.Qualifier] <- do
     asks (^. ctxBindings) >>= \bindings ->
       forM (Map.toList bindings) \(symId, tm) -> do
         let tm' = void <$> tm
-        -- x == tm
+        -- p: x == tm
         p <- liftFlex $ eqPred (termVar symId (termAnn tm')) tm'
         pos <- liftFlex defaultSourcePos
         return
@@ -52,13 +55,13 @@ makeQuery cstr = FlexM.mark [hsep ["makeQuery", F.pprint cstr]] do
           preludeDataDecls
         ]
 
-  -- TODO: use new marking style (do that first)
-  -- FlexM.mark ["quantifiers"]
-  FlexM.debug False $ "[makeQuery.quantifiers]" $$ if null qualifiers then "EMPTY" else nest 2 (vcat $ F.pprint <$> qualifiers)
+  FlexM.debugMark False . FlexM.FlexMarkStep "quantifiers" . Just . vcat $
+    F.pprint <$> qualifiers
 
   -- TODO: should include transforms
-  uninterpreteds <- -- :: HashMap Symbol Sort
-    return mempty
+  -- uninterpreteds <- -- :: HashMap Symbol Sort
+  --   return mempty
+  let uninterpreteds = mempty
 
   return $
     H.Query

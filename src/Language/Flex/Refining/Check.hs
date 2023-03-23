@@ -15,7 +15,6 @@ import Data.Bifunctor (Bifunctor (second))
 import Data.Functor
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
-import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexM)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
@@ -51,7 +50,8 @@ instance Monoid CstrMonoid where
 -- ** Checking
 
 synthCheckTerm :: TypeReft -> Term Base.Type -> CheckingM (Term TypeReft)
-synthCheckTerm tyExpect tm = FlexM.mark [hsep ["synthCheckTerm", pPrint tyExpect, pPrint tm]] do
+synthCheckTerm tyExpect tm = do
+  FlexM.mark [FlexM.FlexMarkStep "synthCheckTerm" . Just $ pPrint tm <+> ": ? <:" <+> pPrint tyExpect]
   tm' <- synthTerm tm
   tySynth <- inferTerm tm'
   checkSubtype tm' tySynth tyExpect
@@ -60,87 +60,89 @@ synthCheckTerm tyExpect tm = FlexM.mark [hsep ["synthCheckTerm", pPrint tyExpect
 -- ** Synthesizing
 
 synthTerm :: Term Base.Type -> CheckingM (Term TypeReft)
-synthTerm term = FlexM.mark [hsep ["synthTerm", pPrint term]] case term of
-  TermNeutral symId args ty -> do
-    args' <- synthTerm `traverse` args
-    -- TODO: for transforms, input values can't affect output refinement
-    -- type, BUT, newtype/variant/enum constructors should have their args
-    -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
-    -- }`
-    ty' <- transType ty
-    return $ TermNeutral symId args' ty'
-  TermLiteral lit ty -> do
-    -- literals are reflected
-    ty' <- transType ty
-    tm' <-
-      mapM_termAnn (mapM_typeAnn (reflectLiteralInReft (void ty') lit)) $
-        TermLiteral lit ty'
-    return tm'
-  TermPrimitive prim ty ->
-    synthPrimitive term ty prim
-  TermAssert tm1 tm2 _ty -> do
-    -- check asserted term against refinement type { x | x == true }
-    ty1 <-
-      TypeAtomic TypeBit
-        <$> reflectLiteralInReft (typeBit ()) (LiteralBit True) F.trueReft
-    tm1' <- synthCheckTerm ty1 tm1
-    tm2' <- synthTerm tm2
-    ty' <- inferTerm tm2'
-    return $ TermAssert tm1' tm2' ty'
-  -- let-bindings introduce the following info into context:
-  --  - map the Base.TermId to a fresh SymId via introSymId
-  --  - map the SymId to an ApplicantType via introApplicantType
-  --  - map the SymId to a Term TypeReft via introBinding
-  TermLet symId tm bod ty -> do
-    tm' <- synthTerm tm
+synthTerm term = do
+  FlexM.mark [FlexM.FlexMarkStep "synthTerm" . Just $ pPrint term]
+  case term of
+    TermNeutral symId args ty -> do
+      args' <- synthTerm `traverse` args
+      -- TODO: for transforms, input values can't affect output refinement
+      -- type, BUT, newtype/variant/enum constructors should have their args
+      -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
+      -- }`
+      ty' <- transType ty
+      return $ TermNeutral symId args' ty'
+    TermLiteral lit ty -> do
+      -- literals are reflected
+      ty' <- transType ty
+      tm' <-
+        mapM_termAnn (mapM_typeAnn (reflectLiteralInReft (void ty') lit)) $
+          TermLiteral lit ty'
+      return tm'
+    TermPrimitive prim ty ->
+      synthPrimitive term ty prim
+    TermAssert tm1 tm2 _ty -> do
+      -- check asserted term against refinement type { x | x == true }
+      ty1 <-
+        TypeAtomic TypeBit
+          <$> reflectLiteralInReft (typeBit ()) (LiteralBit True) F.trueReft
+      tm1' <- synthCheckTerm ty1 tm1
+      tm2' <- synthTerm tm2
+      ty' <- inferTerm tm2'
+      return $ TermAssert tm1' tm2' ty'
+    -- let-bindings introduce the following info into context:
+    --  - map the Base.TermId to a fresh SymId via introSymId
+    --  - map the SymId to an ApplicantType via introApplicantType
+    --  - map the SymId to a Term TypeReft via introBinding
+    TermLet symId tm bod ty -> do
+      tm' <- synthTerm tm
 
-    bod' <- do
-      -- p: symId == tm'
-      p <- eqPred (termVar symId (void $ termAnn tm')) (void <$> tm')
-      -- the constraint yielded by checking the body must be wrapped in a
-      -- quantification over the binding introduced by the let
-      bSort <- embedType $ void $ termAnn tm'
-      Writer.censor
-        ( mapCstrMonoid $
-            H.All
-              H.Bind
-                { bSym = symIdSymbol symId,
-                  bSort,
-                  bPred = H.Reft p,
-                  bMeta = RefiningError (pPrint term)
-                }
-        )
-        $ synthTerm bod
+      bod' <- do
+        -- p: symId == tm'
+        p <- eqPred (termVar symId (void $ termAnn tm')) (void <$> tm')
+        -- the constraint yielded by checking the body must be wrapped in a
+        -- quantification over the binding introduced by the let
+        bSort <- embedType $ void $ termAnn tm'
+        Writer.censor
+          ( mapCstrMonoid $
+              H.All
+                H.Bind
+                  { bSym = symIdSymbol symId,
+                    bSort,
+                    bPred = H.Reft p,
+                    bMeta = RefiningError (pPrint term)
+                  }
+          )
+          $ synthTerm bod
 
-    ty' <- transType ty
+      ty' <- transType ty
 
-    return $ TermLet symId tm' bod' ty'
-  TermStructure {..} -> do
-    -- reflect as you'd expect
+      return $ TermLet symId tm' bod' ty'
+    TermStructure {..} -> do
+      -- reflect as you'd expect
 
-    Base.Structure {..} <- getStructure termStructureId
+      Base.Structure {..} <- getStructure termStructureId
 
-    fields <-
-      forM
-        (termFields `zip` structureFields)
-        \((fieldId, tmField), (fieldId', tyField)) -> do
-          unless (fieldId == fieldId') $ FlexBug.throw $ "field ids are not in matching order between the structure constructor and its annotated structure type:" <+> pPrint term
-          tyField' <- transType tyField
-          (fieldId,) <$> synthCheckTerm tyField' tmField
+      fields <-
+        forM
+          (termFields `zip` structureFields)
+          \((fieldId, tmField), (fieldId', tyField)) -> do
+            unless (fieldId == fieldId') $ FlexM.throw $ "field ids are not in matching order between the structure constructor and its annotated structure type:" <+> pPrint term
+            tyField' <- transType tyField
+            (fieldId,) <$> synthCheckTerm tyField' tmField
 
-    ty <- transType termAnn
+      ty <- transType termAnn
 
-    let tm =
-          TermStructure
-            { termStructureId,
-              termFields = fields,
-              termAnn = ty
-            }
+      let tm =
+            TermStructure
+              { termStructureId,
+                termFields = fields,
+                termAnn = ty
+              }
 
-    -- TODO: include a constraint that the fields satisfy the structure's user
-    -- refinement
+      -- TODO: include a constraint that the fields satisfy the structure's user
+      -- refinement
 
-    mapM_termAnn (mapM_typeAnn $ reflectTermInReft (void <$> tm)) tm
+      mapM_termAnn (mapM_typeAnn $ reflectTermInReft (void <$> tm)) tm
 
 -- | Note that most primitive operations are reflected in refinement.
 synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term TypeReft)
@@ -224,13 +226,8 @@ inferTerm = return . termAnn
 -- ** Subtyping
 
 checkSubtype :: Term TypeReft -> TypeReft -> TypeReft -> CheckingM ()
-checkSubtype tmSynth tySynth tyExpect = FlexM.mark [hsep ["checkSubtype", pPrint tmSynth, pPrint tySynth, pPrint tyExpect]] do
-  FlexM.debug True $
-    vcat
-      [ pPrint tmSynth,
-        nest 2 $ " :" <+> pPrint tySynth,
-        nest 2 $ "<:" <+> pPrint tyExpect
-      ]
+checkSubtype tmSynth tySynth tyExpect = do
+  FlexM.mark [FlexM.FlexMarkStep "checkSubtype" . Just $ pPrint tmSynth $$ nest 2 (" :" <+> pPrint tySynth) $$ nest 2 ("<:" <+> pPrint tyExpect)]
 
   --    forall x : T, p x ==> (p' x')[x' := x]
   --  ----------------------------------------------

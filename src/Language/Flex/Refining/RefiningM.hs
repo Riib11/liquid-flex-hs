@@ -16,13 +16,13 @@ import qualified Data.Map as Map
 import GHC.Generics
 import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
-import qualified Language.Flex.FlexBug as FlexBug
-import Language.Flex.FlexM (FlexLog (FlexLog), FlexM, freshSymbol, pprintInline)
+import Language.Flex.FlexM (FlexLog (FlexLog), FlexM, freshSymbol)
+import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, ($$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
-import Utility (comps, foldrM)
+import Utility (comps, foldrM, pprintInline)
 
 -- ** RefiningM
 
@@ -109,18 +109,18 @@ topRefiningEnv _mdl = do
 
 getStructure structId =
   asks (^. ctxStructures . at structId) >>= \case
-    Nothing -> FlexBug.throw $ "unknown structure:" <+> pPrint structId
+    Nothing -> FlexM.throw $ "unknown structure:" <+> pPrint structId
     Just struct -> return struct
 
 getTyping tmId =
   asks (^. ctxTypings . at tmId)
     >>= \case
-      Nothing -> FlexBug.throw $ "unknown:" <+> pPrint tmId
+      Nothing -> FlexM.throw $ "unknown:" <+> pPrint tmId
       Just ty -> return ty
 
 getSymId app =
   asks (^. ctxSymIds . at app) >>= \case
-    Nothing -> FlexBug.throw $ "unknown:" <+> pPrint app
+    Nothing -> FlexM.throw $ "unknown:" <+> pPrint app
     Just symId -> return symId
 
 -- can only introduce SymIds that have a TermId
@@ -140,7 +140,7 @@ introSymId symId =
 
 getApplicantType symId =
   asks (^. ctxApplicants . at symId) >>= \case
-    Nothing -> FlexBug.throw $ "unknown applicant id:" <+> pPrint symId
+    Nothing -> FlexM.throw $ "unknown applicant id:" <+> pPrint symId
     Just appTy -> return (Right <$> appTy)
 
 introApplicantType symId appTy =
@@ -150,7 +150,7 @@ introApplicantType symId appTy =
 
 getFunction symId =
   asks (^. ctxFunctions . at symId) >>= \case
-    Nothing -> FlexBug.throw $ "unknown function id:" <+> pPrint symId
+    Nothing -> FlexM.throw $ "unknown function id:" <+> pPrint symId
     Just func -> return func
 
 introBinding symId tm =

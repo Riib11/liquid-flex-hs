@@ -26,8 +26,6 @@ import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Types.PrettyPrint as P
 import qualified Language.Fixpoint.Utils.Files as Files
-import qualified Language.Flex.FlexBug as FlexBug
-import Language.Flex.FlexM (pprintInline)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Syntax (FieldId, Literal (..), TermId, TypeId)
 import qualified Language.Flex.Syntax as Base

@@ -14,7 +14,7 @@ function main() -> bit {
     assert !(s3 == s1);
     assert !(s3 == s2);
 
-    assert Foo { bar = true; biz = true } == Foo { bar = false; biz = false };
+    assert !(Foo { bar = true; biz = true } == Foo { bar = false; biz = false });
 
     true
 }

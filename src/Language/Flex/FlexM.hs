@@ -4,16 +4,18 @@
 
 module Language.Flex.FlexM where
 
+import Control.Applicative (liftA)
 import Control.Lens
 import Control.Monad
-import Control.Monad.Except (ExceptT, MonadError, runExceptT)
+import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class
-import Control.Monad.Reader (MonadReader (local), ReaderT (runReaderT), asks)
+import Control.Monad.Reader (MonadReader (local, reader), ReaderT (runReaderT), asks)
 import Control.Monad.State (MonadState, StateT, evalStateT, gets)
 import Control.Monad.Trans (MonadTrans, lift)
 import Control.Monad.Writer (MonadWriter, WriterT (runWriterT), when)
 import qualified Control.Monad.Writer.Class as Writer
 import Data.Foldable (traverse_)
+import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.PrettyPrint as F
 import Text.PrettyPrint.HughesPJ hiding ((<>))
@@ -54,7 +56,7 @@ data FlexLog = FlexLog
   }
   deriving (Show)
 
-newtype FlexMark = FlexMark [String]
+newtype FlexMark = FlexMark [FlexMarkStep]
   deriving newtype (Show, Semigroup, Monoid)
 
 data FlexMarkStep = FlexMarkStep
@@ -65,6 +67,7 @@ data FlexMarkStep = FlexMarkStep
     -- to function, value of local definition)
     flexmarkStepIndex :: Maybe Doc
   }
+  deriving (Show)
 
 -- | Apparently I can't use Monad as superclass here, since then in the instance
 -- for `MonadFlex' (t m)` it requires as a premise `Monad (t m)` which fails
@@ -82,8 +85,10 @@ type MonadFlex m = (Monad m, MonadFlex' m)
 
 -- instance MonadFlex FlexM
 
-liftAFlex :: MonadFlex m => (FlexM a -> FlexM b) -> m a -> m b
-liftAFlex k ma = liftFlex . k . return =<< ma
+-- liftAFlex :: MonadFlex m => (FlexM a -> FlexM b) -> m a -> m b
+-- liftAFlex k ma = liftA k ma
+
+-- liftFlex . k . return =<< ma
 
 makeLenses ''FlexCtx
 makeLenses ''FlexEnv
@@ -93,9 +98,9 @@ runFlexM ctx@FlexCtx {..} (FlexM m) = do
   env <- initFlexEnv
   (a, logs) <-
     runExceptT (runWriterT (runReaderT (evalStateT m env) ctx)) >>= \case
-      Left log -> error $ render $ "[error: runFlexM]" $$ pPrint log
+      Left log -> error $ render $ "[error: runFlexM]" $$ pPrint (Dynamic log)
       Right result -> return result
-  when flexVerbose $ (putStrLn . render . pPrint) `traverse_` logs
+  when flexVerbose $ (putStrLn . render . ("● " <+>) . pPrint . Static) `traverse_` logs
   return a
 
 defaultSourcePos :: MonadFlex m => m F.SourcePos
@@ -133,18 +138,19 @@ freshSymbol str = do
 flexTrace :: Lens' FlexEnv [FlexMark]
 flexTrace = flexTrace' . (. reverse)
 
-mark :: MonadFlex m => [Doc] -> m a -> m a
-mark docs m = do
-  ( liftAFlex . local $
-      -- append label to stack
-      flexStack %~ (<> FlexMark (renderInline <$> docs))
-    )
-    do
-      liftFlex do
-        -- prepend new stack to trace
-        stack <- asks (^. flexStack)
-        flexTrace %= (stack :)
-      m
+-- | This has to be FlexM because that's the only way to use Reader effect
+-- properly.
+markSection :: [FlexMarkStep] -> FlexM a -> FlexM a
+markSection steps =
+  local (flexStack %~ (\(FlexMark steps') -> FlexMark (steps' <> steps)))
+
+mark :: MonadFlex m => [FlexMarkStep] -> m ()
+mark steps = liftFlex do
+  -- prepend new stack to trace
+  FlexMark steps' <- asks (^. flexStack)
+  let stack' = FlexMark $ steps' <> steps
+  flexTrace %= (stack' :)
+  tell . pPrint . Dynamic $ stack'
 
 -- uses current stack as log mark
 tell :: MonadFlex m => Doc -> m ()
@@ -155,20 +161,60 @@ tell doc = do
 debug :: MonadFlex m => Bool -> Doc -> m ()
 debug isActive doc = do
   stack <- liftFlex $ asks (^. flexStack)
-  when isActive . liftFlex . liftIO . putStrLn . render . pPrint $
+  when isActive . liftFlex . liftIO . putStrLn . render . ("● " <+>) . pPrint . Static $
     FlexLog {logMark = stack, logBody = doc}
 
-instance Pretty FlexLog where
-  pPrint FlexLog {..} = pPrint logMark $$ nest 2 logBody
+debugMark :: MonadFlex m => Bool -> FlexMarkStep -> m ()
+debugMark isActive = debug isActive . pPrint . Dynamic
 
-instance Pretty FlexMark where
-  pPrint (FlexMark strs) = brackets $ vcat $ punctuate "." $ text <$> strs
+-- prints the message and trace
+throw :: MonadFlex m => Doc -> m a
+throw doc = liftFlex do
+  trace <- gets (^. flexTrace)
+  stack <- asks (^. flexStack)
+  throwError
+    FlexLog
+      { logMark = stack,
+        logBody =
+          vcat
+            [ "[ bug begin ]" <> text (replicate 40 '='),
+              doc,
+              "[ bug stack ]" <> text (replicate 40 '-'),
+              pPrint . Static $ stack,
+              "[ bug trace ]" <> text (replicate 40 '-'),
+              vcat $ fmap ("[>]" <+>) $ pPrint . Dynamic <$> trace,
+              "[ bug end ]"
+            ]
+      }
 
-pprintInline :: F.PPrint a => a -> Doc
-pprintInline =
-  text
-    . PJ.renderStyle PJ.style {PJ.mode = PJ.OneLineMode}
-    . F.pprint
+-- *** Static FlexLog
 
-renderInline :: Doc -> String
-renderInline = fullRender OneLineMode 0 0 (\_td s -> s) ""
+newtype Static a = Static a
+
+instance Pretty (Static FlexLog) where
+  pPrint (Static (FlexLog {..})) = pPrint (Static logMark) $$ nest 2 logBody
+
+instance Pretty (Static FlexMark) where
+  pPrint (Static (FlexMark steps)) = brackets $ vcat $ punctuate "." $ pPrint . Static <$> steps
+
+instance Pretty (Static FlexMarkStep) where
+  pPrint (Static (FlexMarkStep {..})) = text flexMarkStepLabel
+
+-- *** Dynamic FlexLog
+
+newtype Dynamic a = Dynamic a
+
+instance Pretty (Dynamic FlexLog) where
+  pPrint (Dynamic (FlexLog {..})) = pPrint (Dynamic logMark) $$ nest 2 logBody
+
+instance Pretty (Dynamic FlexMark) where
+  pPrint (Dynamic (FlexMark steps)) =
+    case steps of
+      [] -> mempty
+      steps' -> pPrint $ Dynamic (last steps')
+
+instance Pretty (Dynamic FlexMarkStep) where
+  pPrint (Dynamic (FlexMarkStep {..})) =
+    text flexMarkStepLabel
+      <+> ":"
+      <+> nest 2 (fromMaybe mempty flexmarkStepIndex)
