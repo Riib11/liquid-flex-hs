@@ -226,5 +226,4 @@ instance Pretty (Dynamic FlexMark) where
 instance Pretty (Dynamic FlexMarkStep) where
   pPrint (Dynamic (FlexMarkStep {..})) =
     text flexMarkStepLabel
-      <+> ":"
-      <+> nest 2 (fromMaybe mempty flexmarkStepIndex)
+      <+> maybe mempty (\ixDoc -> ":" <+> nest 2 ixDoc) flexmarkStepIndex
