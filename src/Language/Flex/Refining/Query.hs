@@ -1,3 +1,4 @@
+{-# HLINT ignore "Use ++" #-}
 module Language.Flex.Refining.Query where
 
 import Control.Lens
@@ -14,7 +15,7 @@ import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Prelude (preludeDataDecls)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax (SymId (symIdSymbol), Term (termAnn), termVar)
-import Language.Flex.Refining.Translating (eqPred)
+import Language.Flex.Refining.Translating (eqPred, structureDataDecl)
 import Language.Flex.Refining.Types
 import Text.PrettyPrint.HughesPJ
 
@@ -45,6 +46,18 @@ makeQuery cstr = do
               qPos = pos
             }
 
+  datadecls :: [F.DataDecl] <- do
+    structDataDecls <-
+      asks (^. ctxStructures) >>= \structs -> do
+        forM
+          (Map.elems structs)
+          (liftFlexM_RefiningM . structureDataDecl)
+    return $
+      concat
+        [ structDataDecls,
+          preludeDataDecls
+        ]
+
   FlexM.tell
     $ FlexM.FlexLog
       "refining"
@@ -66,7 +79,7 @@ makeQuery cstr = do
       mempty -- list of constants (uninterpreted functions) -- TODO: how is this different from previous??
       mempty -- list of equations (F.Equation)
       mempty -- list of match-es (F.Rewrite)
-      preludeDataDecls -- list of data declarations (F.DataDecl)
+      datadecls -- list of data declarations (F.DataDecl)
 
 -- | Submit query to LH backend, which checks for validity
 submitQuery :: Query -> RefiningM Result

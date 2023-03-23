@@ -108,14 +108,6 @@ lookupType tyId =
 throwTypingError :: MonadError TypingError m => Doc -> Maybe (Syntax ()) -> m b
 throwTypingError err mb_syn = throwError $ TypingError err mb_syn
 
-tellTypingLog :: Doc -> TypingM ()
-tellTypingLog body =
-  FlexM.tell $
-    FlexLog
-      { logLabel = "typing",
-        logBody = body
-      }
-
 -- ** Top TypingCtx and TypingEnv
 
 topTypingCtx :: forall m. MonadError TypingError m => Module () -> m TypingCtx
@@ -388,7 +380,13 @@ synthCheckTerm ty tm = do
 
 checkTerm :: Type -> Term TypeM -> TypingM ()
 checkTerm ty tm = do
-  tellTypingLog $ hsep ["[checkTerm]", pPrint tm, ":?", pPrint ty]
+  FlexM.debug False $
+    FlexM.FlexLog "typing" $
+      "[checkTerm]"
+        $$ (nest 2 . vcat)
+          [ "|- " <> pPrint tm,
+            ":? " <> pPrint ty
+          ]
   unify ty =<< join (inferTerm tm)
 
 checkPattern' :: TypingM Type -> Pattern () -> TypingM (Pattern TypeM)
@@ -430,7 +428,7 @@ synthTerm term = case term of
     -- in the same order defined by the structure declaration
     fields' <- forM (structureFields struct) \(fieldId, tyField) ->
       case lookup fieldId fields of
-        Nothing -> throwTypingError ("missing field" <+> pPrint fieldId <+> "of the structure" <+> ticks (pPrint tyId)) (pure . toSyntax $ term)
+        Nothing -> throwTypingError ("missing field" <+> ticks (pPrint fieldId) <+> "of the structure" <+> ticks (pPrint tyId)) (pure . toSyntax $ term)
         Just tm -> (fieldId,) <$> synthCheckTerm tyField tm
     unless (length fields' == length fields) $ throwTypingError "excess fields given to structure" (pure . toSyntax $ term)
     return $ TermStructure tyId fields' (return $ TypeStructure struct)

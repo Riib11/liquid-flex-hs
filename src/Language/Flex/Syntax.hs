@@ -7,7 +7,7 @@ import Data.Functor ((<&>))
 import Data.List (intercalate)
 import qualified Data.Map as Map
 import qualified Language.Fixpoint.Types as F
-import Text.PrettyPrint.HughesPJClass (Doc, Pretty (pPrint), braces, brackets, colon, comma, doubleQuotes, hsep, nest, parens, punctuate, quotes, text, vcat, ($$), (<+>))
+import Text.PrettyPrint.HughesPJClass (Doc, Pretty (pPrint), braces, brackets, colon, comma, doubleQuotes, equals, hcat, hsep, nest, parens, punctuate, quotes, semi, space, text, vcat, ($$), (<+>))
 import Utility
 import Prelude hiding (Enum)
 
@@ -167,7 +167,7 @@ instance Pretty Structure where
       ]
       $$ ( nest 2 . vcat $
              structureFields <&> \(fieldId, ty) ->
-               (pPrint fieldId <+> colon <+> pPrint ty) <> ";"
+               (pPrint fieldId <+> colon <+> pPrint ty) <> semi
          )
       $$ "}"
 
@@ -193,7 +193,7 @@ data Newtype ann = Newtype
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty ann => Pretty (Newtype ann) where
-  pPrint (Newtype {..}) = pPrint newtypeId <+> "=" <+> pPrint newtypeType
+  pPrint (Newtype {..}) = pPrint newtypeId <+> equals <+> pPrint newtypeType
 
 -- *** Variant
 
@@ -209,7 +209,7 @@ instance Pretty ann => Pretty (Variant ann) where
       [ pPrint variantId <+> "{",
         nest 2 . vcat $
           variantConstructors <&> \(tmId, tys) ->
-            pPrint tmId <> (hsep . punctuate comma $ pPrint <$> tys),
+            pPrint tmId <> (hcat . punctuate (comma <> space) $ pPrint <$> tys),
         "}"
       ]
 
@@ -228,7 +228,7 @@ instance Pretty ann => Pretty (Enum ann) where
       [ pPrint enumId <+> pPrint enumType <+> "{",
         nest 2 . vcat $
           enumConstructors <&> \(tmId, lit) ->
-            pPrint tmId <+> "=" <+> pPrint lit,
+            pPrint tmId <+> equals <+> pPrint lit,
         "}"
       ]
 
@@ -241,7 +241,7 @@ data Alias = Alias
   deriving (Eq, Show)
 
 instance Pretty Alias where
-  pPrint (Alias {..}) = pPrint aliasId <+> "=" <+> pPrint aliasType
+  pPrint (Alias {..}) = pPrint aliasId <+> equals <+> pPrint aliasType
 
 -- *** Function
 
@@ -249,7 +249,7 @@ data Function ann = Function
   { functionId :: TermId,
     functionIsTransform :: Bool,
     functionParameters :: [(TermId, Type)],
-    -- | since contextual parameters must have newtypes,data Term only need to store the
+    -- | since contextual parameters must have newtypes, data Term only need to store the
     -- newtypes' ids
     functionContextualParameters :: Maybe [(TypeId, TermId)],
     functionOutput :: Type,
@@ -276,7 +276,7 @@ instance Pretty (Function ann) where
       parameters params = tuple $ params <&> \(a, b) -> pPrint a <+> colon <+> pPrint b
 
       tuple :: [Doc] -> Doc
-      tuple = parens . hsep . punctuate comma
+      tuple = parens . hcat . punctuate (comma <> space)
 
 -- *** Constant
 
@@ -291,7 +291,7 @@ instance Pretty (Constant ann) where
   pPrint (Constant {..}) =
     "constant"
       <+> pPrint constantId
-      <+> "="
+      <+> equals
       <+> pPrint constantBody
 
 -- ** Term
@@ -342,15 +342,15 @@ instance Pretty (Term ann) where
     TermLiteral {termLiteral} -> pPrint termLiteral
     TermPrimitive {termPrimitive} -> pPrint termPrimitive
     TermLet {termPattern, termTerm, termBody} ->
-      text "let" <+> pPrint termPattern <+> "=" <+> pPrint termTerm <+> ";" <+> pPrint termBody
+      text "let" <+> pPrint termPattern <+> equals <+> pPrint termTerm <+> semi <+> pPrint termBody
     TermAssert {termTerm, termBody} ->
-      text "assert" <+> pPrint termTerm <+> ";" <+> pPrint termBody
+      text "assert" <+> pPrint termTerm <+> semi <+> pPrint termBody
     TermStructure {termStructureId, termFields} ->
       pPrint termStructureId
         <> "{"
-        <> ( hsep . punctuate ";" $
+        <> ( hcat . punctuate (semi <> space) $
                termFields <&> \(tmId, tm) ->
-                 pPrint tmId <+> "=" <+> pPrint tm
+                 pPrint tmId <+> equals <+> pPrint tm
            )
         <> "}"
     TermMember {termTerm, termFieldId} ->
@@ -359,23 +359,23 @@ instance Pretty (Term ann) where
       ( pPrint termId
           <> ( case termMaybeArgs of
                  Nothing -> mempty
-                 Just args -> parens . hsep . punctuate comma $ pPrint <$> args
+                 Just args -> parens . hcat . punctuate (comma <> space) $ pPrint <$> args
              )
       )
         <+> ( case termMaybeCxargs of
                 Nothing -> mempty
-                Just cxargs -> "giving" <+> (parens . hsep . punctuate comma $ pPrint <$> cxargs)
+                Just cxargs -> "giving" <+> (parens . hcat . punctuate (comma <> space) $ pPrint <$> cxargs)
             )
     TermNeutral {termApplicant = Applicant (Just typeId) termId _, termMaybeArgs, termMaybeCxargs} ->
       ( (pPrint typeId <> "#" <> pPrint termId)
           <> ( case termMaybeArgs of
                  Nothing -> mempty
-                 Just args -> parens . hsep . punctuate comma $ pPrint <$> args
+                 Just args -> parens . hcat . punctuate (comma <> space) $ pPrint <$> args
              )
       )
         <+> ( case termMaybeCxargs of
                 Nothing -> mempty
-                Just cxargs -> "giving" <+> (parens . hsep . punctuate comma $ pPrint <$> cxargs)
+                Just cxargs -> "giving" <+> (parens . hcat . punctuate (comma <> space) $ pPrint <$> cxargs)
             )
     TermAscribe {termTerm, termType} ->
       pPrint termTerm <+> colon <+> pPrint termType
@@ -411,8 +411,8 @@ instance Pretty (Primitive ann) where
   pPrint = \case
     PrimitiveTry tm -> "try" <> parens (pPrint tm)
     PrimitiveCast tm -> "cast" <> parens (pPrint tm)
-    PrimitiveTuple tms -> parens . hsep . punctuate comma . fmap pPrint $ tms
-    PrimitiveArray tms -> braces . hsep . punctuate comma . fmap pPrint $ tms
+    PrimitiveTuple tms -> parens . hcat . punctuate (comma <> space) . fmap pPrint $ tms
+    PrimitiveArray tms -> braces . hcat . punctuate (comma <> space) . fmap pPrint $ tms
     PrimitiveIf tm1 tm2 tm3 -> parens $ hsep ["if", pPrint tm1, "then", pPrint tm2, "else", pPrint tm3]
     PrimitiveAnd tm1 tm2 -> parens $ hsep [pPrint tm1, "&&", pPrint tm2]
     PrimitiveOr tm1 tm2 -> parens $ hsep [pPrint tm1, "||", pPrint tm2]
@@ -486,7 +486,7 @@ instance Pretty Type where
     TypeNewtype newty -> pPrint (newtypeId newty)
     where
       tuple :: [Doc] -> Doc
-      tuple = parens . hsep . punctuate comma
+      tuple = parens . hcat . punctuate (comma <> space)
 
 instance Pretty ann => Pretty (FunctionType ann) where
   pPrint FunctionType {..} =
@@ -503,7 +503,7 @@ instance Pretty ann => Pretty (FunctionType ann) where
       parameters params = tuple $ params <&> \(a, b) -> pPrint a <+> colon <+> pPrint b
 
       tuple :: [Doc] -> Doc
-      tuple = parens . hsep . punctuate comma
+      tuple = parens . hcat . punctuate (comma <> space)
 
 data NumberType
   = TypeInt

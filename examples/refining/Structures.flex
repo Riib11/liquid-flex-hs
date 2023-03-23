@@ -1,15 +1,19 @@
 module Structures where
 
 struct Foo {
-    foo: bit;
+    bar: bit;
+    biz: bit;
 }
 
 function main() -> bit {
-    let s1 = Foo { foo = true };
-    let s2 = Foo {};
-    // let s = Foo {};
+    // let s1 = Foo { bar = true; biz = true };
+    // let s2 = Foo { bar = false; biz = false };
+
+    // assert s1 == s2;
+
+    assert Foo { bar = true; biz = true } == Foo { bar = false; biz = false };
     
-    // assert Foo { foo = true } == Foo { foo = true };
+    // assert Foo { bar = true } == Foo { bar = true };
 
     true
 }

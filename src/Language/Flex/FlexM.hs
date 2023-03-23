@@ -79,8 +79,10 @@ freshSymbol str = do
 tell :: MonadWriter [FlexLog] m => FlexLog -> m ()
 tell log = Writer.tell [log]
 
-debug :: MonadIO m => FlexLog -> m ()
-debug log = liftIO $ putStrLn (render . pPrint $ log)
+debug :: MonadIO m => Bool -> FlexLog -> m ()
+debug isActive log =
+  when isActive . liftIO $
+    putStrLn (render . pPrint $ log)
 
 instance Pretty FlexLog where
   pPrint FlexLog {..} =

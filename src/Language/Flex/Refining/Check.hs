@@ -19,6 +19,7 @@ import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexM)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
+import Language.Flex.Refining.Logic (conjPred)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, transType, tupleTypeReft)
@@ -56,7 +57,7 @@ synthCheckTerm :: TypeReft -> Term Base.Type -> CheckingM (Term TypeReft)
 synthCheckTerm tyExpect tm = do
   tm' <- synthTerm tm
   tySynth <- inferTerm tm'
-  FlexM.debug . FlexM.FlexLog "refining" $
+  FlexM.debug False . FlexM.FlexLog "refining" $
     "[synthCheckTerm]"
       $$ (nest 2 . vcat)
         [ text "     tm  =" <+> pPrint tm,
@@ -89,7 +90,7 @@ synthTerm term = case term of
   TermPrimitive prim ty ->
     synthPrimitive term ty prim
   TermAssert tm1 tm2 _ty -> do
-    FlexM.debug . FlexM.FlexLog "refining" $ "[synthTerm]" <+> pPrint term
+    FlexM.debug True . FlexM.FlexLog "refining" $ "[synthTerm]" <+> pPrint term
     -- check asserted term against refinement type { x | x == true }
     ty1 <-
       TypeAtomic TypeBit
@@ -219,7 +220,7 @@ reflectTermInReft tm r = do
       TermPrimitive
         (PrimitiveEq (termVar (fromSymbolToSymId x) sort) tm)
         (typeBit ())
-  return $ F.reft x (F.conj [pRefl, p])
+  return $ F.reft x (conjPred [pRefl, p])
 
 reflectLiteralInReft :: Type () -> Literal -> F.Reft -> CheckingM F.Reft
 reflectLiteralInReft ty lit = reflectTermInReft (TermLiteral lit ty)
@@ -236,7 +237,7 @@ inferTerm = return . termAnn
 
 checkSubtype :: Term TypeReft -> TypeReft -> TypeReft -> CheckingM ()
 checkSubtype tmSynth tySynth tyExpect = do
-  FlexM.debug $
+  FlexM.debug True $
     FlexM.FlexLog
       "refining"
       ( "[checkSubType]"

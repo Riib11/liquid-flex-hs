@@ -15,6 +15,7 @@ import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexBug as FlexBug
 import Language.Flex.FlexM (FlexM, defaultLocated, freshSymbol)
 import qualified Language.Flex.FlexM as FlexM
+import Language.Flex.Refining.Logic (conjPred)
 import Language.Flex.Refining.Prelude (tupleFTycon, tupleTermConstructorSymbol)
 import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, introApplicantType, introBinding, introSymId, liftFlexM_RefiningM, throwRefiningError)
 import Language.Flex.Refining.Syntax
@@ -27,7 +28,7 @@ import Utility
 
 transTerm :: Base.Term Base.Type -> RefiningM (Term Base.Type)
 transTerm term = do
-  FlexM.debug . FlexM.FlexLog "refining" $ "[transTerm]" <+> pPrint term
+  FlexM.debug False . FlexM.FlexLog "refining" $ "[transTerm]" <+> pPrint term
   case term of
     Base.TermLiteral lit ty -> return $ TermLiteral lit ty
     Base.TermPrimitive prim ty ->
@@ -164,13 +165,13 @@ transType type_ = case type_ of
     let p = case numty of
           Base.TypeInt ->
             -- -2^(n-1) < x < 2^(n-1)
-            F.conj
+            conjPred
               [ F.PAtom F.Le (F.expr (-(2 ^ (n - 1)) :: Int)) (F.expr x),
                 F.PAtom F.Lt (F.expr x) (F.expr (2 ^ (n - 1) :: Int))
               ]
           Base.TypeUInt ->
             -- 0 <= x < 2^n
-            F.conj
+            conjPred
               [ F.PAtom F.Le (F.expr (0 :: Int)) (F.expr x),
                 F.PAtom F.Lt (F.expr x) (F.expr (2 ^ n :: Int))
               ]
@@ -223,7 +224,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys = do
       )
 
   -- p2(x1, ..., xN): r1(x1) && ... && rN(xN)
-  let p2 = F.conj $ fieldTys <&> \(_, ty) -> F.reftPred $ typeAnn ty
+  let p2 = conjPred $ fieldTys <&> \(_, ty) -> F.reftPred $ typeAnn ty
 
   -- p(struct): exists x1, ..., xN . p1(struct, x1, ..., xN) && p2(x1, ..., xN)
   fieldSrts <- secondM embedType `traverse` fieldTys
@@ -232,7 +233,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys = do
           ( fieldSrts <&> \(fieldId, srt) ->
               (F.symbol (structureId, fieldId), srt)
           )
-          $ F.conj [p1, p2]
+          $ conjPred [p1, p2]
 
   -- r: { struct: S a1 ... aN | p(struct) }
   let r = F.reft symStruct p
@@ -276,7 +277,7 @@ tupleTypeReft tys_ = do
             )
 
         -- p2(tuple, x1, x2): r1(x1) && r2(x2)
-        let p2 = F.conj $ [ty1, ty2] <&> (F.reftPred . typeAnn)
+        let p2 = conjPred $ [ty1, ty2] <&> (F.reftPred . typeAnn)
 
         -- r: { tuple: tyTuple | exists x1 x2 . p1(y1, x2) && p2(y1, x2) }
         srt1 <- embedType ty1
@@ -284,7 +285,7 @@ tupleTypeReft tys_ = do
         let r =
               F.reft symTuple $
                 F.pExist [(F.reftBind r1, srt1), (F.reftBind r2, srt2)] $
-                  F.conj [p1, p2]
+                  conjPred [p1, p2]
 
         -- { tuple: (a1, a2) | p1 && p2 }
         return $ TypeTuple (ty1, ty2) r

@@ -34,6 +34,7 @@ library
       Language.Flex.Refining
       Language.Flex.Refining.Check
       Language.Flex.Refining.Constraint
+      Language.Flex.Refining.Logic
       Language.Flex.Refining.Prelude
       Language.Flex.Refining.Query
       Language.Flex.Refining.RefiningM

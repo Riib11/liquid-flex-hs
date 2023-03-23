@@ -57,7 +57,7 @@ makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . Tes
 
   mdl' <-
     runFlexM defaultFlexCtx (typeModule mdl) >>= \case
-      Left err -> assertFailure (render $ "typing failure in refinement test:" <+> pPrint err)
+      Left err -> assertFailure (render $ "[error: typing failure in refinement test]" $$ pPrint err)
       Right (mdl', _env) -> return mdl' -- assertFailure "typing failed in refining test"
   !_ <- return ()
 

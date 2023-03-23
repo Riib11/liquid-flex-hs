@@ -213,7 +213,7 @@ instance Pretty (Primitive r) where
   pPrint = \case
     PrimitiveTry te -> parens $ text "try" <+> pPrint te
     PrimitiveTuple (te1, te2) -> parens $ (pPrint te1 <> ",") <+> pPrint te2
-    PrimitiveArray tes -> brackets $ hsep $ punctuate comma $ pPrint <$> tes
+    PrimitiveArray tes -> brackets $ hsep $ punctuate (comma <> space) $ pPrint <$> tes
     PrimitiveIf te te' te'' -> parens $ text "if" <+> pPrint te <+> text "then" <+> pPrint te' <+> text "else" <+> pPrint te''
     PrimitiveAnd te te' -> parens $ pPrint te <+> text "&&" <+> pPrint te'
     PrimitiveOr te te' -> parens $ pPrint te <+> text "||" <+> pPrint te'
@@ -237,12 +237,12 @@ instance Pretty (Term r) where
   pPrint = \case
     TermNeutral symId tes _r
       | null tes -> pPrint symId
-      | otherwise -> pPrint symId <> parens (hsep $ punctuate comma $ pPrint <$> tes)
+      | otherwise -> pPrint symId <> parens (hcat $ punctuate (comma <> space) $ pPrint <$> tes)
     TermLiteral lit _r -> pPrint lit
     TermPrimitive prim _r -> pPrint prim
-    TermLet symId te te' _r -> (text "let" <+> pPrint symId <+> text "=" <+> pPrint te <+> ";") $$ pPrint te'
+    TermLet symId te te' _r -> (text "let" <+> pPrint symId <+> equals <+> pPrint te <+> semi) $$ pPrint te'
     TermAssert te te' _r -> (text "assert" <+> pPrint te <+> ";") $$ pPrint te'
-    TermStructure {..} -> parens $ pPrint termStructureId <+> braces (vcat $ punctuate comma (termFields <&> \(fieldId, tm) -> pPrint fieldId <+> "=" <+> pPrint tm))
+    TermStructure {..} -> parens $ pPrint termStructureId <+> braces (hcat $ punctuate (comma <> space) (termFields <&> \(fieldId, tm) -> pPrint fieldId <+> "=" <+> pPrint tm))
 
 data SymId = SymId
   { symIdSymbol :: !F.Symbol,

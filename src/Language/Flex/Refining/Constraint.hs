@@ -33,17 +33,15 @@ cstrHead tmSynth _eSynth tyExpect eExpect =
   H.Head
     (H.Reft eExpect)
     ( RefiningError $
-        "the term"
-          $$ ""
+        "the term\n"
           $$ nest 2 (pPrint tmSynth)
           $$ ""
-          $$ "was synthesized to sastisfy the refined type"
-          $$ ""
+          $$ "was synthesized to sastisfy the refined type\n"
           $$ nest 2 (pPrint (termAnn tmSynth))
           $$ ""
-          $$ "but it was expected to satisfy the refined type"
-          $$ ""
+          $$ "but it was expected to satisfy the refined type\n"
           $$ nest 2 (pPrint tyExpect)
+          $$ ""
     )
 
 -- | The sorted and predicate `(a, p(x))`
