@@ -70,7 +70,7 @@ check label term type_ = do
   FlexM.mark [FlexM.FlexMarkStep "check" . Just $ pPrint term <+> ":?" <+> pPrint type_]
   tm <- transTerm term
   ty <- liftFlex $ transType type_
-  FlexM.debugMark True . FlexM.FlexMarkStep "transType type_" . Just $ pPrint ty
+  FlexM.debugMark False . FlexM.FlexMarkStep "transType type_" . Just $ pPrint ty
   (_, cstr) <- runCheckingM $ synthCheckTerm ty tm
   query <- makeQuery cstr
   result <- submitQuery query
