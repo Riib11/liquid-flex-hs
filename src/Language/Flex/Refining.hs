@@ -19,6 +19,8 @@ import Text.PrettyPrint.HughesPJ
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 import Utility (for)
 
+-- - TODO: first, need to introduce translations of the refined types'
+--   refinements, which are in _ctxRefinedTypes'
 refineModule :: Base.Module Base.Type -> FlexM (Either RefiningError ((), RefiningEnv))
 refineModule mdl = FlexM.markSection [FlexM.FlexMarkStep "refineModule" Nothing] do
   runExceptT
@@ -52,11 +54,11 @@ introTerm tmId type_ m = do
     Base.TypeTuple _tys -> error "introTerm"
     Base.TypeOptional _ty -> error "introTerm"
     Base.TypeNamed _ti -> error "introTerm"
-    -- TODO: introduce fields accessors as uninterpreted functions (?), and assert refinement on each of them
+    -- intro assumption that fields satisfy structure refinement
     Base.TypeStructure _struc -> error "introTerm"
     Base.TypeEnum _en -> error "introTerm"
     Base.TypeVariant _vari -> error "introTerm"
-    -- TODO: introduce field accessor as uninterpreted function (?), and assert refinemnt on it
+    -- intro assumption that fields satisfy newtype refinement
     Base.TypeNewtype _new -> error "introTerm"
     -- invalid
     Base.TypeUnifyVar {} -> FlexM.throw $ "should not `introTerm` with a unification type varaint during refining" <+> pPrint type_

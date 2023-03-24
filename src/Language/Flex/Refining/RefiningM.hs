@@ -60,7 +60,8 @@ data RefiningCtx = RefiningCtx
     _ctxFunctions :: Map.Map SymId (Base.Function Base.Type),
     _ctxBindings :: Map.Map SymId (Term TypeReft),
     _ctxStructures :: Map.Map Base.TypeId Base.Structure,
-    _ctxRefinedTypes :: Map.Map Base.TypeId (Base.RefinedType Base.Type)
+    _ctxRefinedTypes :: Map.Map Base.TypeId (Base.RefinedType Base.Type),
+    _ctxRefinedTypes' :: Map.Map Base.TypeId (Base.RefinedType (Type ())) -- translated
   }
 
 data RefiningEnv = RefiningEnv
@@ -82,6 +83,9 @@ topRefiningCtx Base.Module {..} = do
     ( \decl ctx -> do
         case decl of
           Base.DeclarationStructure struct@Base.Structure {..} ->
+            -- - TODO: add projectors into context
+            -- - TODO: translate TermMember into an application of the projector
+            --   instead of reflecting TermMember in the refinement-level syntax
             return $ ctx & ctxStructures %~ Map.insert structureId struct
           Base.DeclarationNewtype _new -> return ctx
           Base.DeclarationVariant _vari -> return ctx
@@ -100,7 +104,8 @@ topRefiningCtx Base.Module {..} = do
         _ctxFunctions = mempty,
         _ctxBindings = mempty,
         _ctxStructures = mempty,
-        _ctxRefinedTypes = mempty
+        _ctxRefinedTypes = mempty,
+        _ctxRefinedTypes' = mempty
       }
     moduleDeclarations
 
