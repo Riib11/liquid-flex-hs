@@ -1,6 +1,6 @@
 module Language.Flex.Refining.Translating where
 
-import Control.Lens (At (at), locally, to, (^.), _3)
+import Control.Lens (At (at), locally, to, (&), (^.), _3)
 import Control.Monad (filterM, foldM, forM, void, when)
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (MonadTrans (lift))
@@ -154,11 +154,34 @@ transNeutral app mb_args mb_cxargs ty = do
                 $ renameTerm renaming functionBody
 
         transTerm functionBody'
+    -- non-functions are not inlined
     _ -> do
       mb_args' <- (transTerm `traverse`) `traverse` mb_args
       mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
       let args'' = fromMaybe [] mb_args' ++ fromMaybe [] mb_cxargs'
       return $ TermNeutral symId args'' ty
+
+-- TODO: put the stuff for transTypeRefinement (from
+-- Language.Flex.Refining.Refining) here
+
+transRefinedTypeRefinement ::
+  -- | local variables
+  [(Base.TermId, Base.Type)] ->
+  Base.Refinement Base.Type ->
+  RefiningM (Term Base.Type)
+transRefinedTypeRefinement locals reft = do
+  comps
+    ( -- introduce local variables into context
+      locals <&> \(tmId, ty) m -> do
+        symId <- freshSymIdTermId tmId
+        ty' <- transType ty
+        comps
+          [ introSymId symId,
+            introApplicantType symId (Base.ApplicantType ty')
+          ]
+          m
+    )
+    $ transTerm (reft & Base.unRefinement)
 
 transType :: MonadFlex m => Base.Type -> m TypeReft
 transType type_ = case type_ of

@@ -126,7 +126,7 @@ getStructure structId =
 getRefinedType' structId =
   asks (^. ctxRefinedTypes' . at structId)
     >>= \case
-      Nothing -> FlexM.throw $ "unknown structure id:" <+> pPrint structId
+      Nothing -> FlexM.throw $ "unknown refined structure id:" <+> pPrint structId
       Just reftTy -> return reftTy
 
 getTyping tmId =

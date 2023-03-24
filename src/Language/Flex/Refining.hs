@@ -1,10 +1,11 @@
 module Language.Flex.Refining where
 
-import Control.Lens (locally)
+import Control.Lens
 import Control.Monad
 import Control.Monad.Except (ExceptT, MonadTrans (lift), runExceptT)
 import Control.Monad.Reader (ReaderT (runReaderT))
 import Control.Monad.State (StateT (runStateT))
+import Data.Bifunctor (first)
 import Data.Foldable (foldrM)
 import qualified Data.Map as Map
 import qualified Language.Fixpoint.Types as F
@@ -13,26 +14,40 @@ import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Check (runCheckingM, synthCheckTerm)
 import Language.Flex.Refining.Query (makeQuery, submitQuery)
 import Language.Flex.Refining.RefiningM
-import Language.Flex.Refining.Translating (transTerm, transType)
+import Language.Flex.Refining.Translating (transRefinedTypeRefinement, transTerm, transType)
 import qualified Language.Flex.Syntax as Base
-import Text.PrettyPrint.HughesPJ
+import Text.PrettyPrint.HughesPJ hiding (first)
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
-import Utility (for)
+import Utility
 
--- - TODO: first, need to introduce translations of the refined types'
---   refinements, which are in _ctxRefinedTypes'
 refineModule :: Base.Module Base.Type -> FlexM (Either RefiningError ((), RefiningEnv))
 refineModule mdl = FlexM.markSection [FlexM.FlexMarkStep "refineModule" Nothing] do
   runExceptT
     ((,) <$> topRefiningCtx mdl <*> topRefiningEnv mdl)
     >>= \case
-      Left re -> return . Left $ re
+      Left err -> return . Left $ err
       Right (ctx, env) -> do
         runExceptT $ runReaderT (runStateT (checkModule mdl) env) ctx
 
 checkModule :: Base.Module Base.Type -> RefiningM ()
 checkModule Base.Module {..} = do
-  forM_ moduleDeclarations checkDeclaration
+  -- introduce refined translations into ctxRefinedTypes'
+  localM
+    ( \ctx -> do
+        foldM
+          ( \ctx' Base.RefinedType {..} -> do
+              Base.Structure {..} <- getStructure refinedTypeId
+              tm <-
+                transRefinedTypeRefinement
+                  -- give structure fields as local variables
+                  (first Base.fromFieldIdToTermId <$> structureFields)
+                  refinedTypeRefinement
+              return $ ctx' & ctxRefinedTypes' . at refinedTypeId ?~ tm
+          )
+          ctx
+          (ctx ^. ctxRefinedTypes)
+    )
+    (forM_ moduleDeclarations checkDeclaration)
 
 checkDeclaration :: Base.Declaration Base.Type -> RefiningM ()
 checkDeclaration decl = do
@@ -83,7 +98,7 @@ check label term type_ = do
           [ "while checking" <+> label,
             "crash:"
               <+> text msg,
-            "stack:" $$ nest 2 (vcat $ (\(re, m_s) -> pPrint re <+> maybe mempty (parens . text) m_s) <$> mb_stack)
+            "stack:" $$ nest 2 (vcat $ (\(err, m_s) -> pPrint err <+> maybe mempty (parens . text) m_s) <$> mb_stack)
           ]
     F.Unsafe _st res ->
       throwRefiningError $

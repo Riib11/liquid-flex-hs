@@ -10,7 +10,6 @@ preludeDataDecls =
   [ tupleDataDecl
   ]
 
--- TODO: is it actually proper to use F.FVar to refer to the type variables?
 tupleDataDecl :: F.DataDecl
 tupleDataDecl =
   F.DDecl
