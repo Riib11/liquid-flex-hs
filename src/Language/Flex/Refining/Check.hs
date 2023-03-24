@@ -115,13 +115,12 @@ synthTerm term = do
 
       return $ TermLet symId tm' bod' ty'
     TermStructure {..} -> do
-      -- reflect as you'd expect
-
-      Base.Structure {..} <- getStructure termStructureId
+      -- TODO: describe
+      -- Base.Structure {..} <- getStructure termStructureId
 
       fields <-
         forM
-          (termFields `zip` structureFields)
+          (termFields `zip` Base.structureFields termStructure)
           \((fieldId, tmField), (fieldId', tyField)) -> do
             unless (fieldId == fieldId') $ FlexM.throw $ "field ids are not in matching order between the structure constructor and its annotated structure type:" <+> pPrint term
             tyField' <- transType tyField
@@ -131,7 +130,7 @@ synthTerm term = do
 
       let tm =
             TermStructure
-              { termStructureId,
+              { termStructure,
                 termFields = fields,
                 termAnn = ty
               }
@@ -140,7 +139,7 @@ synthTerm term = do
       -- refinement
 
       -- get the refinement of the structure
-      Base.RefinedType {..} <- getRefinedType structureId
+      Base.RefinedType {..} <- getRefinedType $ Base.structureId termStructure
 
       -- convert
       --
@@ -170,10 +169,10 @@ synthTerm term = do
                         }
                       tmField
                       te
-                      _ -- Base.TypeBit
+                      Base.TypeBit
                 )
                 (Base.unRefinement refinedTypeRefinement)
-                _termFields
+                termFields
         -- TODO: can't actually use transTerm here because im in
         -- checking! the stuff that's added into context by transTerm
         -- isn't done in synthTerm
@@ -199,6 +198,7 @@ synthTerm term = do
           tmReft''
 
       mapM_termAnn (mapM_typeAnn $ reflectTermInReft (void <$> tm)) tm
+    TermMember {} -> error "TODO: synthTerm TermMember"
 
 -- | Note that most primitive operations are reflected in refinement.
 synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term TypeReft)
