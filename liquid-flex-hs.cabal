@@ -42,7 +42,6 @@ library
       Language.Flex.Refining.Types
       Language.Flex.Syntax
       Language.Flex.Typing
-      PrettyShow
       Utility
   other-modules:
       Paths_liquid_flex_hs
