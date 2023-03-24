@@ -16,7 +16,7 @@ import Language.Flex.FlexM (FlexM, MonadFlex, defaultLocated, freshSymbol)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Logic (conjPred)
 import Language.Flex.Refining.Prelude (tupleFTycon, tupleTermConstructorSymbol)
-import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, introApplicantType, introBinding, introSymId, liftFlex, throwRefiningError)
+import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, getSymbolSymId, introApplicantType, introBinding, introSymId, liftFlex, throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..), renameTerm)
 import qualified Language.Flex.Syntax as Base
@@ -85,6 +85,9 @@ transTerm term = do
             termAnn
           }
     Base.TermMember te fi ty -> do
+      -- this has to be a special form rather than NeutralTerm because
+      -- NeutralTerm doesn't deal with functions that have dependent refinement
+      -- types
       te' <- transTerm te
       struct <- case termAnn te' of
         Base.TypeStructure struct -> return struct
@@ -104,23 +107,13 @@ transNeutral app mb_args mb_cxargs ty = do
   getApplicantType symId >>= \case
     -- Function application is inlined. For example, given
     --
-    -- @
-    --    function f(x: bit) -> bit {
-    --      let y = !x;
-    --      y
-    --    }
-    -- @
+    -- @ function f(x: bit) -> bit { let y = !x; y } @
     --
     -- then the application @f(true)@ is inlined to be
     --
-    -- @
-    --    let x' = true;
-    --    let y' = !x';
-    --    y'
-    -- @
+    -- @ let x' = true; let y' = !x'; y' @
     --
-    -- where @x'@ and @y'@ are fresh variables substituted in for @x@
-    -- and @y@
+    -- where @x'@ and @y'@ are fresh variables substituted in for @x@ and @y@
     Base.ApplicantTypeFunction Base.FunctionType {..} | not functionTypeIsTransform -> do
       -- mb_args' <- (transTerm `traverse`) `traverse` mb_args
       -- mb_cxargs' <- (transTerm `traverse`) `traverse` mb_cxargs
@@ -370,11 +363,13 @@ embedTerm = \case
     structExpr <- F.eVar <$> structureConstructorSymbol (Base.structureId termStructure)
     termFields' <- embedTerm `traverse` (snd <$> termFields)
     return $ F.eApps structExpr termFields'
-  -- x.s ~~> (proj$S#x s)
-  TermMember {..} -> do
-    projExpr <- F.eVar <$> structureFieldProjectorSymbol (Base.structureId termStructure) termFieldId
-    tm' <- embedTerm termTerm
-    return $ F.eApps projExpr [tm']
+
+-- TODO:DEPRECATED: since transTerm just turns into app of field projector
+-- -- x.s ~~> (proj$S#x s)
+-- TermMember {..} -> do
+--   projExpr <- F.eVar <$> structureFieldProjectorSymbol (Base.structureId termStructure) termFieldId
+--   tm' <- embedTerm termTerm
+--   return $ F.eApps projExpr [tm']
 
 embedLiteral :: MonadFlex m => Literal -> m F.Expr
 embedLiteral =

@@ -237,5 +237,18 @@ pprintInline =
     . PJ.renderStyle PJ.style {PJ.mode = PJ.OneLineMode}
     . F.pprint
 
+-- TODO: this apparently doesn't really work... it makes the width 0
 renderInline :: Doc -> String
 renderInline = fullRender OneLineMode 0 0 (\_td s -> s) ""
+
+bullet :: Doc -> Doc
+bullet = ("● " <+>)
+
+spaces :: Doc -> Doc
+spaces doc = if isEmpty doc then mempty else space <> doc <> space
+
+header :: Doc -> Doc
+header doc = "══╣ " <> doc <> " ╠" <> text (replicate 40 '═')
+
+subheader :: Doc -> Doc
+subheader doc = "──┤ " <> doc <> " ├" <> text (replicate 40 '─')

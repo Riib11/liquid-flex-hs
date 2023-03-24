@@ -61,7 +61,9 @@ data RefiningCtx = RefiningCtx
     _ctxBindings :: Map.Map SymId (Term TypeReft),
     _ctxStructures :: Map.Map Base.TypeId Base.Structure,
     _ctxRefinedTypes :: Map.Map Base.TypeId (Base.RefinedType Base.Type),
-    _ctxRefinedTypes' :: Map.Map Base.TypeId (Base.RefinedType (Type ())) -- translated
+    -- | translated but not refined, since this will happen at each use use for
+    -- a particular instantiation of the fields
+    _ctxRefinedTypes' :: Map.Map Base.TypeId (Term Base.Type)
   }
 
 data RefiningEnv = RefiningEnv
@@ -121,8 +123,8 @@ getStructure structId =
     Nothing -> FlexM.throw $ "unknown structure:" <+> pPrint structId
     Just struct -> return struct
 
-getRefinedType structId =
-  asks (^. ctxRefinedTypes . at structId)
+getRefinedType' structId =
+  asks (^. ctxRefinedTypes' . at structId)
     >>= \case
       Nothing -> FlexM.throw $ "unknown structure id:" <+> pPrint structId
       Just reftTy -> return reftTy
@@ -152,6 +154,16 @@ introSymId symId =
         (ctxSymbols . at (symIdSymbol symId))
         (const $ Just symId)
     ]
+
+introSymbol sym =
+  locally
+    (ctxSymbols . at sym)
+    (const $ Just SymId {symIdSymbol = sym, symIdMaybeTermId = Nothing})
+
+getSymbolSymId sym =
+  asks (^. ctxSymbols . at sym) >>= \case
+    Nothing -> FlexM.throw $ "unknown symbol:" <+> F.pprint sym
+    Just symId -> return symId
 
 getApplicantType symId =
   asks (^. ctxApplicants . at symId) >>= \case

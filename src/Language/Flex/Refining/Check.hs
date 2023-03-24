@@ -115,10 +115,41 @@ synthTerm term = do
 
       return $ TermLet symId tm' bod' ty'
     TermStructure {..} -> do
-      -- TODO: describe
-      -- Base.Structure {..} <- getStructure termStructureId
+      -- Convert
+      --
+      -- @ assert(p(x, y, z)) @
+      --
+      -- into
+      --
+      -- @ let x = a; let y = b; let z = c; p(x, y, z) @
+      --
+      -- and then check that this term satisfies refinement type
+      --
+      -- @ { VV: bit | VV == true } @
 
-      fields <-
+      -- First. get the (translated, but not refined) refinement of the
+      -- structure
+      tmReft <- getRefinedType' $ Base.structureId termStructure
+      -- Nest the assertion body in local bindings which instantiate the values
+      -- of the fields
+      let tmReft' =
+            foldr
+              ( \(fieldId, tmField) te -> do
+                  let symId = fromSymbolToSymId $ F.symbol fieldId
+                  TermLet symId tmField te Base.TypeBit
+              )
+              tmReft
+              termFields
+
+      -- check that the constructed refinement satisfies @{ VV: bit | VV ==
+      -- true}@
+      void $
+        synthCheckTerm
+          (TypeAtomic TypeBit F.trueReft)
+          tmReft'
+
+      -- check the fields
+      termFields' <-
         forM
           (termFields `zip` Base.structureFields termStructure)
           \((fieldId, tmField), (fieldId', tyField)) -> do
@@ -131,72 +162,11 @@ synthTerm term = do
       let tm =
             TermStructure
               { termStructure,
-                termFields = fields,
+                termFields = termFields',
                 termAnn = ty
               }
 
-      -- TODO: include a constraint that the fields satisfy the structure's user
-      -- refinement
-
-      -- get the refinement of the structure
-      Base.RefinedType {..} <- getRefinedType $ Base.structureId termStructure
-
-      -- convert
-      --
-      -- @
-      --   assert(p(x, y, z))
-      -- @
-      --
-      -- into
-      --
-      -- @
-      --   let x = a; let y = b; let z = c; p(x, y, z)
-      -- @
-      --
-      -- and then check that this term satisfies refinement type
-      --
-      -- @
-      --   { VV: bit | VV == true }
-      -- @
-      tmReft'' <- do
-        let tm =
-              foldr
-                ( \(fieldId, tmField) te ->
-                    TermLet
-                      SymId
-                        { symIdSymbol = F.symbol fieldId,
-                          symIdMaybeTermId = Nothing
-                        }
-                      tmField
-                      te
-                      Base.TypeBit
-                )
-                (Base.unRefinement refinedTypeRefinement)
-                termFields
-        -- TODO: can't actually use transTerm here because im in
-        -- checking! the stuff that's added into context by transTerm
-        -- isn't done in synthTerm
-        _
-      -- foldl
-      --   ( \te (fieldId, tmField) ->
-      --       TermLet
-      --         SymId
-      --           { symIdSymbol = F.symbol fieldId,
-      --             symIdMaybeTermId = Nothing
-      --           }
-      --         tmField
-      --         te
-      --         Base.TypeBit
-      --   )
-      --   <$> (lift . transTerm $ Base.unRefinement refinedTypeRefinement)
-      --   <*> return termFields
-
-      -- check that tmReft'' satisfies { VV: bit | VV == true }
-      void $
-        synthCheckTerm
-          (TypeAtomic TypeBit F.trueReft)
-          tmReft''
-
+      -- reflect in the refinement that this term is equal to it's reflection
       mapM_termAnn (mapM_typeAnn $ reflectTermInReft (void <$> tm)) tm
     TermMember {} -> error "TODO: synthTerm TermMember"
 

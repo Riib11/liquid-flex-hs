@@ -21,6 +21,7 @@ import qualified Language.Fixpoint.Types.PrettyPrint as F
 import Text.PrettyPrint.HughesPJ hiding ((<>))
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
+import Utility (bullet, header, subheader)
 import Prelude hiding (log)
 
 -- | The `FlexM` monad is the base monad under which all the impure comptuations
@@ -83,13 +84,6 @@ instance MonadFlex' FlexM where
 
 type MonadFlex m = (Monad m, MonadFlex' m)
 
--- instance MonadFlex FlexM
-
--- liftAFlex :: MonadFlex m => (FlexM a -> FlexM b) -> m a -> m b
--- liftAFlex k ma = liftA k ma
-
--- liftFlex . k . return =<< ma
-
 makeLenses ''FlexCtx
 makeLenses ''FlexEnv
 
@@ -98,9 +92,9 @@ runFlexM ctx@FlexCtx {..} (FlexM m) = do
   env <- initFlexEnv
   (a, logs) <-
     runExceptT (runWriterT (runReaderT (evalStateT m env) ctx)) >>= \case
-      Left log -> error $ render $ "[error: runFlexM]" $$ pPrint (Dynamic log)
+      Left log -> error $ render $ header "error: runFlexM" $$ pPrint (Dynamic log)
       Right result -> return result
-  when flexVerbose $ (putStrLn . render . ("● " <+>) . pPrint . Static) `traverse_` logs
+  when flexVerbose $ (putStrLn . render . bullet . pPrint . Static) `traverse_` logs
   return a
 
 defaultSourcePos :: MonadFlex m => m F.SourcePos
@@ -187,13 +181,13 @@ throw doc = liftFlex do
       { logMark = stack,
         logBody =
           vcat
-            [ "[ bug begin ]" <> text (replicate 40 '='),
+            [ header "bug begin",
               doc,
-              "[ bug stack ]" <> text (replicate 40 '-'),
+              subheader "bug stack",
               pPrint . Static $ stack,
-              "[ bug trace ]" <> text (replicate 40 '-'),
-              vcat $ fmap ("[>]" <+>) $ pPrint . Dynamic <$> trace,
-              "[ bug end ]"
+              subheader "bug trace",
+              vcat $ fmap bullet $ pPrint . Dynamic <$> trace,
+              header "bug end"
             ]
       }
 
@@ -205,7 +199,7 @@ instance Pretty (Static FlexLog) where
   pPrint (Static (FlexLog {..})) = pPrint (Static logMark) $$ nest 2 logBody
 
 instance Pretty (Static FlexMark) where
-  pPrint (Static (FlexMark steps)) = brackets $ hcat $ punctuate "." $ pPrint . Static <$> steps
+  pPrint (Static (FlexMark steps)) = hcat $ punctuate (comma <> space) $ pPrint . Static <$> steps
 
 instance Pretty (Static FlexMarkStep) where
   pPrint (Static (FlexMarkStep {..})) = text flexMarkStepLabel

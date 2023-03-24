@@ -241,7 +241,7 @@ instance Pretty (Term r) where
     TermPrimitive prim _r -> pPrint prim
     TermLet symId te te' _r -> (text "let" <+> pPrint symId <+> equals <+> pPrint te <+> semi) $$ pPrint te'
     TermAssert te te' _r -> (text "assert" <+> pPrint te <+> ";") $$ pPrint te'
-    TermStructure {..} -> parens $ pPrint (Base.structureId termStructure) <+> braces (hcat $ punctuate (comma <> space) (termFields <&> \(fieldId, tm) -> pPrint fieldId <+> "=" <+> pPrint tm))
+    TermStructure {..} -> pPrint (Base.structureId termStructure) <> braces (hcat (punctuate (comma <> space) (termFields <&> \(fieldId, tm) -> pPrint fieldId <+> "=" <+> pPrint tm)))
     TermMember {..} -> pPrint termTerm <> "#" <> pPrint termFieldId
 
 data SymId = SymId
