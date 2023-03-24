@@ -228,8 +228,8 @@ data Term r
   | TermPrimitive {termPrimitive :: !(Primitive r), termAnn :: r}
   | TermLet {termSymId :: !SymId, termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
   | TermAssert {termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
-  | TermStructure {termStructureId :: !TypeId, termFields :: ![(FieldId, Term r)], termAnn :: r}
-  | TermMember {termStructureId :: !TypeId, termTerm :: !(Term r), termFieldId :: !Base.FieldId, termAnn :: r}
+  | TermStructure {termStructure :: !Base.Structure, termFields :: ![(FieldId, Term r)], termAnn :: r}
+  | TermMember {termStructure :: !Base.Structure, termTerm :: !(Term r), termFieldId :: !Base.FieldId, termAnn :: r}
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Term r) where
@@ -241,7 +241,7 @@ instance Pretty (Term r) where
     TermPrimitive prim _r -> pPrint prim
     TermLet symId te te' _r -> (text "let" <+> pPrint symId <+> equals <+> pPrint te <+> semi) $$ pPrint te'
     TermAssert te te' _r -> (text "assert" <+> pPrint te <+> ";") $$ pPrint te'
-    TermStructure {..} -> parens $ pPrint termStructureId <+> braces (hcat $ punctuate (comma <> space) (termFields <&> \(fieldId, tm) -> pPrint fieldId <+> "=" <+> pPrint tm))
+    TermStructure {..} -> parens $ pPrint (Base.structureId termStructure) <+> braces (hcat $ punctuate (comma <> space) (termFields <&> \(fieldId, tm) -> pPrint fieldId <+> "=" <+> pPrint tm))
     TermMember {..} -> pPrint termTerm <> "#" <> pPrint termFieldId
 
 data SymId = SymId

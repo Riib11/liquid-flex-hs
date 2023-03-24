@@ -65,8 +65,17 @@ newtype FieldId = FieldId String
 instance Pretty FieldId where
   pPrint (FieldId x) = text x
 
+-- *** F.Symbolic instances
+
 instance F.Symbolic TypeId where
   symbol (TypeId x) = F.symbol x
+
+-- | The term-level constructor for a value of a type. Relevant for Structures
+-- and Newtypes in particular.
+newtype TypeTermConstructor = TypeTermConstructor TypeId
+
+instance F.Symbolic TypeTermConstructor where
+  symbol (TypeTermConstructor (TypeId x)) = F.symbol $ "make$" <> x
 
 instance F.Symbolic TermId where
   symbol (TermId x) = F.symbol x
@@ -74,8 +83,15 @@ instance F.Symbolic TermId where
 instance F.Symbolic FieldId where
   symbol (FieldId y) = F.symbol y
 
-instance F.Symbolic (TypeId, FieldId) where
-  symbol (TypeId x, FieldId y) = F.symbol $ x <> "#" <> y
+newtype FieldReference = FieldReference (TypeId, FieldId)
+
+instance F.Symbolic FieldReference where
+  symbol (FieldReference (TypeId x, FieldId y)) = F.symbol $ x <> "#" <> y
+
+newtype FieldProjector = FieldProjector (TypeId, FieldId)
+
+instance F.Symbolic FieldProjector where
+  symbol (FieldProjector (TypeId x, FieldId y)) = F.symbol $ "proj$" <> x <> "#" <> y
 
 fromFieldIdToTermId :: FieldId -> TermId
 fromFieldIdToTermId (FieldId x) = TermId x

@@ -77,13 +77,19 @@ transTerm term = do
       return $ TermAssert tm bod (termAnn bod)
     Base.TermStructure {..} -> do
       fields' <- forM termFields . secondM $ transTerm
+      termStructure <- getStructure termStructureId
       return
         TermStructure
-          { termStructureId,
+          { termStructure,
             termFields = fields',
             termAnn
           }
-    Base.TermMember _te _fi _ty -> error "transTerm"
+    Base.TermMember te fi ty -> do
+      te' <- transTerm te
+      struct <- case termAnn te' of
+        Base.TypeStructure struct -> return struct
+        _ -> FlexM.throw $ "a TermMember's term should have a Structure type, but instead has type:" <+> pPrint ty
+      return $ TermMember struct te' fi ty
     Base.TermNeutral app mb_args mb_cxargs ty -> transNeutral app mb_args mb_cxargs ty
     Base.TermMatch _te _x0 _ty -> error "transTerm"
     -- invalid
@@ -217,7 +223,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys = do
     eqPred
       (termVar (fromSymbolToSymId symStruct) tyStruct)
       ( TermStructure
-          structureId
+          struct
           ( fieldTys <&> \(fieldId, ty) ->
               ( fieldId,
                 fromSymbolToTerm (F.reftBind (typeAnn ty)) (void ty)
@@ -234,7 +240,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys = do
   let p =
         F.pExist
           ( fieldSrts <&> \(fieldId, srt) ->
-              (F.symbol (structureId, fieldId), srt)
+              (F.symbol (Base.FieldReference (structureId, fieldId)), srt)
           )
           $ conjPred [p1, p2]
 
@@ -359,10 +365,16 @@ embedTerm = \case
     sort <- embedType (termAnn tm)
     bod' <- embedTerm bod
     return $ F.eApps (F.ELam (symIdSymbol x, sort) bod') [tm']
+  -- (S { x = a; y = b; }) ~~> (S a b)
   TermStructure {..} -> do
-    structExpr <- structureConstructorExpr termStructureId
+    structExpr <- F.eVar <$> structureConstructorSymbol (Base.structureId termStructure)
     termFields' <- embedTerm `traverse` (snd <$> termFields)
     return $ F.eApps structExpr termFields'
+  -- x.s ~~> (proj$S#x s)
+  TermMember {..} -> do
+    projExpr <- F.eVar <$> structureFieldProjectorSymbol (Base.structureId termStructure) termFieldId
+    tm' <- embedTerm termTerm
+    return $ F.eApps projExpr [tm']
 
 embedLiteral :: MonadFlex m => Literal -> m F.Expr
 embedLiteral =
@@ -407,7 +419,7 @@ embedType = \case
     TypeChar -> return F.charSort
     TypeString -> return F.strSort
   TypeTuple (ty1, ty2) _ -> F.fApp (F.fTyconSort tupleFTycon) <$> (embedType `traverse` [ty1, ty2])
-  TypeStructure Base.Structure {..} _ -> F.fTyconSort <$> structureFTycon structureId
+  TypeStructure Base.Structure {..} _ -> F.fTyconSort . F.symbolFTycon <$> structureSymbol structureId
 
 -- ** Datatypes
 
@@ -415,12 +427,11 @@ embedType = \case
 structureDataDecl :: MonadFlex m => Base.Structure -> m F.DataDecl
 structureDataDecl Base.Structure {..} =
   do
-    ddTyCon <- structureFTycon structureId
     dcName <- structureSymbol structureId
+    let ddTyCon = F.symbolFTycon dcName
     dcFields <- forM structureFields \(fieldId, ty) -> do
-      dfName <- structureFieldSymbol structureId fieldId
+      dfName <- structureFieldReferenceSymbol structureId fieldId
       dfSort <- embedType =<< transType ty
-      -- \$ error "TODO: structureDataDecl"
       return F.DField {dfName, dfSort}
     return
       F.DDecl
@@ -432,21 +443,12 @@ structureDataDecl Base.Structure {..} =
 structureSymbol :: MonadFlex m => Base.TypeId -> m F.LocSymbol
 structureSymbol structId = defaultLocated $ F.symbol structId
 
-structureFTycon :: MonadFlex m => Base.TypeId -> m F.FTycon
-structureFTycon structId = F.symbolFTycon <$> defaultLocated (F.symbol structId)
-
--- TODO: could this cause issues since uses the same symbol as the FTycon?
 structureConstructorSymbol :: MonadFlex m => Base.TypeId -> m F.LocSymbol
-structureConstructorSymbol = structureSymbol
+structureConstructorSymbol structId = defaultLocated $ F.symbol $ Base.TypeTermConstructor structId
 
-structureConstructorExpr :: MonadFlex m => Base.TypeId -> m F.Expr
-structureConstructorExpr structId = F.eVar <$> structureConstructorSymbol structId
+structureFieldReferenceSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
+structureFieldReferenceSymbol structId fieldId = defaultLocated $ F.symbol $ Base.FieldReference (structId, fieldId)
 
-structureFieldSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
-structureFieldSymbol structId fieldId = defaultLocated $ F.symbol (structId, fieldId)
-
--- TODO: choose better name standardization than this
-structureMemberSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
-structureMemberSymbol structId fieldId =
-  defaultLocated $
-    F.symbol (render $ "get-" <> pPrint structId <> "#" <> pPrint fieldId)
+structureFieldProjectorSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
+structureFieldProjectorSymbol structId fieldId =
+  defaultLocated $ F.symbol $ Base.FieldProjector (structId, fieldId)

@@ -43,6 +43,8 @@ makeQuery cstr = do
               qPos = pos
             }
 
+  -- TODO: introducing dynamic datadecls also introduces projectors for fields
+  -- of structs/newtypes
   datadecls :: [F.DataDecl] <- do
     structDataDecls <-
       asks (^. ctxStructures) >>= \structs -> do
