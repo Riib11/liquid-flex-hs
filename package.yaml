@@ -75,6 +75,7 @@ default-extensions:
 - ViewPatterns
 - DerivingStrategies
 - ConstraintKinds
+- PartialTypeSignatures
 
 library:
   source-dirs: src

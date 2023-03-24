@@ -16,7 +16,7 @@ import Language.Flex.FlexM (FlexM, MonadFlex, defaultLocated, freshSymbol)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Logic (conjPred)
 import Language.Flex.Refining.Prelude (tupleFTycon, tupleTermConstructorSymbol)
-import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, getSymbolSymId, introApplicantType, introBinding, introSymId, liftFlex, throwRefiningError)
+import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, getSymbolSymId, introApplicantType, introBinding, introSymId, throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..), renameTerm)
 import qualified Language.Flex.Syntax as Base
@@ -237,7 +237,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys = do
   -- p1(struct, x1, ..., xN): p1(x1, ..., xN): struct = S a1 ... aN
   p1 <-
     eqPred
-      (termVar (fromSymbolToSymId symStruct) tyStruct)
+      (varTerm (fromSymbolToSymId symStruct) tyStruct)
       ( TermStructure
           struct
           ( fieldTys <&> \(fieldId, ty) ->
@@ -291,7 +291,7 @@ tupleTypeReft tys_ = do
         -- p1(tuple, x1, x2): tuple == (x1, x2)
         p1 <-
           eqPred
-            (termVar (fromSymbolToSymId symTuple) tyTuple)
+            (varTerm (fromSymbolToSymId symTuple) tyTuple)
             ( TermPrimitive
                 ( PrimitiveTuple
                     ( fromSymbolToTerm (F.reftBind r1) (void ty1),
@@ -383,7 +383,7 @@ embedTerm = \case
     return $ F.eApps (F.ELam (symIdSymbol x, sort) bod') [tm']
   -- (S { x = a; y = b; }) ~~> (S a b)
   TermStructure {..} -> do
-    structExpr <- F.eVar <$> structureConstructorSymbol (Base.structureId termStructure)
+    structExpr <- F.eVar <$> structureSymbol (Base.structureId termStructure)
     termFields' <- embedTerm `traverse` (snd <$> termFields)
     return $ F.eApps structExpr termFields'
 

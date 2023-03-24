@@ -95,7 +95,7 @@ synthTerm term = do
 
       bod' <- do
         -- p: symId == tm'
-        p <- eqPred (termVar symId (void $ termAnn tm')) (void <$> tm')
+        p <- eqPred (varTerm symId (void $ termAnn tm')) (void <$> tm')
         -- the constraint yielded by checking the body must be wrapped in a
         -- quantification over the binding introduced by the let
         bSort <- embedType $ void $ termAnn tm'
@@ -234,7 +234,7 @@ reflectTermInReft tm r = do
   pRefl <-
     embedTerm $
       TermPrimitive
-        (PrimitiveEq (termVar (fromSymbolToSymId x) sort) tm)
+        (PrimitiveEq (varTerm (fromSymbolToSymId x) sort) tm)
         (typeBit ())
   return $ F.reft x (conjPred [pRefl, p])
 

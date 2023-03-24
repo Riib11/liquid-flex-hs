@@ -253,11 +253,11 @@ data SymId = SymId
 instance Pretty SymId where
   pPrint (SymId sym _m_ti) = pprintInline sym
 
-termVar :: SymId -> r -> Term r
-termVar symId = TermNeutral symId []
+varTerm :: SymId -> r -> Term r
+varTerm symId = TermNeutral symId []
 
 fromSymbolToTerm :: F.Symbol -> r -> Term r
-fromSymbolToTerm sym = termVar (fromSymbolToSymId sym)
+fromSymbolToTerm sym = varTerm (fromSymbolToSymId sym)
 
 fromSymbolToSymId :: F.Symbol -> SymId
 fromSymbolToSymId symIdSymbol = SymId {symIdSymbol, symIdMaybeTermId = Nothing}

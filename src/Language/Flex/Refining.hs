@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wpartial-type-signatures #-}
+
 module Language.Flex.Refining where
 
 import Control.Lens
@@ -79,14 +81,14 @@ introTerm tmId type_ m = do
     Base.TypeUnifyVar {} -> FlexM.throw $ "should not `introTerm` with a unification type varaint during refining" <+> pPrint type_
     -- fallthrough
     _ -> do
-      ty <- liftFlex $ transType type_
+      ty <- FlexM.liftFlex $ transType type_
       locally ctxTypings (Map.insert tmId ty) m
 
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
 check label term type_ = do
   FlexM.mark [FlexM.FlexMarkStep "check" . Just $ pPrint term <+> ":?" <+> pPrint type_]
   tm <- transTerm term
-  ty <- liftFlex $ transType type_
+  ty <- FlexM.liftFlex $ transType type_
   FlexM.debugMark False . FlexM.FlexMarkStep "transType type_" . Just $ pPrint ty
   (_, cstr) <- runCheckingM $ synthCheckTerm ty tm
   query <- makeQuery cstr

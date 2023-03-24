@@ -16,7 +16,7 @@ import qualified Data.Map as Map
 import GHC.Generics
 import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
-import Language.Flex.FlexM (FlexLog (FlexLog), FlexM, freshSymbol)
+import Language.Flex.FlexM (FlexLog (FlexLog), FlexM, freshSymbol, liftFlex)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Base
@@ -27,9 +27,6 @@ import Utility (comps, foldrM, pprintInline)
 -- ** RefiningM
 
 type RefiningM = StateT RefiningEnv (ReaderT RefiningCtx (ExceptT RefiningError FlexM))
-
-liftFlex :: FlexM a -> RefiningM a
-liftFlex = lift . lift . lift
 
 newtype RefiningError = RefiningError Doc
   deriving (Generic, Show)
