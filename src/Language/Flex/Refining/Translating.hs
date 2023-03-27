@@ -384,6 +384,7 @@ eqPred tm1 tm2 =
 embedSymId :: MonadFlex m => SymId -> m F.Expr
 embedSymId SymId {..} = return $ F.eVar symIdSymbol
 
+-- TODO: need to use a Writer to emit equalities that will be bound by the parent predicate
 embedTerm :: MonadFlex m => Term (Type ()) -> m F.Expr
 embedTerm = \case
   TermLiteral lit _ -> embedLiteral lit

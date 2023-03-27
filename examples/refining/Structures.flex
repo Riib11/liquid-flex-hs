@@ -11,7 +11,15 @@ struct EqualBits {
     assert b1 == b2;
 }
 
-const ebs: EqualBits = EqualBits{ b1 = false; b2 = false }
+const ex1: EqualBits = EqualBits{ b1 = false; b2 = false }
+
+// const ex2: bit = {
+//     let ebs = EqualBits{ b1 = false; b2 = false };
+//     let b = ebs.b1;
+//     true
+// }
+
+
 
 // function main() -> bit {
 
