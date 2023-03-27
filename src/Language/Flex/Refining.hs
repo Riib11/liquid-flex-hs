@@ -1,3 +1,5 @@
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wpartial-type-signatures #-}
 
 module Language.Flex.Refining where
@@ -86,14 +88,15 @@ introTerm tmId type_ m = do
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
 check label term type_ = FlexM.markSection [FlexM.FlexMarkStep "check" . Just $ pPrint term <+> ":?" <+> pPrint type_] do
   tm <- transTerm term
+  $(FlexM.debugThing True [|pPrint|] [|tm|])
   ty <- FlexM.liftFlex $ transType type_
-  FlexM.debugMark False . FlexM.FlexMarkStep "transType type_" . Just $ pPrint ty
+  $(FlexM.debugThing True [|pPrint|] [|ty|])
   (_, cstr) <- runCheckingM $ synthCheckTerm ty tm
   query <- makeQuery cstr
   result <- submitQuery query
   case result of
     F.Crash mb_stack msg ->
-      throwRefiningError $
+      FlexM.throw $
         vcat
           [ "while checking" $$ nest 2 label,
             "crash:"

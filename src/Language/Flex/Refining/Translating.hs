@@ -12,11 +12,11 @@ import Data.Maybe (fromMaybe)
 import Data.String (IsString (fromString))
 import Data.Text (pack)
 import qualified Language.Fixpoint.Types as F
-import Language.Flex.FlexM (FlexM, MonadFlex, defaultLocated, freshSymbol)
+import Language.Flex.FlexM (FlexM, MonadFlex, defaultLocated, freshSymbol, freshenSymbol)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Logic (conjPred)
 import Language.Flex.Refining.Prelude (tupleFTycon, tupleTermConstructorSymbol)
-import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, getSymbolSymId, introApplicantType, introBinding, introSymId, throwRefiningError)
+import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenReftBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, getSymbolSymId, introApplicantType, introBinding, introSymId, throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..), renameTerm)
 import qualified Language.Flex.Syntax as Base
@@ -171,7 +171,8 @@ transRefinedTypeRefinement locals reft = do
   comps
     ( -- introduce local variables into context
       locals <&> \(tmId, ty) m -> do
-        symId <- freshSymIdTermId tmId
+        -- not fresh, because the refinement can refer to it
+        let symId = SymId (F.symbol tmId) (Just tmId)
         ty' <- transType ty
         comps
           [ introSymId symId,
@@ -204,9 +205,9 @@ transType type_ = FlexM.markSection [FlexM.FlexMarkStep "transType" . Just $ pPr
           Base.TypeUInt -> TypeInt
           Base.TypeFloat -> TypeFloat
     return $ TypeAtomic atomic (F.reft x p)
-  Base.TypeBit -> return $ TypeAtomic TypeBit F.trueReft
-  Base.TypeChar -> return $ TypeAtomic TypeChar F.trueReft
-  Base.TypeArray Base.TypeChar -> return $ TypeAtomic TypeString F.trueReft
+  Base.TypeBit -> return $ TypeAtomic TypeBit mempty
+  Base.TypeChar -> return $ TypeAtomic TypeChar mempty
+  Base.TypeArray Base.TypeChar -> return $ TypeAtomic TypeString mempty
   Base.TypeArray _ty -> error "transType TODO"
   Base.TypeTuple tys -> do
     tupleTypeReft =<< transType `traverse` tys
@@ -226,8 +227,27 @@ transType type_ = FlexM.markSection [FlexM.FlexMarkStep "transType" . Just $ pPr
 --
 -- > structureTypeReft ... = ... TODO
 structureTypeReft :: MonadFlex m => Base.Structure -> [(Base.FieldId, TypeReft)] -> m TypeReft
-structureTypeReft struct@Base.Structure {..} fieldTys = do
-  symStruct <- freshSymbol "structTermStructure"
+structureTypeReft struct@Base.Structure {..} fieldTys_ = do
+  symStruct <- freshSymbol ("structTermStructure" :: String)
+
+  -- -- freshen binds of each field refinement
+  -- fieldTys <- secondM (freshenReftBind `traverse`) `traverse` fieldTys_
+  -- let fieldTys = fieldTys_ -- TODO: do i need to freshen, or just sub with field ids?
+
+  fieldTys <-
+    forM fieldTys_ \(fieldId, ty) -> do
+      -- ty: { x: a | p(x) }
+      -- y: based on field
+      -- ==> { y: a | p(y) }
+      let r = typeAnn ty
+          (x, p) = (F.reftBind r, F.reftPred r)
+
+      -- acually don't freshen here, since needs to work with checking refinement of structure which refers to the raw fields by name
+      -- y <- freshSymbol (structureId, fieldId)
+      let y = F.symbol fieldId
+
+      let r' = F.reft y $ F.substa (\x' -> if x == x' then y else x') p
+      return (fieldId, ty {typeAnn = r'})
 
   -- tyStruct: S a1 ... aN
   let tyStruct = TypeStructure struct ()
@@ -253,8 +273,8 @@ structureTypeReft struct@Base.Structure {..} fieldTys = do
   fieldSrts <- secondM embedType `traverse` fieldTys
   let p =
         F.pExist
-          ( fieldSrts <&> \(fieldId, srt) ->
-              (F.symbol (structureId, fieldId), srt)
+          ( fieldTys `zip` fieldSrts <&> \((_, ty), (_, srt)) ->
+              (F.reftBind $ typeAnn ty, srt)
           )
           $ conjPred [p1, p2]
 
@@ -277,10 +297,10 @@ tupleTypeReft tys_ = do
 
         -- r1(x1)
         -- r2(x2)
-        let r1 = typeAnn ty1
-            r2 = typeAnn ty2
+        r1 <- freshenReftBind (typeAnn ty1)
+        r2 <- freshenReftBind (typeAnn ty2)
 
-        symTuple <- freshSymbol "tuple"
+        symTuple <- freshSymbol ("tuple" :: String)
 
         -- tyTuple: (ty1, ty2)
         -- unrefined, since only used for embedding

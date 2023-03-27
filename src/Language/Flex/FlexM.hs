@@ -60,7 +60,7 @@ data FlexLog = FlexLog
   }
   deriving (Show)
 
-newtype FlexMark = FlexMark [FlexMarkStep]
+newtype FlexMark = FlexMark {unFlexMark :: [FlexMarkStep]}
   deriving newtype (Show, Semigroup, Monoid)
 
 data FlexMarkStep = FlexMarkStep
@@ -125,11 +125,14 @@ initFlexEnv =
         }
     )
 
-freshSymbol :: MonadFlex m => String -> m F.Symbol
-freshSymbol str = do
+freshSymbol :: (MonadFlex m, F.Symbolic a) => a -> m F.Symbol
+freshSymbol = freshenSymbol . F.symbol
+
+freshenSymbol :: MonadFlex m => F.Symbol -> m F.Symbol
+freshenSymbol x = do
   i <- liftFlex $ gets (^. flexFreshSymbolIndex)
   liftFlex $ modifying flexFreshSymbolIndex (1 +)
-  return $ F.symbol (str <> "#" <> show i)
+  return $ F.symbol (render (F.pprint x) <> "%" <> show i)
 
 -- | Implicitly use flexTrace' by reversing it, since it is built up with most
 -- recent stacks at the beginning of the trace list
@@ -140,28 +143,36 @@ flexTrace = flexTrace' . (. reverse)
 -- properly.
 markSection :: MonadFlex m => [FlexMarkStep] -> m a -> m a
 markSection steps m = do
-  -- count how many steps on stack at start
-  n <- liftFlex $ gets (^. flexStack . to (\(FlexMark steps') -> length steps'))
-  -- push stack
-  liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (steps' <> steps)))
+  -- push onto front of stack
+  liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (reverse steps <> steps')))
+  debugMark True $ FlexMarkStep "BEGIN" Nothing
   -- compute internal result
   a <- m
-  -- pop stack
-  liftFlex $ modify' (flexStack %~ (\(FlexMark steps'') -> FlexMark (take n steps'')))
+  -- pop from front of stack
+  debugMark True $ FlexMarkStep "END" Nothing
+  liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (drop (length steps) steps')))
   -- return internal result
   return a
 
-markSectionResult :: MonadFlex m => [FlexMarkStep] -> Bool -> (a -> Doc) -> m a -> m a
-markSectionResult steps b p m = markSection steps do
-  a <- m
-  debugMark b $ FlexMarkStep "result" . Just $ p a
-  return a
+markSectionResult ::
+  MonadFlex m =>
+  Bool ->
+  [FlexMarkStep] ->
+  (input -> Doc) ->
+  input ->
+  (output -> Doc) ->
+  m output ->
+  m output
+markSectionResult b steps pIn input pOut mOut = markSection steps do
+  debugMark b $ FlexMarkStep "<==  " . Just $ pIn input
+  output <- mOut
+  debugMark b $ FlexMarkStep "  ==>" . Just $ pOut output
+  return output
 
 mark :: MonadFlex m => [FlexMarkStep] -> m ()
 mark steps = liftFlex do
   -- prepend new stack to trace
-  FlexMark steps' <- gets (^. flexStack)
-  let stack' = FlexMark $ steps' <> steps
+  stack' <- gets (^. flexStack . to (FlexMark (reverse steps) <>))
   flexTrace %= (stack' :)
   tell . pPrint . Dynamic $ stack'
 
@@ -174,7 +185,7 @@ tell doc = do
 debug :: MonadFlex m => Bool -> Doc -> m ()
 debug isActive doc = do
   stack <- liftFlex $ gets (^. flexStack)
-  when isActive . liftFlex . liftIO . putStrLn . render . ("● " <+>) . pPrint . Static $
+  when isActive . liftFlex . liftIO . putStrLn . render . pPrint . Static $
     FlexLog {logMark = stack, logBody = doc}
 
 debugMark :: MonadFlex m => Bool -> FlexMarkStep -> m ()
@@ -202,13 +213,18 @@ throw doc = liftFlex do
 
 -- *** Static FlexLog
 
-newtype Static a = Static a
+newtype Static a = Static {unStatic :: a}
 
 instance Pretty (Static FlexLog) where
-  pPrint (Static (FlexLog {..})) = pPrint (Static logMark) $$ nest 2 logBody
+  pPrint (Static (FlexLog {..})) =
+    vcat
+      [ nest (4 * length (unFlexMark logMark) - 1) $ "●" <> space <> pPrint (Static logMark),
+        nest (4 + 4 * length (unFlexMark logMark)) logBody
+      ]
 
 instance Pretty (Static FlexMark) where
-  pPrint (Static (FlexMark steps)) = hcat $ punctuate (comma <> space) $ pPrint . Static <$> steps
+  -- pPrint (Static (FlexMark steps)) = hcat $ punctuate (comma <> space) $ pPrint . Static <$> steps
+  pPrint (Static (FlexMark steps)) = pPrint (Static $ head steps)
 
 instance Pretty (Static FlexMarkStep) where
   pPrint (Static (FlexMarkStep {..})) = text flexMarkStepLabel
@@ -218,13 +234,14 @@ instance Pretty (Static FlexMarkStep) where
 newtype Dynamic a = Dynamic a
 
 instance Pretty (Dynamic FlexLog) where
-  pPrint (Dynamic (FlexLog {..})) = pPrint (Dynamic logMark) $$ nest 2 logBody
+  pPrint (Dynamic (FlexLog {..})) =
+    vcat
+      [ nest (4 * length (unFlexMark logMark) - 1) $ "●" <> space <> pPrint (Dynamic logMark),
+        nest (4 * length (unFlexMark logMark)) logBody
+      ]
 
 instance Pretty (Dynamic FlexMark) where
-  pPrint (Dynamic (FlexMark steps)) =
-    case steps of
-      [] -> mempty
-      steps' -> pPrint $ Dynamic (last steps')
+  pPrint (Dynamic (FlexMark steps)) = vcat $ pPrint . Dynamic <$> steps
 
 instance Pretty (Dynamic FlexMarkStep) where
   pPrint (Dynamic (FlexMarkStep {..})) =

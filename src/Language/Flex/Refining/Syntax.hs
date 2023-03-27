@@ -112,7 +112,7 @@ mapM_typeAnn k ty = do
   return ty {typeAnn = ann}
 
 typeEqTrue :: TypeReft
-typeEqTrue = typeBit F.trueReft
+typeEqTrue = typeBit mempty
 
 typeEqFalse :: TypeReft
 typeEqFalse = typeBit F.falseReft
@@ -218,7 +218,7 @@ data Primitive r
   | PrimitiveAdd (Term r) (Term r)
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty r => Pretty (Primitive r) where
+instance PrettyTermAnn r => Pretty (Primitive r) where
   pPrint = \case
     PrimitiveTry te -> parens $ text "try" <+> pPrint te
     PrimitiveTuple (te1, te2) -> parens $ (pPrint te1 <> ",") <+> pPrint te2
@@ -243,17 +243,32 @@ data Term r
   | TermMember {termStructure :: !Base.Structure, termTerm :: !(Term r), termFieldId :: !Base.FieldId, termAnn :: r}
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty r => Pretty (Term r) where
-  pPrint = \case
-    TermNeutral symId tes _r
-      | null tes -> pPrint symId
-      | otherwise -> pPrint symId <> parens (hcat $ punctuate (comma <> space) $ pPrint <$> tes)
-    TermLiteral lit _r -> pPrint lit
-    TermPrimitive prim _r -> pPrint prim
+class PrettyTermAnn r where
+  pPrintAnn :: r -> Doc -> Doc
+
+instance PrettyTermAnn () where
+  pPrintAnn () = id
+
+instance PrettyTermAnn Base.Type where
+  pPrintAnn ty = (<+> (":" <+> pPrint ty))
+
+instance PrettyTermAnn (Type ()) where
+  pPrintAnn ty = (<+> (":" <+> pPrint ty))
+
+instance PrettyTermAnn TypeReft where
+  pPrintAnn ty = (<+> (":" <+> pPrint ty))
+
+instance PrettyTermAnn r => Pretty (Term r) where
+  pPrint term = case term of
+    TermNeutral symId tes r
+      | null tes -> pPrintAnn r $ pPrint symId
+      | otherwise -> pPrintAnn r $ pPrint symId <> parens (hcat $ punctuate (comma <> space) $ pPrint <$> tes)
+    TermLiteral lit r -> parens $ pPrintAnn r $ pPrint lit
+    TermPrimitive prim r -> pPrintAnn r $ pPrint prim
     TermLet symId te te' _r -> (text "let" <+> pPrint symId <+> equals <+> pPrint te <+> semi) $$ pPrint te'
     TermAssert te te' _r -> (text "assert" <+> pPrint te <+> ";") $$ pPrint te'
-    TermStructure {..} -> pPrint (Base.structureId termStructure) <> braces (hcat (punctuate (comma <> space) (termFields <&> \(fieldId, tm) -> pPrint fieldId <+> "=" <+> pPrint tm)))
-    TermMember {..} -> pPrint termTerm <> "#" <> pPrint termFieldId
+    TermStructure {..} -> parens $ pPrintAnn termAnn $ pPrint (Base.structureId termStructure) <> braces (hcat (punctuate (comma <> space) (termFields <&> \(fieldId, tm) -> pPrint fieldId <+> "=" <+> pPrint tm)))
+    TermMember {..} -> parens $ pPrintAnn termAnn $ pPrint termTerm <> "#" <> pPrint termFieldId
 
 data SymId = SymId
   { symIdSymbol :: !F.Symbol,

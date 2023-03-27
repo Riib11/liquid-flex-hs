@@ -16,7 +16,7 @@ import qualified Data.Map as Map
 import GHC.Generics
 import qualified Language.Fixpoint.Parse as FP
 import qualified Language.Fixpoint.Types as F
-import Language.Flex.FlexM (FlexLog (FlexLog), FlexM, freshSymbol, liftFlex)
+import Language.Flex.FlexM (FlexLog (FlexLog), FlexM, MonadFlex, freshSymbol, liftFlex)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Base
@@ -182,8 +182,8 @@ introBinding symId tm =
     (ctxBindings . at symId)
     (const $ Just tm)
 
-freshenBind :: F.Reft -> RefiningM F.Reft
-freshenBind r = do
+freshenReftBind :: MonadFlex m => F.Reft -> m F.Reft
+freshenReftBind r = do
   let x = F.reftBind r
   x' <- liftFlex $ freshSymbol (render $ pprintInline x)
   return $ F.substa (\y -> if y == x then x' else y) r

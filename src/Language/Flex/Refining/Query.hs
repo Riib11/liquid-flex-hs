@@ -56,7 +56,7 @@ _qData = lens H.qData (\q qData -> q {H.qData = qData})
 --   is checked)
 makeQuery :: Cstr -> RefiningM Query
 -- WARNING: this is _very_ long debug if you turn on printing result
-makeQuery cstr = FlexM.markSectionResult [FlexM.FlexMarkStep "makeQuery" Nothing] False F.pprint do
+makeQuery cstr = FlexM.markSectionResult False [FlexM.FlexMarkStep "makeQuery" Nothing] F.pprint cstr F.pprint do
   let protoQuery =
         H.Query
           { qQuals = mempty,
