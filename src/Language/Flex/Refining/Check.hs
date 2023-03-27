@@ -54,8 +54,7 @@ instance Monoid CstrMonoid where
 -- ** Checking
 
 synthCheckTerm :: TypeReft -> Term Base.Type -> CheckingM (Term TypeReft)
-synthCheckTerm tyExpect tm = do
-  FlexM.mark [FlexM.FlexMarkStep "synthCheckTerm" . Just $ pPrint tm <+> ": ? <:" <+> pPrint tyExpect]
+synthCheckTerm tyExpect tm = FlexM.markSection [FlexM.FlexMarkStep "synthCheckTerm" . Just $ pPrint tm <+> ": ? <:" <+> pPrint tyExpect] do
   tm' <- synthTerm tm
   tySynth <- inferTerm tm'
   checkSubtype tm' tySynth tyExpect
@@ -341,9 +340,7 @@ inferTerm = return . termAnn
 -- ** Subtyping
 
 checkSubtype :: Term TypeReft -> TypeReft -> TypeReft -> CheckingM ()
-checkSubtype tmSynth tySynth tyExpect = do
-  FlexM.mark [FlexM.FlexMarkStep "checkSubtype" . Just $ pPrint tmSynth $$ nest 2 (" :" <+> pPrint tySynth) $$ nest 2 ("<:" <+> pPrint tyExpect)]
-
+checkSubtype tmSynth tySynth tyExpect = FlexM.markSection [FlexM.FlexMarkStep "checkSubtype" . Just $ pPrint tmSynth $$ nest 2 (" :" <+> pPrint tySynth) $$ nest 2 ("<:" <+> pPrint tyExpect)] do
   --    forall x : T, p x ==> (p' x')[x' := x]
   --  ----------------------------------------------
   --    {x : T | p x} <: {x' : T | p' y'}

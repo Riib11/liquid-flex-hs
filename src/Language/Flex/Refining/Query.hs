@@ -1,4 +1,6 @@
 {-# HLINT ignore "Use ++" #-}
+{-# OPTIONS_GHC -Wno-partial-type-signatures #-}
+
 module Language.Flex.Refining.Query where
 
 import Control.Lens
@@ -53,11 +55,8 @@ _qData = lens H.qData (\q qData -> q {H.qData = qData})
 --   computed at top level instead of here (which is called every time something
 --   is checked)
 makeQuery :: Cstr -> RefiningM Query
-makeQuery cstr = do
-  -- WARNING: this is _very_ long log
-  -- FlexM.mark [FlexM.FlexMarkStep "makeQuery" . Just $ F.pprint cstr]
-  FlexM.mark [FlexM.FlexMarkStep "makeQuery" Nothing]
-
+-- WARNING: this is _very_ long debug if you turn on printing result
+makeQuery cstr = FlexM.markSectionResult [FlexM.FlexMarkStep "makeQuery" Nothing] False F.pprint do
   let protoQuery =
         H.Query
           { qQuals = mempty,
@@ -100,9 +99,8 @@ addUserDatatypes :: StateT Query RefiningM ()
 addUserDatatypes = do
   -- add structures
   structs <- asks (^. ctxStructures)
-  forM_ (Map.elems structs) \struct@Base.Structure {..} -> do
+  forM_ (Map.elems structs) \struct -> do
     -- add DataDecl
-
     datadecl <- FlexM.liftFlex $ structureDataDecl struct
     modify $ _qData %~ (datadecl :)
 

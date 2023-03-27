@@ -268,8 +268,7 @@ procModule (Module {..}) = do
   return $ Module {moduleId, moduleDeclarations = decls}
 
 procDeclaration :: Declaration () -> TypingM (Declaration Type)
-procDeclaration decl = do
-  FlexM.mark [FlexM.FlexMarkStep "procDeclaration" . Just $ pPrint decl]
+procDeclaration decl = FlexM.markSection [FlexM.FlexMarkStep "procDeclaration" . Just $ pPrint decl] do
   case decl of
     DeclarationStructure (Structure {..}) ->
       return . toDeclaration $
@@ -385,8 +384,7 @@ synthCheckTerm ty tm = do
 -- ** Checking
 
 checkTerm :: Type -> Term TypeM -> TypingM ()
-checkTerm tyExpect tm = do
-  FlexM.mark [FlexM.FlexMarkStep "checkTerm" . Just $ pPrint tm <+> ":?" <+> pPrint tyExpect]
+checkTerm tyExpect tm = FlexM.markSection [FlexM.FlexMarkStep "checkTerm" . Just $ pPrint tm <+> ":?" <+> pPrint tyExpect] do
   tySynth <- inferTerm tm
   unify tyExpect =<< tySynth
 
@@ -703,8 +701,7 @@ satisfiesUnifyConstraint ty = \case
 
 -- | <expected type> ~? <synthesized type>
 unify :: Type -> Type -> TypingM ()
-unify type1 type2 = do
-  FlexM.mark [FlexM.FlexMarkStep "unify" . Just $ pPrint type1 <+> "~?" <+> pPrint type2]
+unify type1 type2 = FlexM.markSection [FlexM.FlexMarkStep "unify" . Just $ pPrint type1 <+> "~?" <+> pPrint type2] do
   case (type1, type2) of
     -- TypeUnifyVar
     (TypeUnifyVar uv mb_uc, ty) -> substUnifyVar type1 type2 uv mb_uc ty -- substitute uv for ty while unifying type1 and type2
@@ -728,8 +725,7 @@ unify type1 type2 = do
 
 -- uv{mb_uc} := ty (during: type1 ~ type2)
 substUnifyVar :: Type -> Type -> UnifyVar -> Maybe UnifyConstraint -> Type -> TypingM ()
-substUnifyVar type1 type2 uv mb_uc ty = do
-  FlexM.mark [FlexM.FlexMarkStep "substUnifyVar" . Just $ pPrint (TypeUnifyVar uv mb_uc) <+> ":=" <+> pPrint ty $$ (nest 2 . parens $ "during:" <+> pPrint type1 <+> "~?" <+> pPrint type2)]
+substUnifyVar type1 type2 uv mb_uc ty = FlexM.markSection [FlexM.FlexMarkStep "substUnifyVar" . Just $ pPrint (TypeUnifyVar uv mb_uc) <+> ":=" <+> pPrint ty $$ (nest 2 . parens $ "during:" <+> pPrint type1 <+> "~?" <+> pPrint type2)] do
   -- check if uv1 occurs in type2
   when (uv `unifyVarOccursInType` ty) $ throwUnifyError type1 type2 (Just "fails occurs check")
   case mb_uc of

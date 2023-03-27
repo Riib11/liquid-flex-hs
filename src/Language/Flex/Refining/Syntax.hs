@@ -87,6 +87,17 @@ instance Pretty (Type F.Reft) where
     where
       go doc r = braces $ pprintInline (F.reftBind r) <+> ":" <+> doc <+> "|" <+> pprintInline (F.reftPred r)
 
+instance Pretty (Type ()) where
+  pPrint = \case
+    TypeAtomic at _r -> case at of
+      TypeInt -> "int"
+      TypeFloat -> "float"
+      TypeBit -> "bit"
+      TypeChar -> "char"
+      TypeString -> "string"
+    TypeTuple (ty1, ty2) _r -> (parens $ (pPrint ty1 <> ",") <+> pPrint ty2)
+    TypeStructure Base.Structure {..} _r -> (pPrint structureId)
+
 data AtomicType
   = TypeInt
   | TypeFloat
@@ -207,7 +218,7 @@ data Primitive r
   | PrimitiveAdd (Term r) (Term r)
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty (Primitive r) where
+instance Pretty r => Pretty (Primitive r) where
   pPrint = \case
     PrimitiveTry te -> parens $ text "try" <+> pPrint te
     PrimitiveTuple (te1, te2) -> parens $ (pPrint te1 <> ",") <+> pPrint te2
@@ -232,7 +243,7 @@ data Term r
   | TermMember {termStructure :: !Base.Structure, termTerm :: !(Term r), termFieldId :: !Base.FieldId, termAnn :: r}
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty (Term r) where
+instance Pretty r => Pretty (Term r) where
   pPrint = \case
     TermNeutral symId tes _r
       | null tes -> pPrint symId

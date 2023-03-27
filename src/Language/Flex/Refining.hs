@@ -52,8 +52,7 @@ checkModule Base.Module {..} = do
     (forM_ moduleDeclarations checkDeclaration)
 
 checkDeclaration :: Base.Declaration Base.Type -> RefiningM ()
-checkDeclaration decl = do
-  FlexM.mark [FlexM.FlexMarkStep "checkDeclaration" . Just $ pPrint decl]
+checkDeclaration decl = FlexM.markSection [FlexM.FlexMarkStep "checkDeclaration" . Just $ pPrint decl] do
   case decl of
     Base.DeclarationFunction Base.Function {..} -> do
       for functionParameters (check label functionBody functionOutput) $
@@ -85,8 +84,7 @@ introTerm tmId type_ m = do
       locally ctxTypings (Map.insert tmId ty) m
 
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
-check label term type_ = do
-  FlexM.mark [FlexM.FlexMarkStep "check" . Just $ pPrint term <+> ":?" <+> pPrint type_]
+check label term type_ = FlexM.markSection [FlexM.FlexMarkStep "check" . Just $ pPrint term <+> ":?" <+> pPrint type_] do
   tm <- transTerm term
   ty <- FlexM.liftFlex $ transType type_
   FlexM.debugMark False . FlexM.FlexMarkStep "transType type_" . Just $ pPrint ty
