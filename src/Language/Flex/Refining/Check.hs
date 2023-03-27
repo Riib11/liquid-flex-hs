@@ -1,6 +1,8 @@
 {-# HLINT ignore "Redundant return" #-}
 {-# HLINT ignore "Move brackets to avoid $" #-}
 {-# HLINT ignore "Use camelCase" #-}
+{-# LANGUAGE TemplateHaskell #-}
+
 module Language.Flex.Refining.Check where
 
 -- TODO: rename this module to "Refining"
@@ -11,6 +13,7 @@ import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (lift)
 import qualified Control.Monad.Writer as Writer
 import qualified Control.Monad.Writer.Class as Writer
+import Data.Bifunctor
 import Data.Bifunctor (Bifunctor (second))
 import Data.Functor
 import qualified Language.Fixpoint.Horn.Types as H
@@ -21,7 +24,7 @@ import Language.Flex.Refining.Constraint
 import Language.Flex.Refining.Logic (conjPred)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
-import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, transTerm, transType, tupleTypeReft)
+import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, structureSymbol, transTerm, transType, tupleTypeReft)
 import Language.Flex.Refining.Types
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
@@ -60,9 +63,11 @@ synthCheckTerm tyExpect tm = do
 
 -- ** Synthesizing
 
+-- TODO: TermStructure and TermMember don't properly freshen the binds of the
+-- child refinements -- gotta do that
+
 synthTerm :: Term Base.Type -> CheckingM (Term TypeReft)
-synthTerm term = do
-  FlexM.mark [FlexM.FlexMarkStep "synthTerm" . Just $ pPrint term]
+synthTerm term = FlexM.markSectionResult [FlexM.FlexMarkStep "synthTerm" . Just $ pPrint term] True pPrint do
   case term of
     TermNeutral symId args ty -> do
       args' <- synthTerm `traverse` args
@@ -83,10 +88,8 @@ synthTerm term = do
       synthPrimitive term ty prim
     TermAssert tm1 tm2 _ty -> do
       -- check asserted term against refinement type { x | x == true }
-      ty1 <-
-        TypeAtomic TypeBit
-          <$> reflectLiteralInReft (typeBit ()) (LiteralBit True) F.trueReft
-      tm1' <- synthCheckTerm ty1 tm1
+      tySpec <- reftTypeIsTrue
+      tm1' <- synthCheckTerm tySpec tm1
       tm2' <- synthTerm tm2
       ty' <- inferTerm tm2'
       return $ TermAssert tm1' tm2' ty'
@@ -114,7 +117,7 @@ synthTerm term = do
       ty' <- transType ty
 
       return $ TermLet symId tm' bod' ty'
-    TermStructure {..} -> do
+    TermStructure {..} -> FlexM.markSection [FlexM.FlexMarkStep "TermStructure" Nothing] do
       -- Convert
       --
       -- @ assert(p(x, y, z)) @
@@ -143,10 +146,10 @@ synthTerm term = do
 
       -- check that the constructed refinement satisfies @{ VV: bit | VV ==
       -- true}@
-      void $
-        synthCheckTerm
-          (TypeAtomic TypeBit F.trueReft)
-          tmReft'
+
+      do
+        tySpec <- reftTypeIsTrue
+        void $ synthCheckTerm tySpec tmReft'
 
       -- check the fields
       termFields' <-
@@ -168,7 +171,93 @@ synthTerm term = do
 
       -- reflect in the refinement that this term is equal to it's reflection
       mapM_termAnn (mapM_typeAnn $ reflectTermInReft (void <$> tm)) tm
-    TermMember {} -> error "TODO: synthTerm TermMember"
+    TermMember struct@Base.Structure {..} tm termFieldId ty -> FlexM.markSection [FlexM.FlexMarkStep "TermMember" Nothing] do
+      ty' <- transType ty
+      $(FlexM.debugThing True [|pPrint|] [|ty'|])
+      structTerm <- synthCheckTerm (TypeStructure struct mempty) tm
+      -- struct
+      -- structType: { x: S | p(x) }
+      structType <- inferTerm structTerm
+      $(FlexM.debugThing True [|pPrint|] [|structType|])
+      -- structSort
+      structSort <- embedType structType
+      $(FlexM.debugThing True [|F.pprint|] [|structSort|])
+      -- structReft: { x | p(x) }
+      let structReft = typeAnn structType
+      $(FlexM.debugThing True [|F.pprint|] [|structReft|])
+      -- structSymId: struct
+      structSymId <- lift $ freshSymId "structTermMemberInput"
+      $(FlexM.debugThing True [|pPrint|] [|structSymId|])
+
+      -- p1(struct): p(struct)
+      let p1 =
+            F.substa (\sym -> if sym == F.reftBind structReft then symIdSymbol structSymId else sym) $
+              F.reftPred structReft
+      $(FlexM.debugThing True [|F.pprint|] [|p1|])
+
+      -- structure constructor
+      constrSymId <- fromSymbolToSymId . F.val <$> structureSymbol structureId
+      $(FlexM.debugThing True [|pPrint|] [|constrSymId|])
+
+      -- other fields
+      fieldSymIds <- forM structureFields $ lift . freshSymIdTermId . Base.fromFieldIdToTermId . fst
+      fieldTypeRefts <- forM structureFields $ transType . snd
+      fieldSorts <- forM fieldTypeRefts embedType
+      let fieldTerms = uncurry varTerm <$> fieldSymIds `zip` fieldTypeRefts
+      $(FlexM.debugThing True [|pPrint|] [|fieldTerms|])
+
+      -- this
+      let thisSym = F.reftBind $ typeAnn ty'
+      let thisSymId = fromSymbolToSymId thisSym
+      $(FlexM.debugThing True [|pPrint|] [|thisSymId|])
+
+      let args =
+            (structureFields `zip` fieldTerms) <&> \((fieldId, _), fieldTerm) -> do
+              if fieldId == termFieldId
+                then varTerm thisSymId (void ty')
+                else void <$> fieldTerm
+      $(FlexM.debugThing True [|pPrint|] [|args|])
+
+      -- p2(x1, ..., x[i-1], x[i+1], ..., xn, struct, this): struct == S x1 ... x[i-1] this x[i+1] xn
+      p2 <-
+        eqPred
+          (varTerm structSymId $ void ty')
+          (TermNeutral constrSymId args $ void ty')
+      $(FlexM.debugThing True [|F.pprint|] [|p2|])
+
+      -- p(this): exists x1 ... xn struct . p1(struct) && p2(x1, ..., xn, struct, this)
+      let p =
+            F.pExist
+              ( (symIdSymbol structSymId, structSort)
+                  : ( filter
+                        (\(symId, _) -> symId /= thisSymId)
+                        (fieldSymIds `zip` fieldSorts)
+                        <&> first symIdSymbol
+                    )
+              )
+              $ conjPred [p1, p2]
+      $(FlexM.debugThing True [|F.pprint|] [|p|])
+
+      -- FlexM.debugMark True $
+      --   FlexM.FlexMarkStep "TermMember" . Just $
+      --     vcat
+      --       [ "structSymId =" <+> F.pprint (symIdSymbol structSymId),
+      --         "p1 =" <+> F.pprint p1,
+      --         "p2 =" <+> F.pprint p2,
+      --         "p =" <+> F.pprint p,
+      --         "F.reft thisSym p =" <+> F.pprint (F.reft thisSym p)
+      --       ]
+
+      let ty'' = ty' {typeAnn = F.reft thisSym p}
+      $(FlexM.debugThing True [|pPrint|] [|ty''|])
+
+      return $
+        TermMember
+          { termStructure = struct,
+            termTerm = structTerm,
+            termFieldId,
+            termAnn = ty''
+          }
 
 -- | Note that most primitive operations are reflected in refinement.
 synthPrimitive :: Term Base.Type -> Base.Type -> Primitive Base.Type -> CheckingM (Term TypeReft)
@@ -227,7 +316,7 @@ synthPrimitive _term ty primitive =
 --
 -- > reflectTermInReft v { x: a | r } = { x: a | x == v && r }
 reflectTermInReft :: Term (Type ()) -> F.Reft -> CheckingM F.Reft
-reflectTermInReft tm r = do
+reflectTermInReft tm r = FlexM.markSectionResult [FlexM.FlexMarkStep "reflectTermInReft" . Just $ pPrint tm] True F.pprint do
   let sort = void $ termAnn tm
   let x = F.reftBind r
   let p = F.reftPred r
@@ -271,3 +360,11 @@ checkSubtype tmSynth tySynth tyExpect = do
     rExpect = typeAnn tyExpect
     (xSynth, eSynth) = (F.reftBind rSynth, F.reftPred rSynth)
     (xExpect, eExpect) = (F.reftBind rExpect, F.reftPred rExpect)
+
+-- ** Utility Refined Types
+
+-- @{ VV: bit | VV == true }@
+reftTypeIsTrue :: CheckingM (Type F.Reft)
+reftTypeIsTrue =
+  mapM_typeAnn (reflectLiteralInReft (TypeAtomic TypeBit ()) (LiteralBit True))
+    =<< transType Base.TypeBit

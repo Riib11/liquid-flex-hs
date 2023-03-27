@@ -97,7 +97,7 @@ check label term type_ = do
     F.Crash mb_stack msg ->
       throwRefiningError $
         vcat
-          [ "while checking" <+> label,
+          [ "while checking" $$ nest 2 label,
             "crash:"
               <+> text msg,
             "stack:" $$ nest 2 (vcat $ (\(err, m_s) -> pPrint err <+> maybe mempty (parens . text) m_s) <$> mb_stack)

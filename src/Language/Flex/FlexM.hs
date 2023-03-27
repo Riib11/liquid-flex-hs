@@ -1,3 +1,4 @@
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 {-# HLINT ignore "Use newtype instead of data" #-}
@@ -18,6 +19,8 @@ import Data.Foldable (traverse_)
 import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.PrettyPrint as F
+import qualified Language.Haskell.TH as TH
+import qualified Language.Haskell.TH.Syntax as H
 import Text.PrettyPrint.HughesPJ hiding ((<>))
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
@@ -148,6 +151,12 @@ markSection steps m = do
   -- return internal result
   return a
 
+markSectionResult :: MonadFlex m => [FlexMarkStep] -> Bool -> (a -> Doc) -> m a -> m a
+markSectionResult steps b p m = markSection steps do
+  a <- m
+  debugMark b $ FlexMarkStep "result" . Just $ p a
+  return a
+
 mark :: MonadFlex m => [FlexMarkStep] -> m ()
 mark steps = liftFlex do
   -- prepend new stack to trace
@@ -221,3 +230,14 @@ instance Pretty (Dynamic FlexMarkStep) where
   pPrint (Dynamic (FlexMarkStep {..})) =
     text flexMarkStepLabel
       <+> maybe mempty (\ixDoc -> ":" <+> nest 2 ixDoc) flexmarkStepIndex
+
+debugThing :: (H.Quote m, H.Lift t) => t -> m H.Exp -> m H.Exp -> m H.Exp
+debugThing b p x =
+  [|
+    debugMark
+      b
+      ( FlexMarkStep
+          $(x >>= \x' -> pure $ H.LitE $ H.StringL $ show $ TH.ppr x')
+          (Just ($p $x))
+      )
+    |]

@@ -83,7 +83,7 @@ instance Pretty (Type F.Reft) where
       TypeChar -> go "char" r
       TypeString -> go "string" r
     TypeTuple (ty1, ty2) r -> go (parens $ (pPrint ty1 <> ",") <+> pPrint ty2) r
-    TypeStructure structId r -> go (pPrint structId) r
+    TypeStructure Base.Structure {..} r -> go (pPrint structureId) r
     where
       go doc r = braces $ pprintInline (F.reftBind r) <+> ":" <+> doc <+> "|" <+> pprintInline (F.reftPred r)
 

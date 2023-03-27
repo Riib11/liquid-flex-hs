@@ -88,6 +88,7 @@ library
     , pretty
     , singletons
     , singletons-th
+    , template-haskell
     , text
     , transformers
   default-language: Haskell2010
@@ -140,6 +141,7 @@ executable liquid-flex-hs-exe
     , pretty
     , singletons
     , singletons-th
+    , template-haskell
     , text
     , transformers
   default-language: Haskell2010
@@ -198,6 +200,7 @@ test-suite liquid-flex-hs-test
     , pretty
     , singletons
     , singletons-th
+    , template-haskell
     , text
     , transformers
   default-language: Haskell2010

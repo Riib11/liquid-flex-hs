@@ -83,15 +83,18 @@ instance F.Symbolic TermId where
 instance F.Symbolic FieldId where
   symbol (FieldId y) = F.symbol y
 
-newtype FieldReference = FieldReference (TypeId, FieldId)
+instance F.Symbolic (TypeId, FieldId) where
+  symbol (TypeId x, FieldId y) = F.symbol $ x <> "#" <> y
 
-instance F.Symbolic FieldReference where
-  symbol (FieldReference (TypeId x, FieldId y)) = F.symbol $ x <> "#" <> y
+-- newtype FieldReference = FieldReference (TypeId, FieldId)
 
-newtype FieldProjector = FieldProjector (TypeId, FieldId)
+-- instance F.Symbolic FieldReference where
+--   symbol (FieldReference (TypeId x, FieldId y)) = F.symbol $ x <> "#" <> y
 
-instance F.Symbolic FieldProjector where
-  symbol (FieldProjector (TypeId x, FieldId y)) = F.symbol $ "proj$" <> x <> "#" <> y
+-- newtype FieldProjector = FieldProjector (TypeId, FieldId)
+
+-- instance F.Symbolic FieldProjector where
+--   symbol (FieldProjector (TypeId x, FieldId y)) = F.symbol $ "proj$" <> x <> "#" <> y
 
 fromFieldIdToTermId :: FieldId -> TermId
 fromFieldIdToTermId (FieldId x) = TermId x

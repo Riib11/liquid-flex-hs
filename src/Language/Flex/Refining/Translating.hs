@@ -26,9 +26,7 @@ import Utility
 -- ** Translate Term
 
 transTerm :: Base.Term Base.Type -> RefiningM (Term Base.Type)
-transTerm term = do
-  FlexM.mark [FlexM.FlexMarkStep "transTerm" . Just $ pPrint term]
-  FlexM.debugMark False $ FlexM.FlexMarkStep "term" . Just $ pPrint term
+transTerm term = FlexM.markSection [FlexM.FlexMarkStep "transTerm" . Just $ pPrint term] do
   case term of
     Base.TermLiteral lit ty -> return $ TermLiteral lit ty
     Base.TermPrimitive prim ty ->
@@ -94,7 +92,7 @@ transTerm term = do
         _ -> FlexM.throw $ "a TermMember's term should have a Structure type, but instead has type:" <+> pPrint ty
       return $ TermMember struct te' fi ty
     Base.TermNeutral app mb_args mb_cxargs ty -> transNeutral app mb_args mb_cxargs ty
-    Base.TermMatch _te _x0 _ty -> error "transTerm"
+    Base.TermMatch _te _x0 _ty -> error "transTerm TermMatch"
     -- invalid
     Base.TermAscribe _te _ty _ty' -> FlexM.throw $ "term ascribe should not appear in typed term:" <+> pPrint term
 
@@ -184,7 +182,7 @@ transRefinedTypeRefinement locals reft = do
     $ transTerm (reft & Base.unRefinement)
 
 transType :: MonadFlex m => Base.Type -> m TypeReft
-transType type_ = case type_ of
+transType type_ = FlexM.markSection [FlexM.FlexMarkStep "transType" . Just $ pPrint type_] case type_ of
   Base.TypeNumber numty n -> do
     x <- freshSymbol (render $ pPrint type_)
     let p = case numty of
@@ -229,7 +227,7 @@ transType type_ = case type_ of
 -- > structureTypeReft ... = ... TODO
 structureTypeReft :: MonadFlex m => Base.Structure -> [(Base.FieldId, TypeReft)] -> m TypeReft
 structureTypeReft struct@Base.Structure {..} fieldTys = do
-  symStruct <- freshSymbol "struct"
+  symStruct <- freshSymbol "structTermStructure"
 
   -- tyStruct: S a1 ... aN
   let tyStruct = TypeStructure struct ()
@@ -256,7 +254,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys = do
   let p =
         F.pExist
           ( fieldSrts <&> \(fieldId, srt) ->
-              (F.symbol (Base.FieldReference (structureId, fieldId)), srt)
+              (F.symbol (structureId, fieldId), srt)
           )
           $ conjPred [p1, p2]
 
@@ -386,6 +384,10 @@ embedTerm = \case
     structExpr <- F.eVar <$> structureSymbol (Base.structureId termStructure)
     termFields' <- embedTerm `traverse` (snd <$> termFields)
     return $ F.eApps structExpr termFields'
+  TermMember {..} -> do
+    projExpr <- F.eVar <$> structureFieldSymbol (Base.structureId termStructure) termFieldId
+    argExpr <- embedTerm termTerm
+    return $ F.eApps projExpr [argExpr]
 
 -- TODO:DEPRECATED: since transTerm just turns into app of field projector
 -- -- x.s ~~> (proj$S#x s)
@@ -448,7 +450,7 @@ structureDataDecl Base.Structure {..} =
     dcName <- structureSymbol structureId
     let ddTyCon = F.symbolFTycon dcName
     dcFields <- forM structureFields \(fieldId, ty) -> do
-      dfName <- structureFieldReferenceSymbol structureId fieldId
+      dfName <- structureFieldSymbol structureId fieldId
       dfSort <- embedType =<< transType ty
       return F.DField {dfName, dfSort}
     return
@@ -461,12 +463,16 @@ structureDataDecl Base.Structure {..} =
 structureSymbol :: MonadFlex m => Base.TypeId -> m F.LocSymbol
 structureSymbol structId = defaultLocated $ F.symbol structId
 
-structureConstructorSymbol :: MonadFlex m => Base.TypeId -> m F.LocSymbol
-structureConstructorSymbol structId = defaultLocated $ F.symbol $ Base.TypeTermConstructor structId
+-- TODO:DEPRECATED: use structureSymbol instead
+-- structureConstructorSymbol :: MonadFlex m => Base.TypeId -> m F.LocSymbol
+-- structureConstructorSymbol structId = defaultLocated $ F.symbol $ Base.TypeTermConstructor structId
 
-structureFieldReferenceSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
-structureFieldReferenceSymbol structId fieldId = defaultLocated $ F.symbol $ Base.FieldReference (structId, fieldId)
+structureFieldSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
+structureFieldSymbol structId fieldId = defaultLocated $ F.symbol (structId, fieldId)
 
-structureFieldProjectorSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
-structureFieldProjectorSymbol structId fieldId =
-  defaultLocated $ F.symbol $ Base.FieldProjector (structId, fieldId)
+-- structureFieldReferenceSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
+-- structureFieldReferenceSymbol structId fieldId = defaultLocated $ F.symbol $ Base.FieldReference (structId, fieldId)
+
+-- structureFieldProjectorSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
+-- structureFieldProjectorSymbol structId fieldId =
+--   defaultLocated $ F.symbol $ Base.FieldProjector (structId, fieldId)

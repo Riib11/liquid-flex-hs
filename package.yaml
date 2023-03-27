@@ -35,6 +35,7 @@ dependencies:
 - deepseq
 - pretty
 - directory
+- template-haskell
 
 ghc-options:
 - -Wall

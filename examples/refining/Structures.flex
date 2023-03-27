@@ -13,11 +13,11 @@ struct EqualBits {
 
 function main() -> bit {
 
-    // Point32
+    // // Point32
 
-    let s1 = Point32{ x = 0; y = 0 };
-    let s2 = Point32{ x = 0; y = 0 };
-    let s3 = Point32{ x = 0; y = 1 };
+    // let s1 = Point32{ x = 0; y = 0 };
+    // let s2 = Point32{ x = 0; y = 0 };
+    // let s3 = Point32{ x = 0; y = 1 };
 
     // assert  (s1 == s2);
     // assert !(s3 == s1);
@@ -25,9 +25,13 @@ function main() -> bit {
 
     // assert !(Point32{ x = 0; y = 0 } == Point32 { x = 1; y = 1 });
 
-    // // EqualBits
+    // EqualBits
 
     // let eb1 = EqualBits{ b1 = true; b2 = false };
+    // assert eb1.b1;
+
+    let eb2 = EqualBits{ b1 = true; b2 = true };
+    // assert eb2.b1;
 
     true
 }
