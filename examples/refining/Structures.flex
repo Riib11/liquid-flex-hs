@@ -5,19 +5,13 @@ module Structures where
 //     y: int32;
 // }
 
-// struct EqualBits {
-//     b1: bit;
-//     b2: bit;
-//     assert b1 == b2;
-// }
-
-struct EqualChars {
-    c1: char;
-    c2: char;
-    assert c1 == c2;
+struct EqualBits {
+    b1: bit;
+    b2: bit;
+    assert b1 == b2;
 }
 
-const ec: EqualChars = EqualChars{ c1 = 'a'; c2 = 'b' }
+const ebs: EqualBits = EqualBits{ b1 = false; b2 = false }
 
 // function main() -> bit {
 

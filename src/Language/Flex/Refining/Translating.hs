@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Language.Flex.Refining.Translating where
 
 import Control.Lens (At (at), locally, to, (&), (^.), _3)
@@ -227,23 +229,18 @@ transType type_ = FlexM.markSection [FlexM.FlexMarkStep "transType" . Just $ pPr
 --
 -- > structureTypeReft ... = ... TODO
 structureTypeReft :: MonadFlex m => Base.Structure -> [(Base.FieldId, TypeReft)] -> m TypeReft
-structureTypeReft struct@Base.Structure {..} fieldTys_ = do
+structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult True [FlexM.FlexMarkStep "structureTypeReft" . Just $ pPrint structureId <+> "; " <+> pPrint fieldTys_] pPrint struct pPrint do
   symStruct <- freshSymbol ("structTermStructure" :: String)
-
-  -- -- freshen binds of each field refinement
-  -- fieldTys <- secondM (freshenReftBind `traverse`) `traverse` fieldTys_
-  -- let fieldTys = fieldTys_ -- TODO: do i need to freshen, or just sub with field ids?
 
   fieldTys <-
     forM fieldTys_ \(fieldId, ty) -> do
-      -- ty: { x: a | p(x) }
-      -- y: based on field
-      -- ==> { y: a | p(y) }
+      -- rename refinement bind to use name defined by field (to be compatible
+      -- with checking refinement on structure)
       let r = typeAnn ty
           (x, p) = (F.reftBind r, F.reftPred r)
 
-      -- acually don't freshen here, since needs to work with checking refinement of structure which refers to the raw fields by name
-      -- y <- freshSymbol (structureId, fieldId)
+      -- acually don't freshen here, since needs to work with checking
+      -- refinement of structure which refers to the raw fields by name
       let y = F.symbol fieldId
 
       let r' = F.reft y $ F.substa (\x' -> if x == x' then y else x') p
@@ -266,8 +263,14 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = do
           tyStruct
       )
 
+  $(FlexM.debugThing True [|F.pprint|] [|p1|])
+
+  $(FlexM.debugThing True [|pPrint|] [|fieldTys|])
+
   -- p2(x1, ..., xN): r1(x1) && ... && rN(xN)
   let p2 = conjPred $ fieldTys <&> \(_, ty) -> F.reftPred $ typeAnn ty
+
+  $(FlexM.debugThing True [|F.pprint|] [|p2|])
 
   -- p(struct): exists x1, ..., xN . p1(struct, x1, ..., xN) && p2(x1, ..., xN)
   fieldSrts <- secondM embedType `traverse` fieldTys
@@ -422,7 +425,7 @@ embedLiteral =
     Base.LiteralInteger n -> F.expr n
     Base.LiteralFloat _x -> error "TODO: embed float literal"
     Base.LiteralBit b -> if b then F.PTrue else F.PFalse
-    Base.LiteralChar c -> F.expr (pack [c])
+    Base.LiteralChar _c -> error "TODO: how to embed a literal char? can't just be a Text because of Sort error..." -- F.expr c -- (pack [c])
     Base.LiteralString s -> F.expr (pack s)
 
 embedPrimitive :: MonadFlex m => Primitive (Type ()) -> m F.Expr

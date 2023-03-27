@@ -22,7 +22,7 @@ import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, ($$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
-import Utility (comps, foldrM, pprintInline)
+import Utility (comps, foldrM, pprintInline, renderInline)
 
 -- ** RefiningM
 
@@ -37,13 +37,13 @@ instance Pretty RefiningError where
   pPrint (RefiningError msg) = msg
 
 instance F.Fixpoint RefiningError where
-  toFix = pPrint
+  toFix = text . renderInline . pPrint
 
 instance F.Loc RefiningError where
   srcSpan _ = F.dummySpan
 
 instance F.PPrint RefiningError where
-  pprintTidy _ = text . render . pPrint
+  pprintTidy _ = text . renderInline . pPrint
 
 throwRefiningError :: Doc -> RefiningM a
 throwRefiningError msg = throwError $ RefiningError msg
