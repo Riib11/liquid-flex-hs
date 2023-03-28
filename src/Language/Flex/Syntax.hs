@@ -166,6 +166,18 @@ instance ToDeclaration (Constant ann) ann where
 instance ToDeclaration (RefinedType ann) ann where
   toDeclaration = DeclarationRefinedType
 
+pPrintDeclarationHeader :: Declaration ann -> Doc
+pPrintDeclarationHeader =
+  \case
+    (DeclarationStructure Structure {..}) -> "structure" <+> pPrint structureId
+    (DeclarationNewtype Newtype {..}) -> "newtype" <+> pPrint newtypeId
+    (DeclarationVariant Variant {..}) -> "variant" <+> pPrint variantId
+    (DeclarationEnum Enum {..}) -> "enum" <+> pPrint enumId
+    (DeclarationAlias Alias {..}) -> "alias" <+> pPrint aliasId
+    (DeclarationFunction Function {..}) -> "function" <+> pPrint functionId
+    (DeclarationConstant Constant {..}) -> "constant" <+> pPrint constantId
+    (DeclarationRefinedType RefinedType {..}) -> "refine" <+> pPrint refinedTypeId
+
 -- *** Structure
 
 data Structure = Structure

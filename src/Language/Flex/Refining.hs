@@ -20,13 +20,14 @@ import Language.Flex.Refining.Query (makeQuery, submitQuery)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax (RefiningError)
 import Language.Flex.Refining.Translating (transRefinedTypeRefinement, transTerm, transType)
+import Language.Flex.Syntax (pPrintDeclarationHeader)
 import qualified Language.Flex.Syntax as Base
-import Text.PrettyPrint.HughesPJ hiding (first)
+import Text.PrettyPrint.HughesPJ hiding (first, (<>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 import Utility
 
 refineModule :: Base.Module Base.Type -> FlexM (Either RefiningError ((), RefiningEnv))
-refineModule mdl = FlexM.markSection [FlexM.FlexMarkStep "refineModule" Nothing] do
+refineModule mdl@Base.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("refineModule" <+> pPrint moduleId) Nothing] do
   runExceptT
     ((,) <$> topRefiningCtx mdl <*> topRefiningEnv mdl)
     >>= \case
@@ -35,7 +36,7 @@ refineModule mdl = FlexM.markSection [FlexM.FlexMarkStep "refineModule" Nothing]
         runExceptT $ runReaderT (runStateT (checkModule mdl) env) ctx
 
 checkModule :: Base.Module Base.Type -> RefiningM ()
-checkModule Base.Module {..} = do
+checkModule Base.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("checkModule" <+> pPrint moduleId) Nothing] do
   -- introduce refined translations into ctxRefinedTypes'
   localM
     ( \ctx -> do
@@ -55,37 +56,23 @@ checkModule Base.Module {..} = do
     (forM_ moduleDeclarations checkDeclaration)
 
 checkDeclaration :: Base.Declaration Base.Type -> RefiningM ()
-checkDeclaration decl = FlexM.markSection [FlexM.FlexMarkStep "checkDeclaration" . Just $ pPrint decl] do
+checkDeclaration decl = FlexM.markSection [FlexM.FlexMarkStep ("checkDeclaration" <+> pPrintDeclarationHeader decl) . Just $ pPrint decl] do
   case decl of
     Base.DeclarationFunction Base.Function {..} -> do
       for functionParameters (check label functionBody functionOutput) $
-        uncurry introTerm
+        \(termId, ty) m -> do
+          symId <- freshSymIdTermId termId
+          ty' <- transType ty
+          comps
+            [ introSymId symId,
+              introApplicantType symId (Base.ApplicantType ty')
+            ]
+            m
     Base.DeclarationConstant Base.Constant {..} -> do
       check label constantBody constantType
     _ -> return ()
   where
     label = pPrint decl
-
-introTerm :: Base.TermId -> Base.Type -> RefiningM a -> RefiningM a
-introTerm tmId type_ m = do
-  case type_ of
-    Base.TypeArray _ty -> error "introTerm"
-    Base.TypeTuple _tys -> error "introTerm"
-    Base.TypeOptional _ty -> error "introTerm"
-    Base.TypeNamed _ti -> error "introTerm"
-    -- intro assumption that fields satisfy structure refinement
-    Base.TypeStructure _struc -> error "introTerm"
-    Base.TypeEnum _en -> error "introTerm"
-    Base.TypeVariant _vari -> error "introTerm"
-    -- intro assumption that fields satisfy newtype refinement
-    Base.TypeNewtype _new -> error "introTerm"
-    -- invalid
-    Base.TypeUnifyVar {} -> FlexM.throw $ "should not `introTerm` with a unification type varaint during refining" <+> pPrint type_
-    -- fallthrough
-    _ -> do
-      ty <- FlexM.liftFlex $ transType type_
-      -- locally ctxTypings (Map.insert tmId ty) m
-      error "TODO:TMP"
 
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
 check label term type_ = FlexM.markSection [FlexM.FlexMarkStep "check" . Just $ pPrint term <+> ":?" <+> pPrint type_] do

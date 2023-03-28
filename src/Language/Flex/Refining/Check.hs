@@ -105,7 +105,7 @@ synthTerm term = FlexM.markSectionResult (FlexM.FlexMarkStep "synthTerm" . Just 
       tm2' <- synthTerm tm2
       ty' <- inferTerm tm2'
       return $ TermAssert tm1' tm2' ty'
-    TermLet symId tm bod _ty -> FlexM.markSection [FlexM.FlexMarkStep ("TermLet " <> render (pPrint symId)) Nothing] do
+    TermLet symId tm bod _ty -> FlexM.markSection [FlexM.FlexMarkStep ("TermLet" <+> pPrint symId) Nothing] do
       tm' <- synthTerm tm
 
       bod' <- do

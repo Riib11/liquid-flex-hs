@@ -66,7 +66,7 @@ newtype FlexMark = FlexMark {unFlexMark :: [FlexMarkStep]}
 data FlexMarkStep = FlexMarkStep
   { -- | Static indication of where this step arises (e.g. function name, local
     -- definition name)
-    flexMarkStepLabel :: String,
+    flexMarkStepLabel :: Doc,
     -- | Dynamic index of relevant runtime values at this step (e.g. arguments
     -- to function, value of local definition)
     flexmarkStepIndex :: Maybe Doc
@@ -243,7 +243,7 @@ instance Pretty (Static FlexMark) where
   pPrint (Static (FlexMark steps)) = pPrint . Static $ head steps
 
 instance Pretty (Static FlexMarkStep) where
-  pPrint (Static (FlexMarkStep {..})) = text flexMarkStepLabel
+  pPrint (Static (FlexMarkStep {..})) = flexMarkStepLabel
 
 -- *** Dynamic FlexLog
 
@@ -262,7 +262,7 @@ instance Pretty (Dynamic FlexMark) where
 
 instance Pretty (Dynamic FlexMarkStep) where
   pPrint (Dynamic (FlexMarkStep {..})) =
-    text flexMarkStepLabel
+    flexMarkStepLabel
       <+> maybe mempty (\ixDoc -> ":" <+> nest 2 ixDoc) flexmarkStepIndex
 
 debugThing :: (H.Quote m, H.Lift t) => t -> m H.Exp -> m H.Exp -> m H.Exp
