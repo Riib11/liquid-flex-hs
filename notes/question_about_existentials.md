@@ -1,6 +1,4 @@
-I noticed that when trying to do refinement type checking, it doesn't seem to be
-able to figure out how to instantiate existentials for example when checking
-this subtyping:
+I noticed that when trying to do refinement type checking, Liquid Fixpoint doesn't seem to be able to figure out how to instantiate existentials. For example here is a failed subtyping check:
 
 ```
 unsafe:
@@ -28,3 +26,8 @@ struct EqualBits {
 ```
 
 Is this a limitation with how existentials are handled in predicates, or am I just using it wrong?
+
+
+```
+VV == EqualBits false false ==> exists [b1 : bool; b2 : bool]  . VV == EqualBits b1 b2
+```
