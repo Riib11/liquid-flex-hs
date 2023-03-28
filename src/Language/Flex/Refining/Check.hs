@@ -95,7 +95,7 @@ synthTerm term = FlexM.markSectionResult True [FlexM.FlexMarkStep "synthTerm" . 
       -- literals are reflected
       ty' <- transType ty
       tm' <-
-        mapM_termAnn (mapM_typeAnn (reflectLiteralInReft (void ty') lit)) $
+        traverse (traverse (reflectLiteralInReft (void ty') lit)) $
           TermLiteral lit ty'
       return tm'
     TermPrimitive prim ty ->
@@ -183,7 +183,7 @@ synthTerm term = FlexM.markSectionResult True [FlexM.FlexMarkStep "synthTerm" . 
               }
 
       -- reflect in the refinement that this term is equal to it's reflection
-      mapM_termAnn (mapM_typeAnn $ reflectTermInReft (void <$> tm)) tm
+      traverse (traverse $ reflectTermInReft (void <$> tm)) tm
     --
     TermMember struct@Base.Structure {..} tm termFieldId ty -> FlexM.markSection [FlexM.FlexMarkStep "TermMember" Nothing] do
       ty' <- transType ty
@@ -298,16 +298,16 @@ synthPrimitive _term ty primitive =
       tm2' <- synthTerm tm2
       let prim = constr tm1' tm2'
       ty' <- transType ty
-      mapM_termAnn
-        (mapM_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      traverse
+        (traverse $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
     go1 constr tm = do
       tm' <- synthTerm tm
       let prim = constr tm'
       ty' <- transType ty
-      mapM_termAnn
-        (mapM_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      traverse
+        (traverse $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
     go3 constr tm1 tm2 tm3 = do
@@ -316,8 +316,8 @@ synthPrimitive _term ty primitive =
       tm3' <- synthTerm tm3
       let prim = constr tm1' tm2' tm3'
       ty' <- transType ty
-      mapM_termAnn
-        (mapM_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      traverse
+        (traverse $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
 -- ** Reflection
@@ -383,5 +383,5 @@ checkSubtype tmSynth tySynth tyExpect = FlexM.markSection [FlexM.FlexMarkStep "c
 -- @{ VV: bit | VV == true }@
 reftTypeIsTrue :: CheckingM (Type F.Reft)
 reftTypeIsTrue =
-  mapM_typeAnn (reflectLiteralInReft (TypeAtomic TypeBit ()) (LiteralBit True))
+  traverse (reflectLiteralInReft (TypeAtomic TypeBit ()) (LiteralBit True))
     =<< transType Base.TypeBit

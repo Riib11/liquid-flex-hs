@@ -106,11 +106,6 @@ data AtomicType
   | TypeString
   deriving (Eq, Show)
 
-mapM_typeAnn :: Functor f => (r -> f r) -> Type r -> f (Type r)
-mapM_typeAnn k ty = do
-  ann <- k (typeAnn ty)
-  return ty {typeAnn = ann}
-
 typeEqTrue :: TypeReft
 typeEqTrue = typeBit mempty
 
@@ -287,11 +282,6 @@ fromSymbolToTerm sym = varTerm (fromSymbolToSymId sym)
 
 fromSymbolToSymId :: F.Symbol -> SymId
 fromSymbolToSymId symIdSymbol = SymId {symIdSymbol, symIdMaybeTermId = Nothing}
-
-mapM_termAnn :: Monad m => (r -> m r) -> Term r -> m (Term r)
-mapM_termAnn k tm = do
-  ann <- k (termAnn tm)
-  return tm {termAnn = ann}
 
 -- ** Substitution
 
