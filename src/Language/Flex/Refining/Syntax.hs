@@ -55,12 +55,12 @@ type Result = F.FixResult RefiningError
 --
 -- In Liquid Fixpoint, `H.Cstr` has the following form:
 --
---    data Cstr a
---      = Head  !Pred !a                  -- ^ p
---      | CAnd  ![Cstr a]                 -- ^ c1 /\ ... /\ cn
---      | All   !(Bind a)  !(Cstr a)      -- ^ \all x:t. p => c
---      | Any   !(Bind a)  !(Cstr a)      -- ^ \exi x:t. p /\ c or is it \exi x:t. p => c?
---      deriving (Data, Typeable, Generic, Functor, Eq)
+-- > data Cstr a
+-- >   = Head  !Pred !a                  -- ^ p
+-- >   | CAnd  ![Cstr a]                 -- ^ c1 /\ ... /\ cn
+-- >   | All   !(Bind a)  !(Cstr a)      -- ^ \all x:t. p => c
+-- >   | Any   !(Bind a)  !(Cstr a)      -- ^ \exi x:t. p /\ c or is it \exi x:t. p => c?
+-- >   deriving (Data, Typeable, Generic, Functor, Eq)
 type Cstr = H.Cstr RefiningError
 
 type Bind = H.Bind RefiningError
@@ -104,8 +104,15 @@ reflect _everything_ from Flex, such as statements a-normal types, etc.
 -- combined the arguments and contextual arguments into the appropriate list of
 -- types.
 
--- ** Type
-
+-- | @TypeReft@ is a refined refinement-phase type (i.e. a refinement-phase type
+-- with @QReft@ annotations). A @QReft@ is an explicitly quantified refinement.
+-- The explicit quantifications are necessary since they will be "bubbled-up" to
+-- the constraint which is ultimately sent to the solver. Constraints are
+-- bubbled-up this way because its logically valid (over the domain of forms
+-- that can be produced as Liquid Flex constraints) and makes the resulting
+-- constraint much more efficient to deal with since the "top" of the constraint
+-- is a Horn clause (as well as avoid missing support for predicate-level
+-- quantifications in Liquid-Fixpoint).
 type TypeReft = Type QReft
 
 data QReft = QReft
