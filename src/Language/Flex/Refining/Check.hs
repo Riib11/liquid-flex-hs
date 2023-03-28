@@ -80,7 +80,7 @@ synthCheckTerm tyExpect tm = FlexM.markSection [FlexM.FlexMarkStep "synthCheckTe
 -- child refinements -- gotta do that
 
 synthTerm :: Term Base.Type -> CheckingM (Term TypeReft)
-synthTerm term = FlexM.markSectionResult True [FlexM.FlexMarkStep "synthTerm" . Just $ pPrint term] pPrint term pPrint do
+synthTerm term = FlexM.markSectionResult (FlexM.FlexMarkStep "synthTerm" . Just $ pPrint term) pPrint term pPrint do
   case term of
     TermNeutral symId args ty -> do
       -- neutrals are reflected (functions are already inlined)
@@ -372,7 +372,7 @@ synthPrimitive _term ty primitive =
 --
 -- > reflectTermInReft v { x: a | r } = { x: a | x == v && r }
 reflectTermInReft :: Term (Type ()) -> QReft -> CheckingM QReft
-reflectTermInReft tm qr = FlexM.markSectionResult True [FlexM.FlexMarkStep "reflectTermInReft" . Just $ pPrint tm] pPrint tm pPrint do
+reflectTermInReft tm qr = FlexM.markSectionResult (FlexM.FlexMarkStep "reflectTermInReft" . Just $ pPrint tm) pPrint tm pPrint do
   let r = qreftReft qr
   let sort = void $ termAnn tm
   let x = F.reftBind r
@@ -391,7 +391,7 @@ reflectPrimitiveInReft ty prim = reflectTermInReft (TermPrimitive prim ty)
 -- ** Inferring
 
 inferTerm :: Term TypeReft -> CheckingM TypeReft
-inferTerm term = FlexM.markSectionResult True [FlexM.FlexMarkStep "inferTerm" . Just $ pPrint term] pPrint term pPrint do
+inferTerm term = FlexM.markSectionResult (FlexM.FlexMarkStep "inferTerm" . Just $ pPrint term) pPrint term pPrint do
   return $ termAnn term
 
 -- ** Subtyping

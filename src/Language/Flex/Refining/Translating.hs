@@ -230,7 +230,7 @@ transType type_ = FlexM.markSection [FlexM.FlexMarkStep "transType" . Just $ pPr
 --
 -- > structureTypeReft ... = ... TODO
 structureTypeReft :: MonadFlex m => Base.Structure -> [(Base.FieldId, TypeReft)] -> m TypeReft
-structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult True [FlexM.FlexMarkStep "structureTypeReft" . Just $ pPrint structureId <+> "; " <+> pPrint fieldTys_] pPrint struct pPrint do
+structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult (FlexM.FlexMarkStep "structureTypeReft" . Just $ pPrint structureId <+> "; " <+> pPrint fieldTys_) pPrint struct pPrint do
   symStruct <- freshSymbol ("structTermStructure" :: String)
 
   fieldTys <-

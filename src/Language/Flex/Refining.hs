@@ -84,7 +84,8 @@ introTerm tmId type_ m = do
     -- fallthrough
     _ -> do
       ty <- FlexM.liftFlex $ transType type_
-      locally ctxTypings (Map.insert tmId ty) m
+      -- locally ctxTypings (Map.insert tmId ty) m
+      error "TODO:TMP"
 
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
 check label term type_ = FlexM.markSection [FlexM.FlexMarkStep "check" . Just $ pPrint term <+> ":?" <+> pPrint type_] do

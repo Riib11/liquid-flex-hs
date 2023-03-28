@@ -55,7 +55,7 @@ _qData = lens H.qData (\q qData -> q {H.qData = qData})
 --   is checked)
 makeQuery :: Cstr -> RefiningM Query
 -- WARNING: this is _very_ long debug if you turn on printing result
-makeQuery cstr = FlexM.markSectionResult False [FlexM.FlexMarkStep "makeQuery" Nothing] F.pprint cstr F.pprint do
+makeQuery cstr = FlexM.markSection [FlexM.FlexMarkStep "makeQuery" Nothing] do
   let protoQuery =
         H.Query
           { qQuals = mempty,
@@ -69,23 +69,30 @@ makeQuery cstr = FlexM.markSectionResult False [FlexM.FlexMarkStep "makeQuery" N
           }
 
   flip execStateT protoQuery do
-    -- add local bindings
-    asks (^. ctxBindings) >>= \bindings ->
-      forM_ (Map.toList bindings) \(symId, tm) -> do
-        let tm' = void <$> tm
-        -- p: x == tm
-        p <- FlexM.liftFlex $ eqPred (varTerm symId (termAnn tm')) tm'
-        pos <- FlexM.liftFlex FlexM.defaultSourcePos
-        modify $
-          _qQuals
-            %~ ( F.Q
-                   { qName = symIdSymbol symId,
-                     qParams = [],
-                     qBody = p,
-                     qPos = pos
-                   }
-                   :
-               )
+    -- TODO: add prelude signature (via @applicantTypes@); this will have to
+    -- introduce (prelude) functions, but they'll have totally unrefined function types so
+    -- don't worry
+
+    -- TODO:OLD: things are introduced in @applicantTypes@ now, and all neutral
+    -- forms are reflected
+
+    -- -- add local bindings
+    -- asks (^. ctxBindings) >>= \bindings ->
+    --   forM_ (Map.toList bindings) \(symId, tm) -> do
+    --     let tm' = void <$> tm
+    --     -- p: x == tm
+    --     p <- FlexM.liftFlex $ eqPred (varTerm symId (termAnn tm')) tm'
+    --     pos <- FlexM.liftFlex FlexM.defaultSourcePos
+    --     modify $
+    --       _qQuals
+    --         %~ ( F.Q
+    --                { qName = symIdSymbol symId,
+    --                  qParams = [],
+    --                  qBody = p,
+    --                  qPos = pos
+    --                }
+    --                :
+    --            )
 
     -- add datatypes
     modify $ _qData %~ (preludeDataDecls <>) -- prelude

@@ -27,11 +27,13 @@ andCstrs = H.CAnd
 -- > cstrForall x { y: a | p(y) } q(x) = forall { x: a | p(x) }, q(x)
 cstrForall :: MonadFlex m => F.Symbol -> TypeReft -> Cstr -> m Cstr
 -- cstrForall x ty cstr = FlexM.markSection [FlexM.FlexMarkStep "cstrForall" . Just $ "forall" <+> F.pprint x <+> ":" <+> pPrint ty] do
-cstrForall x ty cstr = FlexM.markSection [FlexM.FlexMarkStep ("cstrForall: " <> render ("forall" <+> F.pprint x <+> ":" <+> pPrint ty)) Nothing] do
+cstrForall x ty cstr = FlexM.markSection [FlexM.FlexMarkStep "cstrForall" Nothing] do
+  FlexM.debug True $ "forall" <+> F.pprint x <+> ":" <+> pPrint ty
   s <- embedType ty
-  let qr = typeAnn ty
+  let qr = setQReftBind x $ typeAnn ty
   let quants = qreftQuants qr
-  $(FlexM.debugThing False [|pPrint|] [|quants|])
+  $(FlexM.debugThing True [|F.pprint|] [|x|])
+  $(FlexM.debugThing True [|pPrint|] [|quants|])
   return $
     -- prefix with all the constraints in @ty@
     foldr

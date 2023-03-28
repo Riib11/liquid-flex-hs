@@ -145,36 +145,48 @@ markSection :: MonadFlex m => [FlexMarkStep] -> m a -> m a
 markSection steps m = do
   -- push onto front of stack
   liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (reverse steps <> steps')))
-  debugMark False $ FlexMarkStep "BEGIN" Nothing
+  markStatic $ FlexMarkStep "BEGIN" Nothing
   -- compute internal result
   a <- m
   -- pop from front of stack
-  debugMark False $ FlexMarkStep "END" Nothing
+  markStatic $ FlexMarkStep "END" Nothing
   liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (drop (length steps) steps')))
   -- return internal result
   return a
 
 markSectionResult ::
   MonadFlex m =>
-  Bool ->
-  [FlexMarkStep] ->
+  FlexMarkStep ->
   (input -> Doc) ->
   input ->
   (output -> Doc) ->
   m output ->
   m output
-markSectionResult b steps pIn input pOut mOut = markSection steps do
-  debugMark b $ FlexMarkStep "<==  " . Just $ pIn input
-  output <- mOut
-  debugMark b $ FlexMarkStep "  ==>" . Just $ pOut output
-  return output
+markSectionResult step pIn input pOut m = do
+  -- push onto front of stack
+  liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (step : steps')))
+  markStatic $ FlexMarkStep "<==  " . Just $ pIn input
+  -- compute internal result
+  a <- m
+  -- pop from front of stack
+  markStatic $ FlexMarkStep "  ==>" . Just $ pOut a
+  liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (drop 1 steps')))
+  -- return internal result
+  return a
 
-mark :: MonadFlex m => [FlexMarkStep] -> m ()
-mark steps = liftFlex do
+markDynamic :: MonadFlex m => [FlexMarkStep] -> m ()
+markDynamic steps = liftFlex do
   -- prepend new stack to trace
   stack' <- gets (^. flexStack . to (FlexMark (reverse steps) <>))
   flexTrace %= (stack' :)
   tell . pPrint . Dynamic $ stack'
+
+markStatic :: MonadFlex m => FlexMarkStep -> m ()
+markStatic step = liftFlex do
+  -- prepend new stack to trace
+  stack' <- gets (^. flexStack . to (FlexMark [step] <>))
+  flexTrace %= (stack' :)
+  debugMark True step
 
 -- uses current stack as log mark
 tell :: MonadFlex m => Doc -> m ()
@@ -183,9 +195,9 @@ tell doc = do
   liftFlex $ Writer.tell [FlexLog {logMark = stack, logBody = doc}]
 
 debug :: MonadFlex m => Bool -> Doc -> m ()
-debug isActive doc = do
+debug isActive doc = when isActive do
   stack <- liftFlex $ gets (^. flexStack)
-  when isActive . liftFlex . liftIO . putStrLn . render . pPrint . Static $
+  liftFlex . liftIO . putStrLn . render . pPrint . Static $
     FlexLog {logMark = stack, logBody = doc}
 
 debugMark :: MonadFlex m => Bool -> FlexMarkStep -> m ()
@@ -203,10 +215,13 @@ throw doc = liftFlex do
           vcat
             [ header "bug begin",
               doc,
-              subheader "bug stack",
-              pPrint . Static $ stack,
-              subheader "bug trace",
-              vcat $ fmap bullet $ pPrint . Dynamic <$> trace,
+              -- TODO: temporarily disabled, since need to make choices about
+              -- how to render logs
+
+              -- subheader "bug stack",
+              -- pPrint . Static $ FlexLog stack mempty,
+              -- subheader "bug trace",
+              -- vcat $ fmap pPrint $ Dynamic . flip FlexLog mempty <$> trace,
               header "bug end"
             ]
       }
@@ -217,14 +232,15 @@ newtype Static a = Static {unStatic :: a}
 
 instance Pretty (Static FlexLog) where
   pPrint (Static (FlexLog {..})) =
-    vcat
-      [ nest (4 * length (unFlexMark logMark) - 1) $ "●" <> space <> pPrint (Static logMark),
-        nest (4 + 4 * length (unFlexMark logMark)) logBody
-      ]
+    -- vcat
+    --   [ nest (4 * length (unFlexMark logMark) - 1) $ "●" <> space <> pPrint (Static logMark),
+    --     nest (4 + 4 * length (unFlexMark logMark)) logBody
+    --   ]
+    nest (4 * length (unFlexMark logMark) - 1) $ "●" <+> brackets (pPrint (Static logMark)) <+> logBody
 
 instance Pretty (Static FlexMark) where
   -- pPrint (Static (FlexMark steps)) = hcat $ punctuate (comma <> space) $ pPrint . Static <$> steps
-  pPrint (Static (FlexMark steps)) = pPrint (Static $ head steps)
+  pPrint (Static (FlexMark steps)) = pPrint . Static $ head steps
 
 instance Pretty (Static FlexMarkStep) where
   pPrint (Static (FlexMarkStep {..})) = text flexMarkStepLabel
@@ -241,7 +257,8 @@ instance Pretty (Dynamic FlexLog) where
       ]
 
 instance Pretty (Dynamic FlexMark) where
-  pPrint (Dynamic (FlexMark steps)) = vcat $ pPrint . Dynamic <$> steps
+  -- pPrint (Dynamic (FlexMark steps)) = vcat $ pPrint . Dynamic <$> steps
+  pPrint (Dynamic (FlexMark steps)) = pPrint . Dynamic . head $ steps
 
 instance Pretty (Dynamic FlexMarkStep) where
   pPrint (Dynamic (FlexMarkStep {..})) =

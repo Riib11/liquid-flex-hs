@@ -33,13 +33,12 @@ throwRefiningError msg = throwError $ RefiningError msg
 
 -- TODO: refined structures and newtypes
 data RefiningCtx = RefiningCtx
-  { _ctxTypings :: Map.Map Base.TermId TypeReft,
-    -- During translation: map of each applicant to its corresponding @SymId@,
+  { -- During translation: map of each applicant to its corresponding @SymId@,
     -- which is used during embedding
     _ctxSymIds :: Map.Map (Base.Applicant ()) SymId,
     _ctxSymbols :: Map.Map F.Symbol SymId,
     -- | During translation: context of top and local refined signatures
-    _ctxApplicants :: Map.Map SymId (Base.ApplicantType TypeReft),
+    _ctxApplicantTypes :: Map.Map SymId (Base.ApplicantType TypeReft),
     -- | Before translation: accumulate functions
     _ctxFunctions :: Map.Map SymId (Base.Function Base.Type),
     -- | Before translation: accumulate structures
@@ -86,10 +85,9 @@ topRefiningCtx Base.Module {..} = do
             return $ ctx & ctxRefinedTypes %~ Map.insert refinedTypeId reftTy
     )
     RefiningCtx
-      { _ctxTypings = mempty,
-        _ctxSymIds = mempty,
+      { _ctxSymIds = mempty,
         _ctxSymbols = mempty,
-        _ctxApplicants = mempty,
+        _ctxApplicantTypes = mempty,
         _ctxFunctions = mempty,
         _ctxStructures = mempty,
         _ctxRefinedTypes = mempty,
@@ -114,12 +112,6 @@ getRefinedType' structId =
     >>= \case
       Nothing -> FlexM.throw $ "unknown refined structure id:" <+> pPrint structId
       Just reftTy -> return reftTy
-
-getTyping tmId =
-  asks (^. ctxTypings . at tmId)
-    >>= \case
-      Nothing -> FlexM.throw $ "unknown:" <+> pPrint tmId
-      Just ty -> return ty
 
 getSymId app =
   asks (^. ctxSymIds . at app) >>= \case
@@ -152,13 +144,13 @@ getSymbolSymId sym =
     Just symId -> return symId
 
 getApplicantType symId =
-  asks (^. ctxApplicants . at symId) >>= \case
+  asks (^. ctxApplicantTypes . at symId) >>= \case
     Nothing -> FlexM.throw $ "unknown applicant id:" <+> pPrint symId
     Just appTy -> return (Right <$> appTy)
 
 introApplicantType symId appTy =
   locally
-    (ctxApplicants . at symId)
+    (ctxApplicantTypes . at symId)
     (const $ Just appTy)
 
 getFunction symId =
