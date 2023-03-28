@@ -209,6 +209,7 @@ data Type r
   = TypeAtomic {typeAtomic :: AtomicType, typeAnn :: r}
   | TypeTuple {typeTupleComponents :: !(Type r, Type r), typeAnn :: r}
   | TypeStructure {typeStructure :: Base.Structure, typeAnn :: r}
+  | TypeVariant {typeVariant :: Base.Variant Base.Type, typeAnn :: r}
   deriving
     (Eq, Show, Functor, Foldable, Traversable)
 
@@ -222,6 +223,7 @@ instance Pretty TypeReft where
       TypeString -> go "string" r
     TypeTuple (ty1, ty2) r -> go (parens $ (pPrint ty1 <> ",") <+> pPrint ty2) r
     TypeStructure Base.Structure {..} r -> go (pPrint structureId) r
+    TypeVariant Base.Variant {..} r -> go (pPrint variantId) r
     where
       go doc r@(QReft {..}) = braces $ pprintInline (F.reftBind qreftReft) <+> ":" <+> doc <+> "|" <+> pPrint r
 
@@ -234,7 +236,8 @@ instance Pretty (Type ()) where
       TypeChar -> "char"
       TypeString -> "string"
     TypeTuple (ty1, ty2) _r -> (parens $ (pPrint ty1 <> ",") <+> pPrint ty2)
-    TypeStructure Base.Structure {..} _r -> (pPrint structureId)
+    TypeStructure Base.Structure {..} _r -> pPrint structureId
+    TypeVariant Base.Variant {..} _r -> pPrint variantId
 
 data AtomicType
   = TypeInt

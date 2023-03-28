@@ -74,6 +74,7 @@ instance F.Symbolic TypeId where
 -- and Newtypes in particular.
 newtype TypeTermConstructor = TypeTermConstructor TypeId
 
+-- TODO: is this used anywhere?
 instance F.Symbolic TypeTermConstructor where
   symbol (TypeTermConstructor (TypeId x)) = F.symbol $ "make$" <> x
 
@@ -86,15 +87,8 @@ instance F.Symbolic FieldId where
 instance F.Symbolic (TypeId, FieldId) where
   symbol (TypeId x, FieldId y) = F.symbol $ x <> "#" <> y
 
--- newtype FieldReference = FieldReference (TypeId, FieldId)
-
--- instance F.Symbolic FieldReference where
---   symbol (FieldReference (TypeId x, FieldId y)) = F.symbol $ x <> "#" <> y
-
--- newtype FieldProjector = FieldProjector (TypeId, FieldId)
-
--- instance F.Symbolic FieldProjector where
---   symbol (FieldProjector (TypeId x, FieldId y)) = F.symbol $ "proj$" <> x <> "#" <> y
+instance F.Symbolic (TypeId, TermId) where
+  symbol (TypeId x, TermId y) = F.symbol $ x <> "." <> y
 
 fromFieldIdToTermId :: FieldId -> TermId
 fromFieldIdToTermId (FieldId x) = TermId x

@@ -528,8 +528,11 @@ embedType = \case
     TypeString -> return F.strSort
   TypeTuple (ty1, ty2) _ -> F.fApp (F.fTyconSort tupleFTycon) <$> (embedType `traverse` [ty1, ty2])
   TypeStructure Base.Structure {..} _ -> F.fTyconSort . F.symbolFTycon <$> structureSymbol structureId
+  TypeVariant Base.Variant {..} _ -> F.fTyconSort . F.symbolFTycon <$> variantSymbol variantId
 
 -- ** Datatypes
+
+-- *** Structures
 
 -- TODO: change this to be polymorphic so refined argumen types are handled automatically
 structureDataDecl :: MonadFlex m => Base.Structure -> m F.DataDecl
@@ -551,16 +554,30 @@ structureDataDecl Base.Structure {..} =
 structureSymbol :: MonadFlex m => Base.TypeId -> m F.LocSymbol
 structureSymbol structId = defaultLocated $ F.symbol structId
 
--- TODO:DEPRECATED: use structureSymbol instead
--- structureConstructorSymbol :: MonadFlex m => Base.TypeId -> m F.LocSymbol
--- structureConstructorSymbol structId = defaultLocated $ F.symbol $ Base.TypeTermConstructor structId
-
 structureFieldSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
 structureFieldSymbol structId fieldId = defaultLocated $ F.symbol (structId, fieldId)
 
--- structureFieldReferenceSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
--- structureFieldReferenceSymbol structId fieldId = defaultLocated $ F.symbol $ Base.FieldReference (structId, fieldId)
+-- *** Variants
 
--- structureFieldProjectorSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
--- structureFieldProjectorSymbol structId fieldId =
---   defaultLocated $ F.symbol $ Base.FieldProjector (structId, fieldId)
+variantDataDecl :: MonadFlex m => Base.Variant Base.Type -> m F.DataDecl
+variantDataDecl Base.Variant {..} = do
+  dcName <- variantSymbol variantId
+  let ddTyCon = F.symbolFTycon dcName
+  ddCtors <- forM variantConstructors \(ctorId, paramTypes) -> do
+    dcFields <- forM paramTypes \ty -> do
+      dfName <- variantConstructorSymbol variantId ctorId
+      dfSort <- embedType =<< transType ty
+      return F.DField {dfName, dfSort}
+    return F.DCtor {dcName, dcFields}
+  return
+    F.DDecl
+      { ddTyCon,
+        ddVars = 0,
+        ddCtors
+      }
+
+variantSymbol :: MonadFlex m => Base.TypeId -> m F.LocSymbol
+variantSymbol varntId = defaultLocated $ F.symbol varntId
+
+variantConstructorSymbol :: MonadFlex m => Base.TypeId -> Base.TermId -> m F.LocSymbol
+variantConstructorSymbol varntId ctorId = defaultLocated $ F.symbol (varntId, ctorId)
