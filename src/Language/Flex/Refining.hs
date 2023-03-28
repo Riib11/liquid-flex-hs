@@ -18,6 +18,7 @@ import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Check (runCheckingM, synthCheckTerm)
 import Language.Flex.Refining.Query (makeQuery, submitQuery)
 import Language.Flex.Refining.RefiningM
+import Language.Flex.Refining.Syntax (RefiningError)
 import Language.Flex.Refining.Translating (transRefinedTypeRefinement, transTerm, transType)
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJ hiding (first)

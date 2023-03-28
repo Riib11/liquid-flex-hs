@@ -3,7 +3,6 @@ module Language.Flex.Refining.Logic where
 import Control.Monad.Writer
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
-import Language.Flex.Refining.Types (Cstr)
 
 -- | `F.conj` but first filters out trivial conjuncts.
 conjPred :: [F.Pred] -> F.Pred
@@ -13,6 +12,8 @@ conjPred ps
   | otherwise = F.conj ps'
   where
     ps' = filter (not . F.isTautoPred) ps
+
+-- TODO: actually, probably need to do this more fundamentally in TypeReft
 
 -- fromPredToCstr :: F.Pred -> Cstr
 -- fromPredToCstr prd0 = foldr ($) cstr fs

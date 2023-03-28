@@ -27,7 +27,6 @@ import Language.Flex.Refining.Logic (conjPred)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, structureSymbol, transTerm, transType, tupleTypeReft)
-import Language.Flex.Refining.Types
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), comma, hcat, hsep, nest, parens, punctuate, render, space, text, vcat, ($$), (<+>))

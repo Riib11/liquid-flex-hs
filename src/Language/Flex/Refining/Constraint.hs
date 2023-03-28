@@ -3,10 +3,9 @@ module Language.Flex.Refining.Constraint where
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
 import Language.Flex.FlexM (FlexM, MonadFlex)
-import Language.Flex.Refining.RefiningM (RefiningError (RefiningError))
+import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Refining.Translating (embedType)
-import Language.Flex.Refining.Types
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), nest, vcat, ($$), (<+>))
 
 trivialCstr :: Cstr

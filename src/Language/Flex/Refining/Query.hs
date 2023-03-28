@@ -20,7 +20,6 @@ import Language.Flex.Refining.Prelude (preludeDataDecls)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Refining.Translating
-import Language.Flex.Refining.Types
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJ hiding (first, (<>))
 

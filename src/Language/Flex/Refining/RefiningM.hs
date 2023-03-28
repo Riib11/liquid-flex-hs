@@ -28,23 +28,6 @@ import Utility (comps, foldrM, pprintInline, renderInline)
 
 type RefiningM = StateT RefiningEnv (ReaderT RefiningCtx (ExceptT RefiningError FlexM))
 
-newtype RefiningError = RefiningError Doc
-  deriving (Generic, Show)
-
-instance NFData RefiningError
-
-instance Pretty RefiningError where
-  pPrint (RefiningError msg) = msg
-
-instance F.Fixpoint RefiningError where
-  toFix = text . renderInline . pPrint
-
-instance F.Loc RefiningError where
-  srcSpan _ = F.dummySpan
-
-instance F.PPrint RefiningError where
-  pprintTidy _ = text . renderInline . pPrint
-
 throwRefiningError :: Doc -> RefiningM a
 throwRefiningError msg = throwError $ RefiningError msg
 

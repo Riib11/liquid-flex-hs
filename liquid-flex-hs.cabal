@@ -39,7 +39,6 @@ library
       Language.Flex.Refining.RefiningM
       Language.Flex.Refining.Syntax
       Language.Flex.Refining.Translating
-      Language.Flex.Refining.Types
       Language.Flex.Syntax
       Language.Flex.Typing
       Utility

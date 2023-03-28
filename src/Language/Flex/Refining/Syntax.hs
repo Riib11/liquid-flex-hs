@@ -34,6 +34,52 @@ import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Text.Printf (printf)
 import Utility
 
+-- ** Liquid-Fixpoint relevant types
+
+-- | Query
+--
+-- The query includes all of the constraints gathered up during
+-- checking/synthesizing.
+type Query = H.Query RefiningError
+
+-- | Result
+--
+-- Result received back after submitting query
+type Result = F.FixResult RefiningError
+
+-- | Constraints
+--
+-- In Liquid Fixpoint, `H.Cstr` has the following form:
+--
+--    data Cstr a
+--      = Head  !Pred !a                  -- ^ p
+--      | CAnd  ![Cstr a]                 -- ^ c1 /\ ... /\ cn
+--      | All   !(Bind a)  !(Cstr a)      -- ^ \all x:t. p => c
+--      | Any   !(Bind a)  !(Cstr a)      -- ^ \exi x:t. p /\ c or is it \exi x:t. p => c?
+--      deriving (Data, Typeable, Generic, Functor, Eq)
+type Cstr = H.Cstr RefiningError
+
+type Bind = H.Bind RefiningError
+
+-- ** RefiningError
+
+newtype RefiningError = RefiningError Doc
+  deriving (Generic, Show)
+
+instance NFData RefiningError
+
+instance Pretty RefiningError where
+  pPrint (RefiningError msg) = msg
+
+instance F.Fixpoint RefiningError where
+  toFix = text . renderInline . pPrint
+
+instance F.Loc RefiningError where
+  srcSpan _ = F.dummySpan
+
+instance F.PPrint RefiningError where
+  pprintTidy _ = text . renderInline . pPrint
+
 {-
 Reflection
 It's reasonable to define another version of the syntax that has refinements
@@ -57,6 +103,8 @@ reflect _everything_ from Flex, such as statements a-normal types, etc.
 -- ** Type
 
 type TypeReft = Type F.Reft
+
+data Quant = QuantForall Bind | QuantExists Bind
 
 -- TODO: handle more advanced types
 -- TODO: can structure and newtype be merged for the refinement phase?
