@@ -132,7 +132,7 @@ freshenSymbol :: MonadFlex m => F.Symbol -> m F.Symbol
 freshenSymbol x = do
   i <- liftFlex $ gets (^. flexFreshSymbolIndex)
   liftFlex $ modifying flexFreshSymbolIndex (1 +)
-  return $ F.symbol (render (F.pprint x) <> "%" <> show i)
+  return $ F.symbol (render (F.pprint x) <> "~" <> show i)
 
 -- | Implicitly use flexTrace' by reversing it, since it is built up with most
 -- recent stacks at the beginning of the trace list
