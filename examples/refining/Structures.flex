@@ -16,3 +16,6 @@ const abs2: bit = {
     assert !ebs.b1 == !ebs.b2;
     true
 }
+
+// FAIL
+// const abs3: EqualBits = EqualBits{ b1 = true; b2 = false }
