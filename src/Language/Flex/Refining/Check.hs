@@ -360,23 +360,24 @@ checkSubtype tmSynth tySynth tyExpect = FlexM.markSection [FlexM.FlexMarkStep "c
 
   -- use fresh symbol for the constrained variable that is propogated upwards
   y <- freshSymbol xSynth
-  let eExpect' = subst eExpect xExpect y
+  let pExpect' = subst pExpect xExpect y
   let tyExpect' = subst tyExpect xExpect y
-  let eSynth' = subst eSynth xSynth y
+  let pSynth' = subst pSynth xSynth y
   let tySynth' = subst tySynth xSynth y
   let tmSynth' = tmSynth {termAnn = tySynth'}
+  let pSpec = F.PImp pSynth' pExpect'
+
+  $(FlexM.debugThing True [|F.pprint|] [|pSpec|])
 
   cstr <-
     cstrForall y tySynth' $
-      cstrHead tmSynth' eSynth' tyExpect' eExpect'
-  tellCstr
-    cstr
-    [eSynth']
+      cstrHead tmSynth' tyExpect' pSpec
+  tellCstr cstr [pSynth']
   where
     rSynth = typeAnn tySynth
     rExpect = typeAnn tyExpect
-    (xSynth, eSynth) = (F.reftBind rSynth, F.reftPred rSynth)
-    (xExpect, eExpect) = (F.reftBind rExpect, F.reftPred rExpect)
+    (xSynth, pSynth) = (F.reftBind rSynth, F.reftPred rSynth)
+    (xExpect, pExpect) = (F.reftBind rExpect, F.reftPred rExpect)
 
 -- ** Utility Refined Types
 

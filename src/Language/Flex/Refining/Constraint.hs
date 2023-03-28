@@ -28,10 +28,10 @@ cstrForall x ty cstr = do
 
 -- | `Head` is a special constructor relevant to Horn Clauses, so read more
 -- about Horn clauses to learn where this detail is relevant.
-cstrHead :: Term TypeReft -> F.Expr -> TypeReft -> F.Expr -> Cstr
-cstrHead tmSynth _eSynth tyExpect eExpect =
+cstrHead :: Term TypeReft -> TypeReft -> F.Pred -> Cstr
+cstrHead tmSynth tyExpect pSpec =
   H.Head
-    (H.Reft eExpect)
+    (H.Reft pSpec)
     ( RefiningError $
         "the term\n"
           $$ nest 2 (pPrint tmSynth)
