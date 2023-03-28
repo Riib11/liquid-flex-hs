@@ -28,12 +28,9 @@ import Utility
 
 refineModule :: Base.Module Base.Type -> FlexM (Either RefiningError ((), RefiningEnv))
 refineModule mdl@Base.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("refineModule" <+> pPrint moduleId) Nothing] do
-  runExceptT
-    ((,) <$> topRefiningCtx mdl <*> topRefiningEnv mdl)
-    >>= \case
-      Left err -> return . Left $ err
-      Right (ctx, env) -> do
-        runExceptT $ runReaderT (runStateT (checkModule mdl) env) ctx
+  runExceptT ((,) <$> topRefiningCtx mdl <*> topRefiningEnv mdl) >>= \case
+    Left err -> return . Left $ err
+    Right (ctx, env) -> runExceptT $ runReaderT (runStateT (checkModule mdl) env) ctx
 
 checkModule :: Base.Module Base.Type -> RefiningM ()
 checkModule Base.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("checkModule" <+> pPrint moduleId) Nothing] do

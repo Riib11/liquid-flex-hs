@@ -419,12 +419,12 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
             termApplicant <-
               choice
                 [ do
-                    tmId <- try do
-                      tmId <- parseTypeId
+                    tyId <- try do
+                      tyId <- parseTypeId
                       hash
-                      return tmId
-                    tyId <- parseTermId
-                    return $ Applicant (Just tmId) tyId (ApplicantType ()),
+                      return tyId
+                    tmId <- parseTermId
+                    return $ Applicant (Just tyId) tmId (ApplicantType ()),
                   do
                     tmId <- parseTermId
                     return $ Applicant Nothing tmId (ApplicantType ())

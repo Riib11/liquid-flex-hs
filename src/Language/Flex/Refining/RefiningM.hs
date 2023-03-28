@@ -20,7 +20,7 @@ import Language.Flex.FlexM (FlexLog (FlexLog), FlexM, MonadFlex, freshSymbol, li
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Base
-import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, ($$), (<+>))
+import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, vcat, ($$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 import Utility (comps, foldrM, pprintInline, renderInline, secondM)
 
@@ -64,29 +64,57 @@ makeLenses ''RefiningEnv
 
 getStructure structId =
   asks (^. ctxStructures . at structId) >>= \case
-    Nothing -> FlexM.throw $ "unknown structure:" <+> pPrint structId
+    Nothing -> do
+      structures <- asks (^. ctxStructures)
+      FlexM.throw $
+        ("unknown structure:" <+> pPrint structId)
+          $$ "context:"
+          $$ nest 2 (vcat . fmap pPrint $ Map.keys structures)
     Just struct -> return struct
 
 getRefinedType' structId =
   asks (^. ctxRefinedTypes' . at structId)
     >>= \case
-      Nothing -> FlexM.throw $ "unknown refined structure id:" <+> pPrint structId
+      Nothing -> do
+        refinedTypes' <- asks (^. ctxRefinedTypes')
+        FlexM.throw $
+          ("unknown refined structure id:" <+> pPrint structId)
+            $$ "context:"
+            $$ nest 2 (vcat . fmap pPrint $ Map.keys refinedTypes')
       Just reftTy -> return reftTy
 
 getSymId app =
   asks (^. ctxSymIds . at app) >>= \case
-    Nothing -> FlexM.throw $ "unknown:" <+> pPrint app
+    Nothing -> do
+      symIds <- asks (^. ctxSymIds)
+      FlexM.throw $
+        -- ("unknown:" <+> pPrint app)
+        --   $$ "context:"
+        --   $$ nest 2 (vcat . fmap pPrint $ Map.elems symIds)
+        ("unknown:" <+> text (show app))
+          $$ "context:"
+          $$ nest 2 (vcat . fmap (text . show) $ Map.toList symIds)
     Just symId -> return symId
 
 -- can only introduce SymIds that have a TermId
 -- TODO: bug if try to introduce SymId without a TermId?
+introSymId :: (MonadFlex m, MonadReader RefiningCtx m) => SymId -> m a -> m a
 introSymId symId =
   comps
     [ case symIdMaybeTermId symId of
-        Nothing -> id
+        Nothing -> \m -> do
+          FlexM.debug True $ "WARNING: SymId introduced without a TermId:" <+> F.pprint (symIdSymbol symId)
+          m
         Just tmId ->
           locally
-            (ctxSymIds . at (Base.termIdApplicant tmId (Base.ApplicantType ())))
+            ( ctxSymIds
+                . at
+                  Base.Applicant
+                    { applicantMaybeTypeId = symIdMaybeTypeId symId,
+                      applicantTermId = tmId,
+                      applicantAnn = Base.ApplicantType ()
+                    }
+            )
             (const $ Just symId),
       locally
         (ctxSymbols . at (symIdSymbol symId))
@@ -96,7 +124,14 @@ introSymId symId =
 introSymbol sym =
   locally
     (ctxSymbols . at sym)
-    (const $ Just SymId {symIdSymbol = sym, symIdMaybeTermId = Nothing})
+    ( const $
+        Just
+          SymId
+            { symIdSymbol = sym,
+              symIdMaybeTypeId = Nothing,
+              symIdMaybeTermId = Nothing
+            }
+    )
 
 getSymbolSymId sym =
   asks (^. ctxSymbols . at sym) >>= \case
@@ -105,7 +140,12 @@ getSymbolSymId sym =
 
 getApplicantType symId =
   asks (^. ctxApplicantTypes . at symId) >>= \case
-    Nothing -> FlexM.throw $ "unknown applicant id:" <+> pPrint symId
+    Nothing -> do
+      applicantTypes <- asks (^. ctxApplicantTypes)
+      FlexM.throw $
+        ("unknown applicant id:" <+> pPrint symId)
+          $$ "context:"
+          $$ nest 2 (vcat . fmap pPrint $ Map.keys applicantTypes)
     Just appTy -> return (Right <$> appTy)
 
 introApplicantType symId appTy =
@@ -115,7 +155,12 @@ introApplicantType symId appTy =
 
 getFunction symId =
   asks (^. ctxFunctions . at symId) >>= \case
-    Nothing -> FlexM.throw $ "unknown function id:" <+> pPrint symId
+    Nothing -> do
+      funs <- asks (^. ctxFunctions)
+      FlexM.throw $
+        ("unknown function id:" <+> pPrint symId)
+          $$ "context:"
+          $$ nest 2 (vcat . fmap pPrint $ Map.keys funs)
     Just func -> return func
 
 freshenQReftBind :: MonadFlex m => QReft -> m QReft
@@ -140,7 +185,12 @@ freshSymId str = do
 freshSymIdTermId :: MonadFlex m => Base.TermId -> m SymId
 freshSymIdTermId tmId = do
   symIdSymbol <- freshSymbol (render . pPrint $ tmId)
-  return SymId {symIdSymbol, symIdMaybeTermId = Just tmId}
+  return
+    SymId
+      { symIdSymbol,
+        symIdMaybeTypeId = Nothing,
+        symIdMaybeTermId = Just tmId
+      }
 
 parsePred :: String -> F.Pred
 parsePred = FP.doParse' FP.predP "parsePred"

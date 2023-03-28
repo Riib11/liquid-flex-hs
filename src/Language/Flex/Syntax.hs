@@ -85,10 +85,10 @@ instance F.Symbolic FieldId where
   symbol (FieldId y) = F.symbol y
 
 instance F.Symbolic (TypeId, FieldId) where
-  symbol (TypeId x, FieldId y) = F.symbol $ x <> "#" <> y
+  symbol (TypeId x, FieldId y) = F.symbol $ x <> "." <> y
 
 instance F.Symbolic (TypeId, TermId) where
-  symbol (TypeId x, TermId y) = F.symbol $ x <> "." <> y
+  symbol (TypeId x, TermId y) = F.symbol $ x <> "#" <> y
 
 fromFieldIdToTermId :: FieldId -> TermId
 fromFieldIdToTermId (FieldId x) = TermId x
@@ -362,7 +362,7 @@ instance Eq ann => Ord (Applicant ann) where
 instance Pretty (Applicant ann) where
   pPrint (Applicant {..}) = case applicantMaybeTypeId of
     Nothing -> pPrint applicantTermId
-    Just tyId -> pPrint tyId <> "." <> pPrint applicantTermId
+    Just tyId -> pPrint tyId <> "#" <> pPrint applicantTermId
 
 type Branches ann = [(Pattern ann, Term ann)]
 

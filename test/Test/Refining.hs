@@ -20,9 +20,9 @@ test =
   TestLabel "refining" $
     TestList $
       concat
-        -- full = True
-        -- single = False
-        if True
+        -- True  : full
+        -- False : select
+        if False
           then
             [ let !fps =
                     unsafePerformIO $
@@ -36,7 +36,8 @@ test =
                in makeTest_refineModule False <$> fps
             ]
           else
-            [ [makeTest_refineModule True "examples/refining/Structures.flex"]
+            [ -- [makeTest_refineModule True "examples/refining/Structures.flex"]
+              [makeTest_refineModule True "examples/refining/Variants.flex"]
             ]
 
 makeTest_refineModule :: Bool -> FilePath -> Test

@@ -1,5 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 
+{-# HLINT ignore "Redundant flip" #-}
+{-# HLINT ignore "Redundant $" #-}
+
 module Language.Flex.Refining.Translating where
 
 import Control.Lens (At (at), locally, to, (&), (?~), (^.), _3)
@@ -177,7 +180,12 @@ transRefinedTypeRefinement locals reft = do
     ( -- introduce local variables into context
       locals <&> \(tmId, ty) m -> do
         -- not fresh, because the refinement can refer to it
-        let symId = SymId (F.symbol tmId) (Just tmId)
+        let symId =
+              SymId
+                { symIdSymbol = F.symbol tmId,
+                  symIdMaybeTypeId = Nothing,
+                  symIdMaybeTermId = Just tmId
+                }
         ty' <- transType ty
         comps
           [ introSymId symId,
@@ -221,19 +229,36 @@ transType type_ = FlexM.markSection [FlexM.FlexMarkStep "transType" . Just $ pPr
   Base.TypeStructure struct@Base.Structure {..} -> do
     structureTypeReft struct =<< secondM transType `traverse` structureFields
   Base.TypeEnum _en -> error "transType TODO"
-  Base.TypeVariant _vari -> error "transType TODO"
+  Base.TypeVariant varnt@Base.Variant {..} ->
+    variantTypeReft varnt =<< secondM (transType `traverse`) `traverse` variantConstructors
   Base.TypeNewtype _new -> error "transType TODO"
   -- invalid
   Base.TypeUnifyVar _ _ -> FlexM.throw $ "type unification variable should not appear in normalized type:" <+> pPrint type_
 
 -- ** Basic Refinement Types
 
+-- | Refined variant type.
+--
+-- > variantTypeReft ... = ... TODO
+variantTypeReft :: MonadFlex m => Base.Variant Base.Type -> [(Base.TermId, [TypeReft])] -> m TypeReft
+variantTypeReft varnt@Base.Variant {..} ctors = FlexM.markSectionResult (FlexM.FlexMarkStep "variantTypeReft" . Just $ pPrint variantId) pPrint varnt pPrint do
+  varntSym <- freshSymbol ("variantTerm" :: String)
+
+  ctorTys <-
+    forM ctors _
+
+  -- TODO: similar to structure, but over all constructors and disjoin of result
+
+  -- exists a1, ..., an, ..., z1, ..., an . { varnt: V | varnt == ctor_a a1 ... an || ... || varnt == ctor }
+
+  return $ TypeVariant varnt _
+
 -- | Refined structure type.
 --
 -- > structureTypeReft ... = ... TODO
 structureTypeReft :: MonadFlex m => Base.Structure -> [(Base.FieldId, TypeReft)] -> m TypeReft
 structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult (FlexM.FlexMarkStep "structureTypeReft" . Just $ pPrint structureId <+> "; " <+> pPrint fieldTys_) pPrint struct pPrint do
-  symStruct <- freshSymbol ("structTermStructure" :: String)
+  structSym <- freshSymbol ("structTermStructure" :: String)
 
   fieldTys <-
     forM fieldTys_ \(fieldId, ty) -> do
@@ -255,7 +280,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
   -- p1(struct, x1, ..., xN): p1(x1, ..., xN): struct = S a1 ... aN
   p1 <-
     eqPred
-      (varTerm (fromSymbolToSymId symStruct) tyStruct)
+      (varTerm (fromSymbolToSymId structSym) tyStruct)
       ( TermStructure
           struct
           ( fieldTys <&> \(fieldId, ty) ->
@@ -319,7 +344,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
   let r =
         QReft
           { qreftQuants = quants,
-            qreftReft = F.reft symStruct p1
+            qreftReft = F.reft structSym p1
           }
 
   $(FlexM.debugThing False [|pPrint|] [|r|])
@@ -532,9 +557,9 @@ embedType = \case
   TypeStructure Base.Structure {..} _ -> F.fTyconSort . F.symbolFTycon <$> structureSymbol structureId
   TypeVariant Base.Variant {..} _ -> F.fTyconSort . F.symbolFTycon <$> variantSymbol variantId
 
--- ** Datatypes
+-- ** Datatype
 
--- *** Structures
+-- *** Structure
 
 -- TODO: change this to be polymorphic so refined argumen types are handled automatically
 structureDataDecl :: MonadFlex m => Base.Structure -> m F.DataDecl
@@ -559,7 +584,7 @@ structureSymbol structId = defaultLocated $ F.symbol structId
 structureFieldSymbol :: MonadFlex m => Base.TypeId -> Base.FieldId -> m F.LocSymbol
 structureFieldSymbol structId fieldId = defaultLocated $ F.symbol (structId, fieldId)
 
--- *** Variants
+-- *** Variant
 
 variantDataDecl :: MonadFlex m => Base.Variant Base.Type -> m F.DataDecl
 variantDataDecl Base.Variant {..} = do
@@ -584,13 +609,21 @@ variantSymbol varntId = defaultLocated $ F.symbol varntId
 variantConstructorSymbol :: MonadFlex m => Base.TypeId -> Base.TermId -> m F.LocSymbol
 variantConstructorSymbol varntId ctorId = defaultLocated $ F.symbol (varntId, ctorId)
 
+-- *** Function
+
+functionSymbol :: MonadFlex m => Base.TermId -> m F.LocSymbol
+functionSymbol funId = defaultLocated $ F.symbol funId
+
+-- *** Constant
+
+constantSymbol :: MonadFlex m => Base.TermId -> m F.LocSymbol
+constantSymbol conId = defaultLocated $ F.symbol conId
+
 -- ** Initializing Refinement Context and Environment
 
 topRefiningCtx :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningCtx
 topRefiningCtx Base.Module {..} = do
-  -- TODO: add variants into context
-  -- TODO: add enums into context
-  -- TODO: add constants into context
+  -- TODO: enums, newtypes
   foldrM
     ( \decl ctx -> do
         case decl of
@@ -601,10 +634,17 @@ topRefiningCtx Base.Module {..} = do
           Base.DeclarationVariant varnt@Base.Variant {..} -> do
             -- add variant, and each constructor's symId and applicant type
             varnt' <- transType `traverse` varnt
-            (ctx &) . compsM $
+
+            flip compsM ctx $
               [ return . (ctxVariants . at variantId ?~ varnt),
-                runReaderT $ for variantConstructors ask \(ctorId, paramTypes) m -> do
-                  symId <- freshSymIdTermId ctorId
+                runReaderT $ for variantConstructors ask \(ctorId, _paramTypes) m -> do
+                  sym <- F.val <$> variantConstructorSymbol variantId ctorId
+                  let symId =
+                        SymId
+                          { symIdSymbol = sym,
+                            symIdMaybeTypeId = Just variantId,
+                            symIdMaybeTermId = Just ctorId
+                          }
                   paramTypes' <- case lookup ctorId $ Base.variantConstructors varnt' of
                     Just paramTypes' -> return paramTypes'
                     Nothing -> FlexM.throw $ "unknown variant constructor:" <+> pPrint ctorId
@@ -619,7 +659,14 @@ topRefiningCtx Base.Module {..} = do
           Base.DeclarationEnum _en -> return ctx
           Base.DeclarationAlias _al -> return ctx
           Base.DeclarationFunction Base.Function {..} -> do
-            symId <- freshSymIdTermId functionId
+            sym <- F.val <$> functionSymbol functionId
+            let symId =
+                  SymId
+                    { symIdSymbol = sym,
+                      symIdMaybeTypeId = Nothing,
+                      symIdMaybeTermId = Just functionId
+                    } ::
+                    SymId
             funTy <- do
               functionTypeParameters' <- secondM transType `traverse` functionParameters
               functionTypeOutput' <- transType functionOutput
@@ -631,14 +678,20 @@ topRefiningCtx Base.Module {..} = do
                     functionTypeContextualParameters = functionContextualParameters,
                     functionTypeOutput = functionTypeOutput'
                   }
-            return . flip runReader ctx . flip comps ask $
+            flip runReaderT ctx . flip comps ask $
               [ introSymId symId,
                 introApplicantType symId (Base.ApplicantTypeFunction funTy)
               ]
           Base.DeclarationConstant Base.Constant {..} -> do
-            symId <- freshSymIdTermId constantId
+            sym <- F.val <$> constantSymbol constantId
+            let symId =
+                  SymId
+                    { symIdSymbol = sym,
+                      symIdMaybeTypeId = Nothing,
+                      symIdMaybeTermId = Just constantId
+                    }
             ty <- transType constantType
-            return . flip runReader ctx . flip comps ask $
+            flip runReaderT ctx . flip comps ask $
               [ introSymId symId,
                 introApplicantType symId (Base.ApplicantType ty)
               ]

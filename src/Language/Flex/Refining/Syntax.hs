@@ -423,12 +423,13 @@ instance PrettyTermAnn r => Pretty (Term r) where
 
 data SymId = SymId
   { symIdSymbol :: !F.Symbol,
+    symIdMaybeTypeId :: !(Maybe TypeId),
     symIdMaybeTermId :: !(Maybe TermId)
   }
   deriving (Eq, Ord, Show)
 
 instance Pretty SymId where
-  pPrint (SymId sym _m_ti) = pprintInline sym
+  pPrint (SymId sym _ _) = pprintInline sym
 
 -- | Traverses over only the top annotation
 fmap_termAnn :: Functor f => (r -> f r) -> Term r -> f (Term r)
@@ -443,7 +444,7 @@ fromSymbolToTerm :: F.Symbol -> r -> Term r
 fromSymbolToTerm sym = varTerm (fromSymbolToSymId sym)
 
 fromSymbolToSymId :: F.Symbol -> SymId
-fromSymbolToSymId symIdSymbol = SymId {symIdSymbol, symIdMaybeTermId = Nothing}
+fromSymbolToSymId symIdSymbol = SymId {symIdSymbol, symIdMaybeTypeId = Nothing, symIdMaybeTermId = Nothing}
 
 -- ** Substitution
 
