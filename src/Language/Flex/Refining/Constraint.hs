@@ -3,10 +3,12 @@ module Language.Flex.Refining.Constraint where
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
 import Language.Flex.FlexM (FlexM, MonadFlex)
+import Language.Flex.Refining.Logic (replaceSym)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Refining.Translating (embedType)
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), nest, vcat, ($$), (<+>))
+import Utility (pprintInline)
 
 trivialCstr :: Cstr
 trivialCstr = H.CAnd []
@@ -22,8 +24,25 @@ andCstrs = H.CAnd
 -- > cstrForall x { y: a | p(y) } q(x) = forall { x: a | p(x) }, q(x)
 cstrForall :: MonadFlex m => F.Symbol -> TypeReft -> Cstr -> m Cstr
 cstrForall x ty cstr = do
-  (s, p) <- predReplacingBind x ty
-  return $ H.All (H.Bind x s p (RefiningError "cstrForall")) cstr
+  s <- embedType ty
+  r <- do
+    let r = qreftReft $ typeAnn ty
+    return $ F.reft x $ F.substa (replaceSym (F.reftBind r) x) $ F.reftPred r
+  return $
+    foldr
+      quantCstr
+      ( H.All
+          H.Bind
+            { bSym = F.reftBind r,
+              bSort = s,
+              bPred = H.Reft (F.reftPred r),
+              bMeta = RefiningError $ pprintInline r
+            }
+          cstr
+      )
+      (qreftQuants $ typeAnn ty)
+
+-- return $ H.All (H.Bind x s _p (RefiningError "cstrForall")) cstr
 
 -- | `Head` is a special constructor relevant to Horn Clauses, so read more
 -- about Horn clauses to learn where this detail is relevant.
@@ -43,14 +62,14 @@ cstrHead tmSynth tyExpect pSpec =
           $$ ""
     )
 
--- | The sorted and predicate `(a, p(x))`
---
--- > predReplacingBind x { y: a | p(y) } = (a, p(x))
-predReplacingBind :: MonadFlex m => F.Symbol -> TypeReft -> m (F.Sort, H.Pred)
-predReplacingBind x ty = do
-  ty' <- embedType ty
-  return
-    ( ty',
-      let r = typeAnn ty
-       in H.Reft $ subst (F.reftPred r) (F.reftBind r) x
-    )
+-- -- | The sorted and predicate `(a, p(x))`
+-- --
+-- -- > predReplacingBind x { y: a | p(y) } = (a, p(x))
+-- predReplacingBind :: MonadFlex m => F.Symbol -> TypeReft -> m (F.Sort, H.Pred)
+-- predReplacingBind x ty = do
+--   ty' <- embedType ty
+--   return
+--     ( ty',
+--       let r = typeAnn ty
+--        in H.Reft $ subst (F.reftPred r) (F.reftBind r) x
+--     )

@@ -64,7 +64,7 @@ type Bind = H.Bind RefiningError
 -- ** RefiningError
 
 newtype RefiningError = RefiningError Doc
-  deriving (Generic, Show)
+  deriving (Eq, Show, Generic)
 
 instance NFData RefiningError
 
@@ -102,9 +102,42 @@ reflect _everything_ from Flex, such as statements a-normal types, etc.
 
 -- ** Type
 
-type TypeReft = Type F.Reft
+type TypeReft = Type QReft
+
+data QReft = QReft
+  { qreftQuants :: [Quant],
+    -- reftSort :: F.Sort,
+    qreftReft :: F.Reft
+  }
+  deriving (Eq, Show)
+
+instance Semigroup QReft where
+  -- reft1@(QReft qs1 srt1 r1) <> reft2@(QReft qs2 srt2 r2 )
+  --   | srt1 == srt2 = QReft (qs1 <> qs2) srt1 (r1 <> r2)
+  --   | otherwise = error . render $ "BUG: attempted to append two @QReft@'s that have different sorts: " <> pPrint reft1 <> " <> " <> pPrint reft2
+  QReft qs1 r1 <> QReft qs2 r2 = QReft (qs1 <> qs2) (r1 <> r2)
+
+instance Monoid QReft where
+  mempty = QReft mempty mempty
+
+instance Pretty QReft where
+  pPrint QReft {..} = hcat ((<+> ".") . pPrint <$> qreftQuants) <+> pprintInline qreftReft
 
 data Quant = QuantForall Bind | QuantExists Bind
+  deriving (Eq, Show)
+
+instance Pretty Quant where
+  pPrint = \case
+    QuantForall bnd -> F.pprint bnd
+    QuantExists bnd -> F.pprint bnd
+
+quantCstr :: Quant -> Cstr -> Cstr
+quantCstr = \case
+  QuantForall bnd -> H.All bnd
+  QuantExists bnd -> H.Any bnd
+
+fromReft :: F.Reft -> QReft
+fromReft qreftReft = QReft {qreftQuants = mempty, qreftReft}
 
 -- TODO: handle more advanced types
 -- TODO: can structure and newtype be merged for the refinement phase?
@@ -122,7 +155,7 @@ data Type r
   deriving
     (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty (Type F.Reft) where
+instance Pretty TypeReft where
   pPrint = \case
     TypeAtomic at r -> case at of
       TypeInt -> go "int" r
@@ -133,7 +166,7 @@ instance Pretty (Type F.Reft) where
     TypeTuple (ty1, ty2) r -> go (parens $ (pPrint ty1 <> ",") <+> pPrint ty2) r
     TypeStructure Base.Structure {..} r -> go (pPrint structureId) r
     where
-      go doc r = braces $ pprintInline (F.reftBind r) <+> ":" <+> doc <+> "|" <+> pprintInline (F.reftPred r)
+      go doc r@(QReft {..}) = braces $ pprintInline (F.reftBind qreftReft) <+> ":" <+> doc <+> "|" <+> pPrint r
 
 instance Pretty (Type ()) where
   pPrint = \case
@@ -154,11 +187,13 @@ data AtomicType
   | TypeString
   deriving (Eq, Show)
 
+-- TODO: is it ok to use F.PTrue as an expression here? or is there a different
+-- encoding of booleans as expression, e.g. as ints or something?
 typeEqTrue :: TypeReft
-typeEqTrue = typeBit mempty
+typeEqTrue = typeBit $ QReft [] (F.exprReft F.PTrue)
 
 typeEqFalse :: TypeReft
-typeEqFalse = typeBit F.falseReft
+typeEqFalse = typeBit $ QReft [] (F.exprReft F.PFalse)
 
 typeInt :: r -> Type r
 typeInt = TypeAtomic TypeInt
@@ -166,10 +201,10 @@ typeInt = TypeAtomic TypeInt
 typeBit :: r -> Type r
 typeBit = TypeAtomic TypeBit
 
-typeChar :: F.Reft -> TypeReft
+typeChar :: QReft -> TypeReft
 typeChar = TypeAtomic TypeChar
 
-typeString :: F.Reft -> TypeReft
+typeString :: QReft -> TypeReft
 typeString = TypeAtomic TypeString
 
 primitiveLocated :: P.PPrint a => a -> F.Located a

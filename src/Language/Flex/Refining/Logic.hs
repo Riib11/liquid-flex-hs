@@ -13,6 +13,10 @@ conjPred ps
   where
     ps' = filter (not . F.isTautoPred) ps
 
+-- x := y
+replaceSym :: F.Symbol -> F.Symbol -> (F.Symbol -> F.Symbol)
+replaceSym x y z = if z == x then y else z
+
 -- TODO: actually, probably need to do this more fundamentally in TypeReft
 
 -- fromPredToCstr :: F.Pred -> Cstr

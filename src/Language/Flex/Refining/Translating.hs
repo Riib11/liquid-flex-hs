@@ -13,6 +13,7 @@ import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import Data.String (IsString (fromString))
 import Data.Text (pack)
+import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
 import Language.Flex.FlexM (FlexM, MonadFlex, defaultLocated, freshSymbol, freshenSymbol)
 import qualified Language.Flex.FlexM as FlexM
@@ -206,7 +207,7 @@ transType type_ = FlexM.markSection [FlexM.FlexMarkStep "transType" . Just $ pPr
           Base.TypeInt -> TypeInt
           Base.TypeUInt -> TypeInt
           Base.TypeFloat -> TypeFloat
-    return $ TypeAtomic atomic (F.reft x p)
+    return $ TypeAtomic atomic (fromReft $ F.reft x p)
   Base.TypeBit -> return $ TypeAtomic TypeBit mempty
   Base.TypeChar -> return $ TypeAtomic TypeChar mempty
   Base.TypeArray Base.TypeChar -> return $ TypeAtomic TypeString mempty
@@ -236,7 +237,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
     forM fieldTys_ \(fieldId, ty) -> do
       -- rename refinement bind to use name defined by field (to be compatible
       -- with checking refinement on structure)
-      let r = typeAnn ty
+      let r = qreftReft $ typeAnn ty
           (x, p) = (F.reftBind r, F.reftPred r)
 
       -- acually don't freshen here, since needs to work with checking
@@ -244,7 +245,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
       let y = F.symbol fieldId
 
       let r' = F.reft y $ F.substa (\x' -> if x == x' then y else x') p
-      return (fieldId, ty {typeAnn = r'})
+      return (fieldId, ty {typeAnn = (typeAnn ty) {qreftReft = r'}})
 
   -- tyStruct: S a1 ... aN
   let tyStruct = TypeStructure struct ()
@@ -257,7 +258,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
           struct
           ( fieldTys <&> \(fieldId, ty) ->
               ( fieldId,
-                fromSymbolToTerm (F.reftBind (typeAnn ty)) (void ty)
+                fromSymbolToTerm (F.reftBind $ qreftReft $ typeAnn ty) (void ty)
               )
           )
           tyStruct
@@ -267,30 +268,66 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
 
   $(FlexM.debugThing True [|pPrint|] [|fieldTys|])
 
-  -- p2(x1, ..., xN): r1(x1) && ... && rN(xN)
-  let p2 = conjPred $ fieldTys <&> \(_, ty) -> F.reftPred $ typeAnn ty
+  -- TODO: if the changes look ok, then p1 ~~> p
 
-  $(FlexM.debugThing True [|F.pprint|] [|p2|])
+  -- TODO: OLD, now can just put the predicate on the existential
+  -- quantifier for the field
+
+  -- -- p2(x1, ..., xN): r1(x1) && ... && rN(xN)
+  -- let p2 = conjPred $ fieldTys <&> \(_, ty) -> F.reftPred $ typeAnn ty
+
+  -- \$(FlexM.debugThing True [|F.pprint|] [|p2|])
+
+  -- -- TODO:OLD: now put existential quantifiers on the refinement
 
   -- p(struct): exists x1, ..., xN . p1(struct, x1, ..., xN) && p2(x1, ..., xN)
-  fieldSrts <- secondM embedType `traverse` fieldTys
-  let p =
-        F.pExist
-          ( fieldTys `zip` fieldSrts <&> \((_, ty), (_, srt)) ->
-              (F.reftBind $ typeAnn ty, srt)
-          )
-          $ conjPred [p1, p2]
+  -- fieldSrts <- secondM embedType `traverse` fieldTys
+  -- let p =
+  --       F.pExist
+  --         ( fieldTys `zip` fieldSrts <&> \((_, ty), (_, srt)) ->
+  --             (F.reftBind $ typeAnn ty, srt)
+  --         )
+  --         $ conjPred [p1, p2]
 
-  -- r: { struct: S a1 ... aN | p(struct) }
-  let r = F.reft symStruct p
+  -- TODO:OLD: just use p1 now
+
+  -- -- p(struct, x1, ..., xN): p1(struct, x1, ..., xN) && p2(x1, ..., xN)
+  -- let p = conjPred [p1, p2]
+
+  -- reftQuants: exists x1, ..., exists nN
+  quants <-
+    concat
+      <$> forM fieldTys \(fieldId, fieldType) -> do
+        let r = qreftReft $ typeAnn fieldType
+        bSort <- embedType fieldType
+        return $
+          -- inherit any quantifiers in field's refined type
+          qreftQuants (typeAnn fieldType)
+            -- existentially quantify over field
+            <> [ QuantExists
+                   H.Bind
+                     { bSym = F.reftBind r,
+                       bSort,
+                       bPred = H.Reft $ F.reftPred r,
+                       bMeta = RefiningError $ pPrint fieldId <+> ":" <+> pPrint fieldType
+                     }
+               ]
+  -- r: { struct: S a1 ... aN | exists x1, ..., exists nN, p2(struct, x1, ...,
+  -- xN) }
+  let r =
+        QReft
+          { qreftQuants = quants,
+            qreftReft = F.reft symStruct p1
+          }
+
+  $(FlexM.debugThing True [|pPrint|] [|r|])
 
   return $ TypeStructure struct r
 
 -- | Refined tuple type.
 --
--- > tupleTypeReft [.., { xI: aI | pI(xI) }, ...] = { tuple: (((a1, a2), ...), aN) |
--- > (tuple
--- > == (((x1, x2), ...), xN)  ) && ... && pI(xI) && .... }
+-- > tupleTypeReft [.., { xI: aI | pI(xI) }, ...] = { tuple: (((a1, a2), ...),
+-- > aN) |  (tuple == (((x1, x2), ...), xN)  ) && ... && pI(xI) && .... }
 tupleTypeReft :: forall m. MonadFlex m => [TypeReft] -> m TypeReft
 tupleTypeReft tys_ = do
   let go :: TypeReft -> TypeReft -> m TypeReft
@@ -300,14 +337,16 @@ tupleTypeReft tys_ = do
 
         -- r1(x1)
         -- r2(x2)
-        r1 <- freshenReftBind (typeAnn ty1)
-        r2 <- freshenReftBind (typeAnn ty2)
+        r1 <- freshenReftBind (qreftReft $ typeAnn ty1)
+        r2 <- freshenReftBind (qreftReft $ typeAnn ty2)
 
         symTuple <- freshSymbol ("tuple" :: String)
 
         -- tyTuple: (ty1, ty2)
         -- unrefined, since only used for embedding
         let tyTuple = TypeTuple (void ty1, void ty2) ()
+
+        -- TODO: if using contraint quantifiers works, then p1 ~~> p
 
         -- p1(tuple, x1, x2): tuple == (x1, x2)
         p1 <-
@@ -322,16 +361,41 @@ tupleTypeReft tys_ = do
                 tyTuple
             )
 
-        -- p2(tuple, x1, x2): r1(x1) && r2(x2)
-        let p2 = conjPred $ [ty1, ty2] <&> (F.reftPred . typeAnn)
+        -- TODO:OLD: don't need to do this anymore because Reft keeps track of
+        -- refinement on quantifier vars
 
-        -- r: { tuple: tyTuple | exists x1 x2 . p1(y1, x2) && p2(y1, x2) }
-        srt1 <- embedType ty1
-        srt2 <- embedType ty2
+        -- -- p2(tuple, x1, x2): r1(x1) && r2(x2)
+        -- let p2 = conjPred $ [ty1, ty2] <&> (F.reftPred . typeAnn)
+
+        -- -- r: { tuple: tyTuple | exists x1 x2 . p1(y1, x2) && p2(y1, x2) }
+        -- srt1 <- embedType ty1
+        -- srt2 <- embedType ty2
+        -- let r =
+        --       F.reft symTuple $
+        --         F.pExist [(F.reftBind r1, srt1), (F.reftBind r2, srt2)] $
+        --           conjPred [p1, p2]
+
+        quants <-
+          concat <$> forM [ty1, ty2] \ty -> do
+            let r = qreftReft $ typeAnn ty
+            bSort <- embedType ty
+            return $
+              qreftQuants (typeAnn ty)
+                <> [ QuantExists
+                       H.Bind
+                         { bSym = F.reftBind r,
+                           bSort,
+                           bPred = H.Reft $ F.reftPred r,
+                           bMeta = RefiningError $ F.pprint (F.reftBind r) <+> ":" <+> pPrint ty
+                         }
+                   ]
+
+        -- r: { tuple: (a, b) | exists x1, exists x2, p1(tuple, x1, x2) }
         let r =
-              F.reft symTuple $
-                F.pExist [(F.reftBind r1, srt1), (F.reftBind r2, srt2)] $
-                  conjPred [p1, p2]
+              QReft
+                { qreftQuants = quants,
+                  qreftReft = F.reft symTuple p1
+                }
 
         -- { tuple: (a1, a2) | p1 && p2 }
         return $ TypeTuple (ty1, ty2) r
