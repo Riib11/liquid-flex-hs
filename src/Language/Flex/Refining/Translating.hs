@@ -2,8 +2,10 @@
 
 module Language.Flex.Refining.Translating where
 
-import Control.Lens (At (at), locally, to, (&), (^.), _3)
+import Control.Lens (At (at), locally, to, (&), (?~), (^.), _3)
 import Control.Monad (filterM, foldM, forM, void, when)
+import Control.Monad.Except (ExceptT)
+import Control.Monad.Reader (runReader)
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Bifunctor (Bifunctor (second))
@@ -19,7 +21,7 @@ import Language.Flex.FlexM (FlexM, MonadFlex, defaultLocated, freshSymbol, fresh
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Logic (conjPred, replaceSym)
 import Language.Flex.Refining.Prelude (tupleFTycon, tupleTermConstructorSymbol)
-import Language.Flex.Refining.RefiningM (RefiningM, ctxSymbols, freshSymId, freshSymIdTermId, freshenReftBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, getSymbolSymId, introApplicantType, introSymId, throwRefiningError)
+import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..), renameTerm)
 import qualified Language.Flex.Syntax as Base
@@ -581,3 +583,68 @@ variantSymbol varntId = defaultLocated $ F.symbol varntId
 
 variantConstructorSymbol :: MonadFlex m => Base.TypeId -> Base.TermId -> m F.LocSymbol
 variantConstructorSymbol varntId ctorId = defaultLocated $ F.symbol (varntId, ctorId)
+
+-- ** Initializing Refinement Context and Environment
+
+topRefiningCtx :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningCtx
+topRefiningCtx Base.Module {..} = do
+  -- TODO: add variants into context
+  -- TODO: add enums into context
+  -- TODO: add functions into context
+  -- TODO: add transforms into context
+  -- TODO: add constants into context
+  foldrM
+    ( \decl ctx -> do
+        case decl of
+          Base.DeclarationStructure struct@Base.Structure {..} -> do
+            return $ ctx & ctxStructures . at structureId ?~ struct
+          Base.DeclarationNewtype _new -> return ctx
+          Base.DeclarationVariant varnt@Base.Variant {..} -> do
+            -- TODO: add constructors in ctxSymIds, ctxApplicantTypes
+            return $ ctx & ctxVariants . at variantId ?~ varnt
+          Base.DeclarationEnum _en -> return ctx
+          Base.DeclarationAlias _al -> return ctx
+          Base.DeclarationFunction func@Base.Function {..}
+            | functionIsTransform -> do
+                symId <- error "TODO"
+                funType <- do
+                  functionTypeParameters <- forM functionParameters (secondM transType)
+                  return
+                    Base.FunctionType
+                      { functionTypeId = functionId,
+                        functionTypeIsTransform = functionIsTransform,
+                        functionTypeParameters,
+                        functionTypeContextualParameters = _wn,
+                        functionTypeOutput = _wo
+                      }
+                return $
+                  ctx
+                    & comps
+                      [ runReader (introSymId symId (asks const)) ctx,
+                        runReader (introApplicantType symId (Base.ApplicantTypeFunction funType) (asks const)) ctx
+                      ]
+            | otherwise -> do
+                -- since each application will be inlined, doesn't add to
+                -- @ctxApplicantTypes@
+                symId <- error "TODO"
+                return $ ctx & ctxFunctions . at symId ?~ func
+          Base.DeclarationConstant _con -> return ctx
+          Base.DeclarationRefinedType reftTy@Base.RefinedType {..} ->
+            return $ ctx & ctxRefinedTypes . at refinedTypeId ?~ reftTy
+    )
+    RefiningCtx
+      { _ctxSymIds = mempty,
+        _ctxSymbols = mempty,
+        _ctxApplicantTypes = mempty,
+        _ctxFunctions = mempty,
+        _ctxStructures = mempty,
+        _ctxRefinedTypes = mempty,
+        _ctxRefinedTypes' = mempty,
+        _ctxVariants = mempty
+      }
+    moduleDeclarations
+
+topRefiningEnv :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningEnv
+topRefiningEnv _mdl = do
+  return
+    RefiningEnv {}

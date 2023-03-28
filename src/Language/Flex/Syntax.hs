@@ -174,6 +174,7 @@ pPrintDeclarationHeader =
 
 -- *** Structure
 
+-- TODO: why isn't this parametrized by a type variable in place of @Type@?
 data Structure = Structure
   { structureId :: TypeId,
     structureIsMessage :: Bool,

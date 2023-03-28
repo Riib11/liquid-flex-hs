@@ -286,6 +286,13 @@ primitiveSourcePos label =
       sourceColumn = F.mkPos 1
     }
 
+-- ** ApplicantType
+
+data ApplicantType r
+  = ApplicantTypeFunction (FunctionType r)
+  | ApplicantType (Type r)
+  deriving (Eq, Show, Functor)
+
 -- ** FunctionType
 
 -- Liquid Flex's function types are simple in that the they cannot express
@@ -296,7 +303,7 @@ data FunctionType r = FunctionType
   { functionTypeParameters :: ![Type r],
     functionTypeOutput :: !(Type r)
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Functor)
 
 -- | Subable (Subtypeable)
 instance F.Subable r => F.Subable (Type r) where
@@ -306,10 +313,10 @@ instance F.Subable r => F.Subable (Type r) where
   subst f = fmap (F.subst f)
 
 instance F.Subable r => F.Subable (FunctionType r) where
-  syms (FunctionType _params outTy) = F.syms outTy
-  substa f (FunctionType params outTy) = FunctionType params (F.substa f outTy)
-  substf f (FunctionType params outTy) = FunctionType params (F.substf f outTy)
-  subst f (FunctionType params outTy) = FunctionType params (F.subst f outTy)
+  syms FunctionType {..} = F.syms functionTypeOutput
+  substa f = (F.substa f <$>)
+  substf f = (F.substf f <$>)
+  subst f = (F.subst f <$>)
 
 -- ** Variant
 

@@ -10,7 +10,7 @@ import Control.DeepSeq (NFData)
 import Control.Lens
 import Control.Monad
 import Control.Monad.Except (ExceptT, MonadError (throwError), MonadTrans (lift))
-import Control.Monad.Reader (ReaderT, asks)
+import Control.Monad.Reader (MonadReader (ask), ReaderT, asks, runReader)
 import Control.Monad.State (StateT, gets, modify)
 import qualified Data.Map as Map
 import GHC.Generics
@@ -22,7 +22,7 @@ import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJ (Doc, nest, render, text, ($$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
-import Utility (comps, foldrM, pprintInline, renderInline)
+import Utility (comps, foldrM, pprintInline, renderInline, secondM)
 
 -- ** RefiningM
 
@@ -49,7 +49,9 @@ data RefiningCtx = RefiningCtx
     -- refined refinements on types, since the refinement-checking incurred (in
     -- many different ways) by the refined types is performed inline at each
     -- instance
-    _ctxRefinedTypes' :: Map.Map Base.TypeId (Term Base.Type)
+    _ctxRefinedTypes' :: Map.Map Base.TypeId (Term Base.Type),
+    -- | Before translation: accululate variants
+    _ctxVariants :: Map.Map Base.TypeId (Base.Variant Base.Type)
   }
 
 data RefiningEnv = RefiningEnv
@@ -57,48 +59,6 @@ data RefiningEnv = RefiningEnv
 
 makeLenses ''RefiningCtx
 makeLenses ''RefiningEnv
-
-topRefiningCtx :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningCtx
-topRefiningCtx Base.Module {..} = do
-  -- TODO: add structures into context
-  -- TODO: add newtypes into context
-  -- TODO: add variants into context
-  -- TODO: add enums into context
-  -- TODO: add functions into context
-  -- TODO: add transforms into context
-  -- TODO: add constants into context
-  foldrM
-    ( \decl ctx -> do
-        case decl of
-          Base.DeclarationStructure struct@Base.Structure {..} ->
-            -- - TODO: add projectors into context
-            -- - TODO: translate TermMember into an application of the projector
-            --   instead of reflecting TermMember in the refinement-level syntax
-            return $ ctx & ctxStructures %~ Map.insert structureId struct
-          Base.DeclarationNewtype _new -> return ctx
-          Base.DeclarationVariant _vari -> return ctx
-          Base.DeclarationEnum _en -> return ctx
-          Base.DeclarationAlias _al -> return ctx
-          Base.DeclarationFunction _func -> return ctx
-          Base.DeclarationConstant _con -> return ctx
-          Base.DeclarationRefinedType reftTy@Base.RefinedType {..} ->
-            return $ ctx & ctxRefinedTypes %~ Map.insert refinedTypeId reftTy
-    )
-    RefiningCtx
-      { _ctxSymIds = mempty,
-        _ctxSymbols = mempty,
-        _ctxApplicantTypes = mempty,
-        _ctxFunctions = mempty,
-        _ctxStructures = mempty,
-        _ctxRefinedTypes = mempty,
-        _ctxRefinedTypes' = mempty
-      }
-    moduleDeclarations
-
-topRefiningEnv :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningEnv
-topRefiningEnv _mdl = do
-  return
-    RefiningEnv {}
 
 -- ** Utilities
 
