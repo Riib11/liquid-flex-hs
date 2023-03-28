@@ -22,7 +22,7 @@ test =
       concat
         -- full = True
         -- single = False
-        if False
+        if True
           then
             [ let !fps =
                     unsafePerformIO $
