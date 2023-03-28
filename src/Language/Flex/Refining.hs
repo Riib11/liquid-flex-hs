@@ -89,9 +89,9 @@ introTerm tmId type_ m = do
 check :: Doc -> Base.Term Base.Type -> Base.Type -> RefiningM ()
 check label term type_ = FlexM.markSection [FlexM.FlexMarkStep "check" . Just $ pPrint term <+> ":?" <+> pPrint type_] do
   tm <- transTerm term
-  $(FlexM.debugThing True [|pPrint|] [|tm|])
+  $(FlexM.debugThing False [|pPrint|] [|tm|])
   ty <- FlexM.liftFlex $ transType type_
-  $(FlexM.debugThing True [|pPrint|] [|ty|])
+  $(FlexM.debugThing False [|pPrint|] [|ty|])
   (_, cstr) <- runCheckingM $ synthCheckTerm ty tm
   query <- makeQuery cstr
   result <- submitQuery query

@@ -5,13 +5,44 @@ module Structures where
 //     y: int32;
 // }
 
-struct EqualBits {
-    b1: bit;
-    b2: bit;
-    assert b1 == b2;
+
+
+
+
+
+
+
+
+
+const ex: bit = {
+    let b = true;
+    assert b;
+
+    true
 }
 
-const ex1: EqualBits = EqualBits{ b1 = false; b2 = false }
+
+
+
+
+// struct EqualBits {
+//     b1: bit;
+//     b2: bit;
+//     assert b1 == b2;
+// }
+
+// const ex1: EqualBits = EqualBits{ b1 = false; b2 = false }
+
+
+
+
+
+
+
+
+
+
+
 
 // const ex2: bit = {
 //     let ebs = EqualBits{ b1 = false; b2 = false };

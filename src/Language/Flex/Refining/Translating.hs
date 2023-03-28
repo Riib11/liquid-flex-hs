@@ -19,7 +19,7 @@ import Language.Flex.FlexM (FlexM, MonadFlex, defaultLocated, freshSymbol, fresh
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Logic (conjPred, replaceSym)
 import Language.Flex.Refining.Prelude (tupleFTycon, tupleTermConstructorSymbol)
-import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenReftBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, getSymbolSymId, introApplicantType, introBinding, introSymId, throwRefiningError)
+import Language.Flex.Refining.RefiningM (RefiningM, ctxSymbols, freshSymId, freshSymIdTermId, freshenReftBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, getSymbolSymId, introApplicantType, introSymId, throwRefiningError)
 import Language.Flex.Refining.Syntax
 import Language.Flex.Syntax (Literal (..), renameTerm)
 import qualified Language.Flex.Syntax as Base
@@ -264,9 +264,9 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
           tyStruct
       )
 
-  $(FlexM.debugThing True [|F.pprint|] [|p1|])
+  $(FlexM.debugThing False [|F.pprint|] [|p1|])
 
-  $(FlexM.debugThing True [|pPrint|] [|fieldTys|])
+  $(FlexM.debugThing False [|pPrint|] [|fieldTys|])
 
   -- TODO: if the changes look ok, then p1 ~~> p
 
@@ -276,7 +276,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
   -- -- p2(x1, ..., xN): r1(x1) && ... && rN(xN)
   -- let p2 = conjPred $ fieldTys <&> \(_, ty) -> F.reftPred $ typeAnn ty
 
-  -- \$(FlexM.debugThing True [|F.pprint|] [|p2|])
+  -- \$(FlexM.debugThing False [|F.pprint|] [|p2|])
 
   -- -- TODO:OLD: now put existential quantifiers on the refinement
 
@@ -320,7 +320,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
             qreftReft = F.reft symStruct p1
           }
 
-  $(FlexM.debugThing True [|pPrint|] [|r|])
+  $(FlexM.debugThing False [|pPrint|] [|r|])
 
   return $ TypeStructure struct r
 

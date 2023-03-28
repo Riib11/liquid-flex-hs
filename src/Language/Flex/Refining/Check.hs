@@ -2,19 +2,19 @@
 {-# HLINT ignore "Move brackets to avoid $" #-}
 {-# HLINT ignore "Use camelCase" #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
 
 module Language.Flex.Refining.Check where
 
 -- TODO: rename this module to "Refining"
 
-import Control.Lens (at, (^.))
+import Control.Lens (at, (&), (^.))
 import Control.Monad
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (lift)
 import qualified Control.Monad.Writer as Writer
 import qualified Control.Monad.Writer.Class as Writer
 import Data.Bifunctor
-import Data.Bifunctor (Bifunctor (second))
 import Data.Functor
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -26,18 +26,19 @@ import Language.Flex.Refining.Constraint
 import Language.Flex.Refining.Logic (conjPred, replaceSym)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
+import qualified Language.Flex.Refining.Syntax as Syntax
 import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, structureSymbol, transTerm, transType, tupleTypeReft)
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), comma, hcat, hsep, nest, parens, punctuate, render, space, text, vcat, ($$), (<+>))
-import Utility (for, ticks)
+import Utility (for, pprintInline, ticks)
 
 type CheckingM = Writer.WriterT CstrMonoid RefiningM
 
 runCheckingM :: CheckingM a -> RefiningM (a, Cstr)
 runCheckingM m = FlexM.markSection [FlexM.FlexMarkStep "runCheckingM" Nothing] do
   (a, CstrMonoid cstr es) <- Writer.runWriterT m
-  FlexM.debugMark True $ FlexM.FlexMarkStep "constraint expressions" . Just $ nest 2 $ vcat $ F.pprint <$> es
+  FlexM.debugMark False $ FlexM.FlexMarkStep "constraint expressions" . Just $ nest 2 $ vcat $ F.pprint <$> es
   return (a, cstr)
 
 data CstrMonoid = CstrMonoid Cstr [F.Expr]
@@ -45,16 +46,16 @@ data CstrMonoid = CstrMonoid Cstr [F.Expr]
 mapCstrMonoid :: (Cstr -> Cstr) -> CstrMonoid -> CstrMonoid
 mapCstrMonoid f (CstrMonoid cstr tms) = CstrMonoid (f cstr) tms
 
-tellCstr :: (FlexM.MonadFlex' m, Writer.MonadWriter CstrMonoid m) => Cstr -> [F.Expr] -> m ()
-tellCstr cstr tms = do
-  FlexM.liftFlex . FlexM.debugMark True . FlexM.FlexMarkStep "tellCstr" . Just $ F.pprint tms
-  Writer.tell $ CstrMonoid cstr tms
+tellCstr :: (FlexM.MonadFlex' m, Writer.MonadWriter CstrMonoid m) => Cstr -> TypeReft -> m ()
+tellCstr cstr ty = do
+  FlexM.liftFlex . FlexM.debugMark False . FlexM.FlexMarkStep "tellCstr" . Just $ pPrint ty
+  Writer.tell $ CstrMonoid cstr [qreftPred $ typeAnn ty]
 
 tellIntro :: H.Bind RefiningError -> CheckingM a -> CheckingM a
 tellIntro bnd m = do
   (a, CstrMonoid _cstr es) <- Writer.listen $ flip Writer.censor m \(CstrMonoid cstr es) ->
     CstrMonoid (H.All bnd cstr) es
-  FlexM.liftFlex . FlexM.debugMark True . FlexM.FlexMarkStep "tellIntro" . Just $
+  FlexM.liftFlex . FlexM.debugMark False . FlexM.FlexMarkStep "tellIntro" . Just $
     "forall" <+> F.pprint (H.bSym bnd) <+> "." <+> (hcat $ punctuate (comma <> space) $ F.pprint <$> es)
   return a
 
@@ -82,18 +83,17 @@ synthTerm :: Term Base.Type -> CheckingM (Term TypeReft)
 synthTerm term = FlexM.markSectionResult True [FlexM.FlexMarkStep "synthTerm" . Just $ pPrint term] pPrint term pPrint do
   case term of
     TermNeutral symId args ty -> do
+      -- neutrals are reflected (functions are already inlined)
       args' <- synthTerm `traverse` args
-      -- TODO: for transforms, input values can't affect output refinement
-      -- type, BUT, newtype/variant/enum constructors should have their args
-      -- reflected in their type via `C1(a, b, c) : { X : C | X = C1(a, b, c)
-      -- }`
       ty' <- transType ty
-      return $ TermNeutral symId args' ty'
+      let tm = TermNeutral symId args' ty'
+      tm' <- fmap_termAnn (fmap_typeAnn (reflectTermInReft (void <$> tm))) tm
+      return tm'
     TermLiteral lit ty -> do
       -- literals are reflected
       ty' <- transType ty
       tm' <-
-        traverse (traverse (reflectLiteralInReft (void ty') lit)) $
+        fmap_termAnn (fmap_typeAnn (reflectLiteralInReft (void ty') lit)) $
           TermLiteral lit ty'
       return tm'
     TermPrimitive prim ty ->
@@ -113,18 +113,20 @@ synthTerm term = FlexM.markSectionResult True [FlexM.FlexMarkStep "synthTerm" . 
         p <- eqPred (varTerm symId (void $ termAnn tm')) (void <$> tm')
         -- the constraint yielded by checking the body must be wrapped in a
         -- quantification over the binding introduced by the let
+        let bSym = symIdSymbol symId
         bSort <- embedType $ void $ termAnn tm'
+        let bPred = H.Reft p
         tellIntro
           H.Bind
-            { bSym = symIdSymbol symId,
+            { bSym,
               bSort,
-              bPred = H.Reft p,
-              bMeta = RefiningError (pPrint term)
+              bPred,
+              bMeta = RefiningError $ F.pprint bSym <+> ":" <+> pprintInline bPred
             }
           $ synthTerm bod
 
       ty' <- inferTerm bod'
-      -- TODO: use ty
+      -- TODO: use ty (??)
 
       return $ TermLet symId tm' bod' ty'
     --
@@ -136,28 +138,28 @@ synthTerm term = FlexM.markSectionResult True [FlexM.FlexMarkStep "synthTerm" . 
 
         -- First. get the (translated, but not refined) refinement of the
         -- structure
-        tmReft <- getRefinedType' $ Base.structureId termStructure
+        specTerm <- getRefinedType' $ Base.structureId termStructure
 
-        $(FlexM.debugThing True [|pPrint|] [|tmReft|])
+        $(FlexM.debugThing False [|pPrint|] [|specTerm|])
 
         -- Nest the assertion within local bindings which instantiate the values
         -- of the fields
         let tmAsrt =
               foldr
-                ( \(fieldId, tmField) te -> do
-                    -- don't freshen, since @tmReft@ already refers to the raw
+                ( \(fieldId, fieldTerm) te -> do
+                    -- don't freshen, since @specTerm@ already refers to the raw
                     -- field name
                     let symId = fromSymbolToSymId $ F.symbol fieldId
-                    TermLet symId tmField te Base.TypeBit
+                    TermLet symId fieldTerm te Base.TypeBit
                 )
                 ( TermAssert
-                    tmReft
+                    specTerm
                     (TermLiteral (LiteralBit True) Base.TypeBit)
                     Base.TypeBit
                 )
                 termFields
 
-        $(FlexM.debugThing True [|pPrint|] [|tmAsrt|])
+        $(FlexM.debugThing False [|pPrint|] [|tmAsrt|])
 
         -- check @tmAsrt@; the final value is unimportant, but want to invoke a
         -- check on the assertion within the scope of the @TermLet@s
@@ -165,75 +167,119 @@ synthTerm term = FlexM.markSectionResult True [FlexM.FlexMarkStep "synthTerm" . 
         void $ synthCheckTerm (typeBit mempty) tmAsrt
 
       -- check the fields
-      termFields' <-
+      fields <-
         forM
           (termFields `zip` Base.structureFields termStructure)
-          \((fieldId, tmField), (fieldId', tyField)) -> do
+          \((fieldId, fieldTerm), (fieldId', fieldType)) -> do
             unless (fieldId == fieldId') $ FlexM.throw $ "field ids are not in matching order between the structure constructor and its annotated structure type:" <+> pPrint term
-            tyField' <- transType tyField
-            (fieldId,) <$> synthCheckTerm tyField' tmField
+            fieldType' <- transType fieldType
+            -- > fieldTerm' := tm : { x : a | p(x) }
+            fieldTerm' <- synthCheckTerm fieldType' fieldTerm
+            -- substitute the bind in @fieldTerm@'s refinement for @F.symbol
+            -- fieldId@
+            -- > fieldTerm' := tm : { fieldId : a | p(fieldId) }
+            fieldTerm'' <-
+              lift $
+                fmap_termAnn
+                  (fmap_typeAnn (return . setQReftBind (F.symbol fieldId)))
+                  fieldTerm'
+            $(FlexM.debugThing False [|pPrint|] [|(fieldId, fieldTerm'')|])
+            return (fieldId, fieldTerm'')
+
+      fieldSorts <- lift $ forM fields (embedType . Syntax.termAnn . snd)
+
+      -- existentially quantify the fields
+      let qr =
+            QReft
+              { qreftQuants =
+                  (fields `zip` fieldSorts) <&> \((_fieldId, fieldTerm), fieldSort) ->
+                    let qr' = typeAnn $ Syntax.termAnn fieldTerm
+                        bSym = qreftBind qr'
+                        bPred = H.Reft $ qreftPred qr'
+                     in QuantExists
+                          H.Bind
+                            { bSym,
+                              bSort = fieldSort,
+                              bPred,
+                              bMeta = RefiningError $ "forall" <+> F.pprint bSym <+> ":" <+> F.pprint bPred
+                            },
+                -- -- substitutes the old bind for `F.symbol fieldId`
+                -- let x = F.symbol fieldId
+                --     r = qreftReft $ typeAnn $ Syntax.termAnn fieldTerm
+                --     p = F.substa (replaceSym (F.reftBind r) x) $ F.reftPred r
+                --  in QuantExists
+                --       H.Bind
+                --         { bSym = x,
+                --           bSort = fieldSort,
+                --           bPred = H.Reft p,
+                --           bMeta = RefiningError $ F.pprint x <+> ":" <+> pprintInline p
+                --         },
+                qreftReft = mempty
+              }
+
+      $(FlexM.debugThing False [|pPrint|] [|qr|])
 
       let tm =
             TermStructure
               { termStructure,
-                termFields = termFields',
-                termAnn = TypeStructure termStructure mempty
+                termFields = fields,
+                termAnn = TypeStructure termStructure qr
               }
 
       -- reflect in the refinement that this term is equal to it's reflection
-      traverse (traverse $ reflectTermInReft (void <$> tm)) tm
+      fmap_termAnn (fmap_typeAnn $ reflectTermInReft (void <$> tm)) tm
     --
     TermMember struct@Base.Structure {..} tm termFieldId ty -> FlexM.markSection [FlexM.FlexMarkStep "TermMember" Nothing] do
       ty' <- transType ty
-      $(FlexM.debugThing True [|pPrint|] [|ty'|])
+      $(FlexM.debugThing False [|pPrint|] [|ty'|])
       structTerm <- synthCheckTerm (TypeStructure struct mempty) tm
       -- struct
       -- structType: { x: S | p(x) }
       structType <- inferTerm structTerm
-      $(FlexM.debugThing True [|pPrint|] [|structType|])
+      $(FlexM.debugThing False [|pPrint|] [|structType|])
       -- structSort
       structSort <- embedType structType
-      $(FlexM.debugThing True [|F.pprint|] [|structSort|])
+      $(FlexM.debugThing False [|F.pprint|] [|structSort|])
       -- structQReft: { x | p(x) }
       structQReft <- lift $ freshenQReftBind (typeAnn structType)
-      $(FlexM.debugThing True [|pPrint|] [|structQReft|])
+      $(FlexM.debugThing False [|pPrint|] [|structQReft|])
       -- structSymId: struct
       structSymId <- lift $ freshSymId "structTermMemberInput"
-      $(FlexM.debugThing True [|pPrint|] [|structSymId|])
+      $(FlexM.debugThing False [|pPrint|] [|structSymId|])
 
       -- p1(struct): p(struct)
       let p1 =
             F.substa
               (replaceSym (qreftBind structQReft) (symIdSymbol structSymId))
               (qreftPred structQReft)
-      $(FlexM.debugThing True [|F.pprint|] [|p1|])
+      $(FlexM.debugThing False [|F.pprint|] [|p1|])
 
       -- structure constructor
       constrSymId <- fromSymbolToSymId . F.val <$> structureSymbol structureId
-      $(FlexM.debugThing True [|pPrint|] [|constrSymId|])
+      $(FlexM.debugThing False [|pPrint|] [|constrSymId|])
 
       -- other fields
       fieldSymIds <- forM structureFields $ lift . freshSymIdTermId . Base.fromFieldIdToTermId . fst
       fieldTypeRefts <- forM structureFields $ transType . snd
       fieldSorts <- forM fieldTypeRefts embedType
       let fieldTerms = uncurry varTerm <$> fieldSymIds `zip` fieldTypeRefts
-      $(FlexM.debugThing True [|pPrint|] [|fieldTerms|])
+      $(FlexM.debugThing False [|pPrint|] [|fieldTerms|])
 
       -- this
       let thisSym = qreftBind $ typeAnn ty'
       let thisSymId = fromSymbolToSymId thisSym
-      $(FlexM.debugThing True [|pPrint|] [|thisSymId|])
+      $(FlexM.debugThing False [|pPrint|] [|thisSymId|])
 
       let args =
             (structureFields `zip` fieldTerms) <&> \((fieldId, _), fieldTerm) -> do
               if fieldId == termFieldId
                 then varTerm thisSymId (void ty')
                 else void <$> fieldTerm
-      $(FlexM.debugThing True [|pPrint|] [|args|])
+      $(FlexM.debugThing False [|pPrint|] [|args|])
 
       -- p2(x1, ..., x[i-1], x[i+1], ..., xn, struct, this): struct == S x1 ... x[i-1] this x[i+1] xn
       p2 <- eqPred (varTerm structSymId $ void ty') (TermNeutral constrSymId args $ void ty')
-      $(FlexM.debugThing True [|F.pprint|] [|p2|])
+      $(FlexM.debugThing False [|F.pprint|] [|p2|])
 
       -- p(this): exists x1 ... xn struct . p1(struct) && p2(x1, ..., xn, struct, this)
       let p =
@@ -246,9 +292,9 @@ synthTerm term = FlexM.markSectionResult True [FlexM.FlexMarkStep "synthTerm" . 
                     )
               )
               $ conjPred [p1, p2]
-      $(FlexM.debugThing True [|F.pprint|] [|p|])
+      $(FlexM.debugThing False [|F.pprint|] [|p|])
 
-      -- FlexM.debugMark True $
+      -- FlexM.debugMark False $
       --   FlexM.FlexMarkStep "TermMember" . Just $
       --     vcat
       --       [ "structSymId =" <+> F.pprint (symIdSymbol structSymId),
@@ -259,7 +305,7 @@ synthTerm term = FlexM.markSectionResult True [FlexM.FlexMarkStep "synthTerm" . 
       --       ]
 
       let ty'' = ty' {typeAnn = fromReft $ F.reft thisSym p}
-      $(FlexM.debugThing True [|pPrint|] [|ty''|])
+      $(FlexM.debugThing False [|pPrint|] [|ty''|])
 
       return $
         TermMember
@@ -297,16 +343,16 @@ synthPrimitive _term ty primitive =
       tm2' <- synthTerm tm2
       let prim = constr tm1' tm2'
       ty' <- transType ty
-      traverse
-        (traverse $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      fmap_termAnn
+        (fmap_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
     go1 constr tm = do
       tm' <- synthTerm tm
       let prim = constr tm'
       ty' <- transType ty
-      traverse
-        (traverse $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      fmap_termAnn
+        (fmap_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
     go3 constr tm1 tm2 tm3 = do
@@ -315,8 +361,8 @@ synthPrimitive _term ty primitive =
       tm3' <- synthTerm tm3
       let prim = constr tm1' tm2' tm3'
       ty' <- transType ty
-      traverse
-        (traverse $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      fmap_termAnn
+        (fmap_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
 -- ** Reflection
@@ -358,25 +404,34 @@ checkSubtype tmSynth tySynth tyExpect = FlexM.markSection [FlexM.FlexMarkStep "c
 
   -- use fresh symbol for the constrained variable that is propogated upwards
   y <- freshSymbol xSynth
-  let pExpect' = subst pExpect xExpect y
-  let tyExpect' = subst tyExpect xExpect y
-  let pSynth' = subst pSynth xSynth y
-  let tySynth' = subst tySynth xSynth y
+  let rho = xExpect `replaceSym` y
+  let pExpect' = F.substa rho pExpect
+  let tyExpect' = F.substa rho tyExpect
+  -- let pSynth' = subst pSynth xSynth y
+  let tySynth' = F.substa rho tySynth
   let tmSynth' = tmSynth {termAnn = tySynth'}
-  let pSpec = F.PImp pSynth' pExpect'
+  let pSpec = pExpect'
 
-  $(FlexM.debugThing True [|F.pprint|] [|pSpec|])
+  FlexM.debugMark True $
+    FlexM.FlexMarkStep "checkSubtype locals" . Just $
+      vcat
+        [ "y         =" <+> F.pprint y,
+          "tySynth'  =" <+> pPrint tySynth',
+          "tmSynth'  =" <+> pPrint tmSynth',
+          "pExpect'  =" <+> F.pprint pExpect',
+          "tyExpect' =" <+> pPrint tyExpect'
+        ]
 
   -- TODO: more properly extract quantifiers here??
   -- TODO: probably want to extract Lets as equations or something but for now just use refinements with euqalities in them
   cstr <-
     cstrForall y tySynth' $
       cstrHead tmSynth' tyExpect' pSpec
-  tellCstr cstr [pSynth']
+  tellCstr cstr tySynth'
   where
     rSynth = qreftReft $ typeAnn tySynth
     rExpect = qreftReft $ typeAnn tyExpect
-    (xSynth, pSynth) = (F.reftBind rSynth, F.reftPred rSynth)
+    (xSynth, _pSynth) = (F.reftBind rSynth, F.reftPred rSynth)
     (xExpect, pExpect) = (F.reftBind rExpect, F.reftPred rExpect)
 
 -- ** Utility Refined Types
@@ -384,5 +439,5 @@ checkSubtype tmSynth tySynth tyExpect = FlexM.markSection [FlexM.FlexMarkStep "c
 -- @{ VV: bit | VV == true }@
 reftTypeIsTrue :: CheckingM TypeReft
 reftTypeIsTrue =
-  traverse (reflectLiteralInReft (TypeAtomic TypeBit ()) (LiteralBit True))
+  fmap_typeAnn (reflectLiteralInReft (TypeAtomic TypeBit ()) (LiteralBit True))
     =<< transType Base.TypeBit

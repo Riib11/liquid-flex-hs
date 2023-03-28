@@ -150,11 +150,11 @@ instance F.Subable Quant where
   syms :: Quant -> [F.Symbol]
   syms = F.syms . quantBind
   substa :: (F.Symbol -> F.Symbol) -> Quant -> Quant
-  substa f q = q {quantBind = F.substa f (quantBind q)}
+  substa f q = q {quantBind = F.substa (\sym -> if sym == H.bSym (quantBind q) then sym else f sym) (quantBind q)}
   substf :: (F.Symbol -> F.Expr) -> Quant -> Quant
-  substf f q = q {quantBind = F.substf f (quantBind q)}
+  substf f q = q {quantBind = F.substf (\sym -> if sym == H.bSym (quantBind q) then F.expr sym else f sym) (quantBind q)}
   subst :: F.Subst -> Quant -> Quant
-  subst sub q = q {quantBind = F.subst sub (quantBind q)}
+  subst sub q = q {quantBind = F.subst sub (quantBind q)} -- TODO: censor substitution of the symbol @H.bSym quantBind@
 
 instance Pretty Quant where
   pPrint = \case
@@ -236,6 +236,12 @@ data AtomicType
   | TypeChar
   | TypeString
   deriving (Eq, Show)
+
+-- | Traverses over only the top annotation.
+fmap_typeAnn :: Functor f => (r -> f r) -> Type r -> f (Type r)
+fmap_typeAnn k ty = do
+  r <- k $ typeAnn ty
+  return ty {typeAnn = r}
 
 -- TODO: is it ok to use F.PTrue as an expression here? or is there a different
 -- encoding of booleans as expression, e.g. as ints or something?
@@ -407,6 +413,12 @@ data SymId = SymId
 instance Pretty SymId where
   pPrint (SymId sym _m_ti) = pprintInline sym
 
+-- | Traverses over only the top annotation
+fmap_termAnn :: Functor f => (r -> f r) -> Term r -> f (Term r)
+fmap_termAnn k tm = do
+  r <- k $ termAnn tm
+  return tm {termAnn = r}
+
 varTerm :: SymId -> r -> Term r
 varTerm symId = TermNeutral symId []
 
@@ -418,9 +430,10 @@ fromSymbolToSymId symIdSymbol = SymId {symIdSymbol, symIdMaybeTermId = Nothing}
 
 -- ** Substitution
 
--- substitute `x` for `y` in `thing` via `Subable`
-subst :: F.Subable a => a -> F.Symbol -> F.Symbol -> a
-subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
+-- TODO: don't use this, use F.subst* instead
+-- -- substitute `x` for `y` in `thing` via `Subable`
+-- subst :: F.Subable a => a -> F.Symbol -> F.Symbol -> a
+-- subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
 
 -- -- TODO: do i need this? could only work on Term(Var|Literal)
 -- subst' :: F.Subable a => a -> F.Symbol -> Term -> a

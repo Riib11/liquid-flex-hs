@@ -34,15 +34,22 @@ throwRefiningError msg = throwError $ RefiningError msg
 -- TODO: refined structures and newtypes
 data RefiningCtx = RefiningCtx
   { _ctxTypings :: Map.Map Base.TermId TypeReft,
+    -- During translation: map of each applicant to its corresponding @SymId@,
+    -- which is used during embedding
     _ctxSymIds :: Map.Map (Base.Applicant ()) SymId,
     _ctxSymbols :: Map.Map F.Symbol SymId,
+    -- | During translation: context of top and local refined signatures
     _ctxApplicants :: Map.Map SymId (Base.ApplicantType TypeReft),
+    -- | Before translation: accumulate functions
     _ctxFunctions :: Map.Map SymId (Base.Function Base.Type),
-    _ctxBindings :: Map.Map SymId (Term TypeReft),
+    -- | Before translation: accumulate structures
     _ctxStructures :: Map.Map Base.TypeId Base.Structure,
+    -- | Init before translation: accumulate refined types
     _ctxRefinedTypes :: Map.Map Base.TypeId (Base.RefinedType Base.Type),
-    -- | translated but not refined, since this will happen at each use use for
-    -- a particular instantiation of the fields
+    -- | During translation, before refinement-checking: translated but not yet
+    -- refined refinements on types, since the refinement-checking incurred (in
+    -- many different ways) by the refined types is performed inline at each
+    -- instance
     _ctxRefinedTypes' :: Map.Map Base.TypeId (Term Base.Type)
   }
 
@@ -84,7 +91,6 @@ topRefiningCtx Base.Module {..} = do
         _ctxSymbols = mempty,
         _ctxApplicants = mempty,
         _ctxFunctions = mempty,
-        _ctxBindings = mempty,
         _ctxStructures = mempty,
         _ctxRefinedTypes = mempty,
         _ctxRefinedTypes' = mempty
@@ -159,11 +165,6 @@ getFunction symId =
   asks (^. ctxFunctions . at symId) >>= \case
     Nothing -> FlexM.throw $ "unknown function id:" <+> pPrint symId
     Just func -> return func
-
-introBinding symId tm =
-  locally
-    (ctxBindings . at symId)
-    (const $ Just tm)
 
 freshenQReftBind :: MonadFlex m => QReft -> m QReft
 freshenQReftBind qr = do

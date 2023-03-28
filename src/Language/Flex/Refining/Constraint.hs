@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Language.Flex.Refining.Constraint where
 
 import qualified Language.Fixpoint.Horn.Types as H
@@ -27,21 +29,23 @@ cstrForall :: MonadFlex m => F.Symbol -> TypeReft -> Cstr -> m Cstr
 -- cstrForall x ty cstr = FlexM.markSection [FlexM.FlexMarkStep "cstrForall" . Just $ "forall" <+> F.pprint x <+> ":" <+> pPrint ty] do
 cstrForall x ty cstr = FlexM.markSection [FlexM.FlexMarkStep ("cstrForall: " <> render ("forall" <+> F.pprint x <+> ":" <+> pPrint ty)) Nothing] do
   s <- embedType ty
-  let qr = setQReftBind x qr
+  let qr = typeAnn ty
+  let quants = qreftQuants qr
+  $(FlexM.debugThing False [|pPrint|] [|quants|])
   return $
     -- prefix with all the constraints in @ty@
     foldr
       quantCstr
       ( H.All
           H.Bind
-            { bSym = qreftBind qr,
+            { bSym = x,
               bSort = s,
               bPred = H.Reft (qreftPred qr),
               bMeta = RefiningError $ pPrint qr
             }
           cstr
       )
-      (qreftQuants $ typeAnn ty)
+      quants
 
 -- | `Head` is a special constructor relevant to Horn Clauses, so read more
 -- about Horn clauses to learn where this detail is relevant.

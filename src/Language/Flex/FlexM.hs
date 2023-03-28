@@ -145,11 +145,11 @@ markSection :: MonadFlex m => [FlexMarkStep] -> m a -> m a
 markSection steps m = do
   -- push onto front of stack
   liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (reverse steps <> steps')))
-  debugMark True $ FlexMarkStep "BEGIN" Nothing
+  debugMark False $ FlexMarkStep "BEGIN" Nothing
   -- compute internal result
   a <- m
   -- pop from front of stack
-  debugMark True $ FlexMarkStep "END" Nothing
+  debugMark False $ FlexMarkStep "END" Nothing
   liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (drop (length steps) steps')))
   -- return internal result
   return a
