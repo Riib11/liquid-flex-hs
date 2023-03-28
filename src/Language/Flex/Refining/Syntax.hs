@@ -1,4 +1,6 @@
 {-# HLINT ignore "Use camelCase" #-}
+{-# LANGUAGE InstanceSigs #-}
+
 module Language.Flex.Refining.Syntax where
 
 import Control.Applicative (Applicative (liftA2))
@@ -12,6 +14,7 @@ import Data.Functor
 import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
+import qualified Data.Set as Set
 import Data.Text (Text, pack, unpack)
 import Data.Typeable
 import Data.Void (Void)
@@ -27,6 +30,7 @@ import qualified Language.Fixpoint.Types.Config as FC
 import qualified Language.Fixpoint.Types.PrettyPrint as P
 import qualified Language.Fixpoint.Utils.Files as Files
 import qualified Language.Flex.FlexM as FlexM
+import Language.Flex.Refining.Logic (replaceSym)
 import Language.Flex.Syntax (FieldId, Literal (..), TermId, TypeId)
 import qualified Language.Flex.Syntax as Base
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
@@ -120,11 +124,37 @@ instance Semigroup QReft where
 instance Monoid QReft where
   mempty = QReft mempty mempty
 
+instance F.Subable QReft where
+  syms :: QReft -> [F.Symbol]
+  syms QReft {..} =
+    Set.toList $
+      Set.fromList (concatMap F.syms qreftQuants <> F.syms qreftReft)
+        -- subtract out all the symbol that are quantified by qrefQuants
+        Set.\\ Set.fromList (H.bSym . quantBind <$> qreftQuants)
+  substa :: (F.Symbol -> F.Symbol) -> QReft -> QReft
+  substa f qr@QReft {..} = qr {qreftQuants = F.substa f <$> qreftQuants, qreftReft = F.substa f qreftReft}
+  substf :: (F.Symbol -> F.Expr) -> QReft -> QReft
+  substf f qr@QReft {..} = qr {qreftQuants = F.substf f <$> qreftQuants, qreftReft = F.substf f qreftReft}
+  subst :: F.Subst -> QReft -> QReft
+  subst sub qr@QReft {..} = qr {qreftQuants = F.subst sub <$> qreftQuants, qreftReft = F.subst sub qreftReft}
+
 instance Pretty QReft where
   pPrint QReft {..} = hcat ((<+> ".") . pPrint <$> qreftQuants) <+> pprintInline qreftReft
 
-data Quant = QuantForall Bind | QuantExists Bind
+data Quant
+  = QuantForall {quantBind :: Bind}
+  | QuantExists {quantBind :: Bind}
   deriving (Eq, Show)
+
+instance F.Subable Quant where
+  syms :: Quant -> [F.Symbol]
+  syms = F.syms . quantBind
+  substa :: (F.Symbol -> F.Symbol) -> Quant -> Quant
+  substa f q = q {quantBind = F.substa f (quantBind q)}
+  substf :: (F.Symbol -> F.Expr) -> Quant -> Quant
+  substf f q = q {quantBind = F.substf f (quantBind q)}
+  subst :: F.Subst -> Quant -> Quant
+  subst sub q = q {quantBind = F.subst sub (quantBind q)}
 
 instance Pretty Quant where
   pPrint = \case
@@ -135,6 +165,26 @@ quantCstr :: Quant -> Cstr -> Cstr
 quantCstr = \case
   QuantForall bnd -> H.All bnd
   QuantExists bnd -> H.Any bnd
+
+qreftBind :: QReft -> F.Symbol
+qreftBind = F.reftBind . qreftReft
+
+qreftPred :: QReft -> F.Pred
+qreftPred = F.reftPred . qreftReft
+
+setQReftBind :: F.Symbol -> QReft -> QReft
+setQReftBind x' qr@QReft {..} =
+  QReft
+    { qreftQuants = F.substa (replaceSym x x') <$> qreftQuants,
+      qreftReft = F.substa (replaceSym x x') qreftReft
+    }
+  where
+    x = qreftBind qr
+
+setReftBind :: F.Symbol -> F.Reft -> F.Reft
+setReftBind x' r = F.substa (replaceSym x x') r
+  where
+    x = F.reftBind r
 
 fromReft :: F.Reft -> QReft
 fromReft qreftReft = QReft {qreftQuants = mempty, qreftReft}

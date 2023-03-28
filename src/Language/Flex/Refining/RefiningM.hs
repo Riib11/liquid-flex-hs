@@ -165,6 +165,11 @@ introBinding symId tm =
     (ctxBindings . at symId)
     (const $ Just tm)
 
+freshenQReftBind :: MonadFlex m => QReft -> m QReft
+freshenQReftBind qr = do
+  r <- freshenReftBind (qreftReft qr)
+  return qr {qreftReft = r}
+
 freshenReftBind :: MonadFlex m => F.Reft -> m F.Reft
 freshenReftBind r = do
   let x = F.reftBind r

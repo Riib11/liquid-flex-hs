@@ -17,7 +17,7 @@ import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
 import Language.Flex.FlexM (FlexM, MonadFlex, defaultLocated, freshSymbol, freshenSymbol)
 import qualified Language.Flex.FlexM as FlexM
-import Language.Flex.Refining.Logic (conjPred)
+import Language.Flex.Refining.Logic (conjPred, replaceSym)
 import Language.Flex.Refining.Prelude (tupleFTycon, tupleTermConstructorSymbol)
 import Language.Flex.Refining.RefiningM (RefiningM, ctxBindings, ctxSymbols, freshSymId, freshSymIdTermId, freshenReftBind, freshenTermId, getApplicantType, getFunction, getStructure, getSymId, getSymbolSymId, introApplicantType, introBinding, introSymId, throwRefiningError)
 import Language.Flex.Refining.Syntax
@@ -235,17 +235,17 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
 
   fieldTys <-
     forM fieldTys_ \(fieldId, ty) -> do
-      -- rename refinement bind to use name defined by field (to be compatible
-      -- with checking refinement on structure)
-      let r = qreftReft $ typeAnn ty
-          (x, p) = (F.reftBind r, F.reftPred r)
+      -- > ty = { x : a | p(x) }
+      let x = qreftBind $ typeAnn ty
 
-      -- acually don't freshen here, since needs to work with checking
-      -- refinement of structure which refers to the raw fields by name
+      -- rename refinement bind to use name defined by field (to be compatible
+      -- with checking refinement on structure, so shouldn't freshen)
       let y = F.symbol fieldId
 
-      let r' = F.reft y $ F.substa (\x' -> if x == x' then y else x') p
-      return (fieldId, ty {typeAnn = (typeAnn ty) {qreftReft = r'}})
+      -- > ty = { y : a | p(y) }
+      let ty' = ty {typeAnn = F.substa (replaceSym x y) (typeAnn ty)}
+
+      return (fieldId, ty')
 
   -- tyStruct: S a1 ... aN
   let tyStruct = TypeStructure struct ()

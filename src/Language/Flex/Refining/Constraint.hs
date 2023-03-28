@@ -3,12 +3,13 @@ module Language.Flex.Refining.Constraint where
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
 import Language.Flex.FlexM (FlexM, MonadFlex)
+import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Logic (replaceSym)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Refining.Translating (embedType)
-import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), nest, vcat, ($$), (<+>))
-import Utility (pprintInline)
+import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), nest, render, vcat, ($$), (<+>))
+import Utility (pprintInline, renderInline)
 
 trivialCstr :: Cstr
 trivialCstr = H.CAnd []
@@ -23,26 +24,24 @@ andCstrs = H.CAnd
 --
 -- > cstrForall x { y: a | p(y) } q(x) = forall { x: a | p(x) }, q(x)
 cstrForall :: MonadFlex m => F.Symbol -> TypeReft -> Cstr -> m Cstr
-cstrForall x ty cstr = do
+-- cstrForall x ty cstr = FlexM.markSection [FlexM.FlexMarkStep "cstrForall" . Just $ "forall" <+> F.pprint x <+> ":" <+> pPrint ty] do
+cstrForall x ty cstr = FlexM.markSection [FlexM.FlexMarkStep ("cstrForall: " <> render ("forall" <+> F.pprint x <+> ":" <+> pPrint ty)) Nothing] do
   s <- embedType ty
-  r <- do
-    let r = qreftReft $ typeAnn ty
-    return $ F.reft x $ F.substa (replaceSym (F.reftBind r) x) $ F.reftPred r
+  let qr = setQReftBind x qr
   return $
+    -- prefix with all the constraints in @ty@
     foldr
       quantCstr
       ( H.All
           H.Bind
-            { bSym = F.reftBind r,
+            { bSym = qreftBind qr,
               bSort = s,
-              bPred = H.Reft (F.reftPred r),
-              bMeta = RefiningError $ pprintInline r
+              bPred = H.Reft (qreftPred qr),
+              bMeta = RefiningError $ pPrint qr
             }
           cstr
       )
       (qreftQuants $ typeAnn ty)
-
--- return $ H.All (H.Bind x s _p (RefiningError "cstrForall")) cstr
 
 -- | `Head` is a special constructor relevant to Horn Clauses, so read more
 -- about Horn clauses to learn where this detail is relevant.
