@@ -5,7 +5,7 @@ module Language.Flex.Refining.Translating where
 import Control.Lens (At (at), locally, to, (&), (?~), (^.), _3)
 import Control.Monad (filterM, foldM, forM, void, when)
 import Control.Monad.Except (ExceptT)
-import Control.Monad.Reader (runReader)
+import Control.Monad.Reader (MonadReader (ask), ReaderT (runReaderT), runReader)
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Bifunctor (Bifunctor (second))
@@ -590,47 +590,61 @@ topRefiningCtx :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningC
 topRefiningCtx Base.Module {..} = do
   -- TODO: add variants into context
   -- TODO: add enums into context
-  -- TODO: add functions into context
-  -- TODO: add transforms into context
   -- TODO: add constants into context
   foldrM
     ( \decl ctx -> do
         case decl of
           Base.DeclarationStructure struct@Base.Structure {..} -> do
-            return $ ctx & ctxStructures . at structureId ?~ struct
+            return . (ctx &) $
+              ctxStructures . at structureId ?~ struct
           Base.DeclarationNewtype _new -> return ctx
           Base.DeclarationVariant varnt@Base.Variant {..} -> do
-            -- TODO: add constructors in ctxSymIds, ctxApplicantTypes
-            return $ ctx & ctxVariants . at variantId ?~ varnt
+            -- add variant, and each constructor's symId and applicant type
+            varnt' <- transType `traverse` varnt
+            (ctx &) . compsM $
+              [ return . (ctxVariants . at variantId ?~ varnt),
+                runReaderT $ for variantConstructors ask \(ctorId, paramTypes) m -> do
+                  symId <- freshSymIdTermId ctorId
+                  paramTypes' <- case lookup ctorId $ Base.variantConstructors varnt' of
+                    Just paramTypes' -> return paramTypes'
+                    Nothing -> FlexM.throw $ "unknown variant constructor:" <+> pPrint ctorId
+                  ty <- do
+                    return (Base.ApplicantTypeVariantConstructor varnt' ctorId paramTypes')
+                  comps
+                    [ introSymId symId,
+                      introApplicantType symId ty
+                    ]
+                    m
+              ]
           Base.DeclarationEnum _en -> return ctx
           Base.DeclarationAlias _al -> return ctx
-          Base.DeclarationFunction func@Base.Function {..}
-            | functionIsTransform -> do
-                symId <- error "TODO"
-                funType <- do
-                  functionTypeParameters <- forM functionParameters (secondM transType)
-                  return
-                    Base.FunctionType
-                      { functionTypeId = functionId,
-                        functionTypeIsTransform = functionIsTransform,
-                        functionTypeParameters,
-                        functionTypeContextualParameters = _wn,
-                        functionTypeOutput = _wo
-                      }
-                return $
-                  ctx
-                    & comps
-                      [ runReader (introSymId symId (asks const)) ctx,
-                        runReader (introApplicantType symId (Base.ApplicantTypeFunction funType) (asks const)) ctx
-                      ]
-            | otherwise -> do
-                -- since each application will be inlined, doesn't add to
-                -- @ctxApplicantTypes@
-                symId <- error "TODO"
-                return $ ctx & ctxFunctions . at symId ?~ func
-          Base.DeclarationConstant _con -> return ctx
+          Base.DeclarationFunction Base.Function {..} -> do
+            symId <- freshSymIdTermId functionId
+            funTy <- do
+              functionTypeParameters' <- secondM transType `traverse` functionParameters
+              functionTypeOutput' <- transType functionOutput
+              return
+                Base.FunctionType
+                  { functionTypeId = functionId,
+                    functionTypeIsTransform = functionIsTransform,
+                    functionTypeParameters = functionTypeParameters',
+                    functionTypeContextualParameters = functionContextualParameters,
+                    functionTypeOutput = functionTypeOutput'
+                  }
+            return . flip runReader ctx . flip comps ask $
+              [ introSymId symId,
+                introApplicantType symId (Base.ApplicantTypeFunction funTy)
+              ]
+          Base.DeclarationConstant Base.Constant {..} -> do
+            symId <- freshSymIdTermId constantId
+            ty <- transType constantType
+            return . flip runReader ctx . flip comps ask $
+              [ introSymId symId,
+                introApplicantType symId (Base.ApplicantType ty)
+              ]
           Base.DeclarationRefinedType reftTy@Base.RefinedType {..} ->
-            return $ ctx & ctxRefinedTypes . at refinedTypeId ?~ reftTy
+            return . (ctx &) $
+              ctxRefinedTypes . at refinedTypeId ?~ reftTy
     )
     RefiningCtx
       { _ctxSymIds = mempty,

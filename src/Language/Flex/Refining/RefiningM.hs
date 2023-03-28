@@ -132,14 +132,14 @@ freshenReftBind r = do
 freshenTermId :: Base.TermId -> RefiningM Base.TermId
 freshenTermId = error "TODO: freshenTermId"
 
-freshSymId :: String -> RefiningM SymId
+freshSymId :: MonadFlex m => String -> m SymId
 freshSymId str = do
-  sym <- liftFlex $ freshSymbol str
+  sym <- freshSymbol str
   return $ fromSymbolToSymId sym
 
-freshSymIdTermId :: Base.TermId -> RefiningM SymId
+freshSymIdTermId :: MonadFlex m => Base.TermId -> m SymId
 freshSymIdTermId tmId = do
-  symIdSymbol <- liftFlex $ freshSymbol (render . pPrint $ tmId)
+  symIdSymbol <- freshSymbol (render . pPrint $ tmId)
   return SymId {symIdSymbol, symIdMaybeTermId = Just tmId}
 
 parsePred :: String -> F.Pred

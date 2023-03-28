@@ -19,7 +19,7 @@ import Language.Flex.Refining.Check (runCheckingM, synthCheckTerm)
 import Language.Flex.Refining.Query (makeQuery, submitQuery)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax (RefiningError)
-import Language.Flex.Refining.Translating (transRefinedTypeRefinement, transTerm, transType)
+import Language.Flex.Refining.Translating (topRefiningCtx, topRefiningEnv, transRefinedTypeRefinement, transTerm, transType)
 import Language.Flex.Syntax (pPrintDeclarationHeader)
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJ hiding (first, (<>))
