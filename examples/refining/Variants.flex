@@ -17,5 +17,5 @@ const ex1: bit = {
 
 variant Nat {
     Zero();
-    Suc(Nat);
+    Suc();
 }

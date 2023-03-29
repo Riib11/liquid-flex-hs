@@ -29,8 +29,9 @@ import Text.Printf (printf)
 import Utility
 import Prelude hiding (Enum)
 
--- !TODO the uses of traverseTy over module is probably not right.. should have
--- already been a `Module TypeM Type tm`, and then need to sequenceTy
+-- !TODO BUG: can't currently do recursive types, since my normalization expands
+-- variants/structures by value. change how normalization works to not do that,
+-- and then need to carry a typing context into refining probably
 
 -- * Typing
 
@@ -780,24 +781,24 @@ typeLiteral = \case
 -- - TypeNamed
 -- - TypeUnifyVar that has already been substited by current unifying
 --   substitution
-isNormalType :: Type -> TypingM Bool
-isNormalType = \case
-  TypeNumber _nt _n -> return True
-  TypeBit -> return True
-  TypeChar -> return True
-  TypeArray ty -> isNormalType ty
-  TypeTuple tys -> and <$> isNormalType `traverse` tys
-  TypeOptional ty -> isNormalType ty
-  TypeNamed {} -> return False
+assertNormalType :: Type -> TypingM ()
+assertNormalType type_ = case type_ of
+  TypeNumber _nt _n -> return ()
+  TypeBit -> return ()
+  TypeChar -> return ()
+  TypeArray ty -> assertNormalType ty
+  TypeTuple tys -> assertNormalType `traverse_` tys
+  TypeOptional ty -> assertNormalType ty
+  TypeNamed {} -> throwTypingError "type was expected to be in normal form" (Just $ toSyntax $ type_)
   TypeUnifyVar uv _ ->
     -- a unification variable is only normal if it hasn't been substituted yet
     gets (^. to _envUnification . at uv) >>= \case
-      Nothing -> return True
-      Just _ -> return False
-  TypeStructure {} -> return True
-  TypeEnum {} -> return True
-  TypeVariant {} -> return True
-  TypeNewtype {} -> return True
+      Nothing -> return ()
+      Just _ -> throwTypingError "type was expected to be in normal form" (Just $ toSyntax $ type_)
+  TypeStructure {} -> return ()
+  TypeEnum {} -> return ()
+  TypeVariant {} -> return ()
+  TypeNewtype {} -> return ()
 
 -- | A concrete type has no type unifications variables left
 isConcreteType :: Type -> Bool
@@ -834,11 +835,7 @@ isTypedTerm = \case
   TermMatch te branches _ -> isTypedTerm te && isTypedTerm `all` (snd <$> branches)
 
 assertNormalModule :: Module Type Type -> TypingM ()
-assertNormalModule =
-  void . traverseTy
-    \ty ->
-      unlessM (isNormalType ty) $
-        throwTypingError ("type in module is not normal:" <+> pPrint ty) Nothing
+assertNormalModule = void . traverseTy assertNormalType
 
 isTypedModule :: Module Type Type -> Bool
 isTypedModule Module {..} =
