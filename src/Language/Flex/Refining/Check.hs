@@ -27,7 +27,7 @@ import Language.Flex.Refining.Logic (conjPred, replaceSym)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Refining.Syntax as Syntax
-import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, structureSymbol, transTerm, transType, tupleTypeReft)
+import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, makeBind, structureSymbol, transTerm, transType, tupleTypeReft)
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), comma, hcat, hsep, nest, parens, punctuate, render, space, text, vcat, ($$), (<+>))
@@ -113,17 +113,10 @@ synthTerm term = FlexM.markSectionResult (FlexM.FlexMarkStep "synthTerm" . Just 
         p <- eqPred (varTerm symId (void $ termAnn tm')) (void <$> tm')
         -- the constraint yielded by checking the body must be wrapped in a
         -- quantification over the binding introduced by the let
-        let bSym = symIdSymbol symId
-        bSort <- embedType $ void $ termAnn tm'
-        let bPred = H.Reft p
-        tellIntro
-          H.Bind
-            { bSym,
-              bSort,
-              bPred,
-              bMeta = RefiningError $ F.pprint bSym <+> ":" <+> pprintInline bPred
-            }
-          $ synthTerm bod
+        let x = symIdSymbol symId
+        s <- embedType $ void $ termAnn tm'
+        tellIntro (makeBind x s (H.Reft p)) $
+          synthTerm bod
 
       ty' <- inferTerm bod'
       -- !TODO use ty (??)
@@ -194,26 +187,8 @@ synthTerm term = FlexM.markSectionResult (FlexM.FlexMarkStep "synthTerm" . Just 
               { qreftQuants =
                   (fields `zip` fieldSorts) <&> \((_fieldId, fieldTerm), fieldSort) ->
                     let qr' = typeAnn $ Syntax.termAnn fieldTerm
-                        bSym = qreftBind qr'
-                        bPred = H.Reft $ qreftPred qr'
-                     in QuantExists
-                          H.Bind
-                            { bSym,
-                              bSort = fieldSort,
-                              bPred,
-                              bMeta = RefiningError $ "forall" <+> F.pprint bSym <+> ":" <+> F.pprint bPred
-                            },
-                -- -- substitutes the old bind for `F.symbol fieldId`
-                -- let x = F.symbol fieldId
-                --     r = qreftReft $ typeAnn $ Syntax.termAnn fieldTerm
-                --     p = F.substa (replaceSym (F.reftBind r) x) $ F.reftPred r
-                --  in QuantExists
-                --       H.Bind
-                --         { bSym = x,
-                --           bSort = fieldSort,
-                --           bPred = H.Reft p,
-                --           bMeta = RefiningError $ F.pprint x <+> ":" <+> pprintInline p
-                --         },
+                     in QuantExists $
+                          makeBind (qreftBind qr') fieldSort (H.Reft $ qreftPred qr'),
                 qreftReft = mempty
               }
 

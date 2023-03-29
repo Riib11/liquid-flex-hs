@@ -9,7 +9,7 @@ import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Logic (replaceSym)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
-import Language.Flex.Refining.Translating (embedType)
+import Language.Flex.Refining.Translating (embedType, makeBind)
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), nest, render, vcat, ($$), (<+>))
 import Utility (pprintInline, renderInline)
 
@@ -38,15 +38,7 @@ cstrForall x ty cstr = FlexM.markSection [FlexM.FlexMarkStep "cstrForall" Nothin
     -- prefix with all the constraints in @ty@
     foldr
       quantCstr
-      ( H.All
-          H.Bind
-            { bSym = x,
-              bSort = s,
-              bPred = H.Reft (qreftPred qr),
-              bMeta = RefiningError $ pPrint qr
-            }
-          cstr
-      )
+      (H.All (makeBind x s (H.Reft (qreftPred qr))) cstr)
       quants
 
 -- | `Head` is a special constructor relevant to Horn Clauses, so read more

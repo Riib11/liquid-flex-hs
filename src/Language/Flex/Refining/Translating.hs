@@ -20,6 +20,7 @@ import Data.String (IsString (fromString))
 import Data.Text (pack)
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
+import Language.Fixpoint.Types.PrettyPrint as P
 import Language.Flex.FlexM (FlexM, MonadFlex, defaultLocated, freshSymbol, freshenSymbol)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Logic (conjPred, replaceSym)
@@ -252,8 +253,6 @@ variantTypeReft varnt@Base.Variant {..} ctors = FlexM.markSectionResult (FlexM.F
           return $ setQReftBind paramSym qr
       return (ctorId, paramTypes')
 
-  -- !TODO similar to structure, but over all constructors and disjoin of result
-
   -- > p = exists a1, ..., an, ..., z1, ..., zn . { varnt: V | varnt == ctor_a a1 ...
   -- an || ... || varnt == ctor_z z1 ... zn }
 
@@ -274,22 +273,8 @@ variantTypeReft varnt@Base.Variant {..} ctors = FlexM.markSectionResult (FlexM.F
   -- !NOTE this will definitely be a source of slowness
   let p = F.pOr ps
 
-  quants <-
-    concat . concat
-      <$> forM ctors' \(ctorId, paramTypes) -> do
-        forM paramTypes \paramType -> do
-          let r = qreftReft $ typeAnn paramType
-          bSort <- embedType paramType
-          return $
-            qreftQuants (typeAnn paramType)
-              <> [ QuantExists
-                     H.Bind
-                       { bSym = F.reftBind r,
-                         bSort,
-                         bPred = H.Reft $ F.reftPred r,
-                         bMeta = RefiningError $ F.pprint (F.reftBind r) <+> ":" <+> F.pprint (H.Reft $ F.reftPred r)
-                       }
-                 ]
+  quants <- ((concat . concat) <$>) . forM ctors' $ \(_ctorId, paramTypes) -> do
+    forM paramTypes extractQuants
 
   let qr =
         QReft
@@ -368,23 +353,8 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
   -- let p = conjPred [p1, p2]
 
   -- reftQuants: exists x1, ..., exists nN
-  quants <-
-    concat
-      <$> forM fieldTys \(fieldId, fieldType) -> do
-        let r = qreftReft $ typeAnn fieldType
-        bSort <- embedType fieldType
-        return $
-          -- inherit any quantifiers in field's refined type
-          qreftQuants (typeAnn fieldType)
-            -- existentially quantify over field
-            <> [ QuantExists
-                   H.Bind
-                     { bSym = F.reftBind r,
-                       bSort,
-                       bPred = H.Reft $ F.reftPred r,
-                       bMeta = RefiningError $ pPrint fieldId <+> ":" <+> pPrint fieldType
-                     }
-               ]
+  quants <- concat <$> forM fieldTys (extractQuants . snd)
+
   -- qr: { struct: S a1 ... aN | exists x1, ..., exists nN, p2(struct, x1, ...,
   -- xN) }
   let qr =
@@ -448,20 +418,7 @@ tupleTypeReft tys_ = do
         --         F.pExist [(F.reftBind r1, srt1), (F.reftBind r2, srt2)] $
         --           conjPred [p1, p2]
 
-        quants <-
-          concat <$> forM [ty1, ty2] \ty -> do
-            let r = qreftReft $ typeAnn ty
-            bSort <- embedType ty
-            return $
-              qreftQuants (typeAnn ty)
-                <> [ QuantExists
-                       H.Bind
-                         { bSym = F.reftBind r,
-                           bSort,
-                           bPred = H.Reft $ F.reftPred r,
-                           bMeta = RefiningError $ F.pprint (F.reftBind r) <+> ":" <+> pPrint ty
-                         }
-                   ]
+        quants <- concat <$> forM [ty1, ty2] extractQuants
 
         -- r: { tuple: (a, b) | exists x1, exists x2, p1(tuple, x1, x2) }
         let r =
@@ -761,3 +718,32 @@ topRefiningEnv :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningE
 topRefiningEnv _mdl = do
   return
     RefiningEnv {}
+
+-- ** Liquid Fixpoint Utilities
+
+extractQuants :: MonadFlex m => TypeReft -> m [Quant]
+extractQuants tr = do
+  let qr = typeAnn tr
+  bSort <- embedType tr
+  return $
+    qreftQuants qr
+      <> [ QuantExists
+             H.Bind
+               { bSym = qreftBind qr,
+                 bSort,
+                 bPred = H.Reft $ qreftPred qr,
+                 bMeta = RefiningError $ "exists:" <+> pPrint tr
+               }
+         ]
+
+makeBind :: F.Symbol -> F.Sort -> H.Pred -> Bind
+makeBind bSym bSort bPred =
+  H.Bind
+    { bSym,
+      bSort,
+      bPred,
+      bMeta =
+        let ppi :: P.PPrint a => a -> Doc
+            ppi = pprintInline
+         in RefiningError . hsep $ [ppi bSym, ":", ppi bSort, ".", ppi bPred]
+    }
