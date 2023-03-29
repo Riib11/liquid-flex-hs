@@ -400,8 +400,8 @@ checkSubtype tmSynth tySynth tyExpect = FlexM.markSection [FlexM.FlexMarkStep "c
   -- !TODO more properly extract quantifiers here??
   -- !TODO probably want to extract Lets as equations or something but for now just use refinements with euqalities in them
   cstr <-
-    cstrForall y tySynth' $
-      cstrHead tmSynth' tyExpect' pSpec
+    cstrForall y tySynth'
+      =<< cstrHead tmSynth' tyExpect' pSpec
   tellCstr cstr tySynth'
   where
     rSynth = qreftReft $ typeAnn tySynth

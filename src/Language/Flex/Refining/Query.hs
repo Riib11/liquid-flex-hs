@@ -106,9 +106,13 @@ addUserDatatypes = do
   -- add structures
   structs <- asks (^. ctxStructures)
   forM_ (Map.elems structs) \struct -> do
-    -- add DataDecl
-    datadecl <- FlexM.liftFlex $ structureDataDecl struct
-    modify $ _qData %~ (datadecl :)
+    dd <- FlexM.liftFlex $ structureDataDecl struct
+    modify $ _qData %~ (dd :)
+  -- add variants
+  varnts <- asks (^. ctxVariants)
+  forM_ (Map.elems varnts) \varnt -> do
+    dd <- FlexM.liftFlex $ variantDataDecl varnt
+    modify $ _qData %~ (dd :)
 
 {-
 -- !TODO maybe actually DataDecl already introduces projectors?

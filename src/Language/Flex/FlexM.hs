@@ -6,6 +6,7 @@
 module Language.Flex.FlexM where
 
 import Control.Applicative (liftA)
+import Control.Category ((>>>))
 import Control.Lens
 import Control.Monad
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
@@ -24,7 +25,7 @@ import qualified Language.Haskell.TH.Syntax as H
 import Text.PrettyPrint.HughesPJ hiding ((<>))
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
-import Utility (bullet, header, subheader)
+import Utility (bullet, comps, header, subheader)
 import Prelude hiding (log)
 
 -- | The `FlexM` monad is the base monad under which all the impure comptuations
@@ -271,7 +272,10 @@ debugThing b p x =
     debugMark
       b
       ( FlexMarkStep
-          $(x >>= \x' -> pure $ H.LitE $ H.StringL $ show $ TH.ppr x')
+          $(x >>= \x' -> pure $ H.LitE $ H.StringL $ cleanupNameString $ show $ TH.ppr x')
           (Just ($p $x))
       )
     |]
+
+cleanupNameString :: String -> String
+cleanupNameString = reverse >>> dropWhile ('_' /=) >>> tail >>> reverse

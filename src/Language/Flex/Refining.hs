@@ -7,7 +7,7 @@ module Language.Flex.Refining where
 import Control.Lens
 import Control.Monad
 import Control.Monad.Except (ExceptT, MonadTrans (lift), runExceptT)
-import Control.Monad.Reader (ReaderT (runReaderT))
+import Control.Monad.Reader (ReaderT (runReaderT), asks)
 import Control.Monad.State (StateT (runStateT))
 import Data.Bifunctor (first)
 import Data.Foldable (foldrM)
@@ -33,7 +33,11 @@ refineModule mdl@Base.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("refi
     Right (ctx, env) -> runExceptT $ runReaderT (runStateT (checkModule mdl) env) ctx
 
 checkModule :: Base.Module Base.Type -> RefiningM ()
-checkModule Base.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("checkModule" <+> pPrint moduleId) Nothing] do
+checkModule Base.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("check module" <+> pPrint moduleId) Nothing] do
+  do
+    appTypes <- asks (^. ctxApplicantTypes . to Map.toList)
+    $(FlexM.debugThing False [|text . show|] [|appTypes|])
+
   -- introduce refined translations into ctxRefinedTypes'
   localM
     ( \ctx -> do
@@ -89,8 +93,5 @@ check label term type_ = FlexM.markSection [FlexM.FlexMarkStep "check" . Just $ 
               <+> text msg,
             "stack:" $$ nest 2 (vcat $ (\(err, m_s) -> pPrint err <+> maybe mempty (parens . text) m_s) <$> mb_stack)
           ]
-    F.Unsafe _st res ->
-      throwRefiningError $
-        "unsafe:"
-          $$ nest 2 (vcat $ pPrint <$> res)
+    F.Unsafe _st res -> throwRefiningError $ "unsafe:" $$ nest 2 (vcat $ pPrint <$> res)
     F.Safe _st -> return ()

@@ -90,6 +90,9 @@ instance F.Symbolic (TypeId, FieldId) where
 instance F.Symbolic (TypeId, TermId) where
   symbol (TypeId x, TermId y) = F.symbol $ x <> "#" <> y
 
+instance F.Symbolic (TypeId, TermId, Int) where
+  symbol (TypeId x, TermId y, fieldIx) = F.symbol $ x <> "#" <> y <> show fieldIx
+
 fromFieldIdToTermId :: FieldId -> TermId
 fromFieldIdToTermId (FieldId x) = TermId x
 
@@ -487,6 +490,14 @@ data ApplicantType ann
   | ApplicantTypeNewtypeConstructor (Newtype ann)
   | ApplicantType ann
   deriving (Eq, Show, Functor, Foldable, Traversable)
+
+instance Pretty r => Pretty (ApplicantType r) where
+  pPrint = \case
+    (ApplicantTypeFunction ft) -> pPrint ft
+    (ApplicantTypeEnumConstructor Enum {..} ti) -> pPrint enumId <> "#" <> pPrint ti
+    (ApplicantTypeVariantConstructor Variant {..} ti rs) -> pPrint variantId <> "#" <> pPrint ti <> parens (hcat $ punctuate (comma <> space) $ pPrint <$> rs)
+    (ApplicantTypeNewtypeConstructor Newtype {..}) -> pPrint newtypeId <> parens (pPrint newtypeType)
+    (ApplicantType r) -> pPrint r
 
 data FunctionType ann = FunctionType
   { functionTypeId :: TermId,

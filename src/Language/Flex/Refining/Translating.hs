@@ -591,12 +591,13 @@ structureFieldSymbol structId fieldId = defaultLocated $ F.symbol (structId, fie
 
 variantDataDecl :: MonadFlex m => Base.Variant Base.Type -> m F.DataDecl
 variantDataDecl Base.Variant {..} = do
-  dcName <- variantSymbol variantId
-  let ddTyCon = F.symbolFTycon dcName
+  ddName <- variantSymbol variantId
+  let ddTyCon = F.symbolFTycon ddName
   ddCtors <- forM variantConstructors \(ctorId, paramTypes) -> do
-    dcFields <- forM paramTypes \ty -> do
-      dfName <- variantConstructorSymbol variantId ctorId
-      dfSort <- embedType =<< transType ty
+    dcName <- variantConstructorSymbol variantId ctorId
+    dcFields <- forM (paramTypes `zip` [0 ..]) \(fieldType, fieldIx) -> do
+      dfName <- variantConstructorFieldSymbol variantId ctorId fieldIx
+      dfSort <- embedType =<< transType fieldType
       return F.DField {dfName, dfSort}
     return F.DCtor {dcName, dcFields}
   return
@@ -611,6 +612,9 @@ variantSymbol varntId = defaultLocated $ F.symbol varntId
 
 variantConstructorSymbol :: MonadFlex m => Base.TypeId -> Base.TermId -> m F.LocSymbol
 variantConstructorSymbol varntId ctorId = defaultLocated $ F.symbol (varntId, ctorId)
+
+variantConstructorFieldSymbol :: MonadFlex m => Base.TypeId -> Base.TermId -> Int -> m F.LocSymbol
+variantConstructorFieldSymbol varntId ctorId fieldIx = defaultLocated $ F.symbol (varntId, ctorId, fieldIx)
 
 -- *** Function
 
@@ -628,39 +632,52 @@ topRefiningCtx :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningC
 topRefiningCtx Base.Module {..} = do
   -- !TODO enums, newtypes
   foldrM
-    ( \decl ctx -> do
+    ( \decl ctx -> FlexM.markSection [FlexM.FlexMarkStep (Base.pPrintDeclarationHeader decl) (Just $ pPrint decl)] do
         case decl of
           Base.DeclarationStructure struct@Base.Structure {..} -> do
+            FlexM.debug True $ "insert structure" <+> pPrint structureId
             return . (ctx &) $
               ctxStructures . at structureId ?~ struct
-          Base.DeclarationNewtype _new -> return ctx
+          Base.DeclarationNewtype _new -> return ctx -- !TODO
           Base.DeclarationVariant varnt@Base.Variant {..} -> do
+            FlexM.debug True $ "insert variant" <+> pPrint variantId
             -- add variant, and each constructor's symId and applicant type
             varnt' <- transType `traverse` varnt
 
             flip compsM ctx $
               [ return . (ctxVariants . at variantId ?~ varnt),
                 runReaderT $ for variantConstructors ask \(ctorId, _paramTypes) m -> do
-                  sym <- F.val <$> variantConstructorSymbol variantId ctorId
-                  let symId =
+                  ctorSym <- F.val <$> variantConstructorSymbol variantId ctorId
+                  let ctorSymId =
                         SymId
-                          { symIdSymbol = sym,
+                          { symIdSymbol = ctorSym,
                             symIdMaybeTypeId = Just variantId,
                             symIdMaybeTermId = Just ctorId
                           }
                   paramTypes' <- case lookup ctorId $ Base.variantConstructors varnt' of
                     Just paramTypes' -> return paramTypes'
                     Nothing -> FlexM.throw $ "unknown variant constructor:" <+> pPrint ctorId
-                  ty <- do
+                  ctorType <- do
                     return (Base.ApplicantTypeVariantConstructor varnt' ctorId paramTypes')
+
+                  FlexM.debug True $
+                    vcat
+                      [ "insert variant constructor",
+                        nest 2 . vcat $
+                          [ "variantId =" <+> pPrint variantId,
+                            "ctorId    =" <+> pPrint ctorId,
+                            "ctorSymId =" <+> pPrint ctorSymId
+                          ]
+                      ]
+
                   comps
-                    [ introSymId symId,
-                      introApplicantType symId ty
+                    [ introSymId ctorSymId,
+                      introApplicantType ctorSymId ctorType
                     ]
                     m
               ]
-          Base.DeclarationEnum _en -> return ctx
-          Base.DeclarationAlias _al -> return ctx
+          Base.DeclarationEnum _en -> return ctx -- !TODO
+          Base.DeclarationAlias _al -> return ctx -- !TODO
           Base.DeclarationFunction Base.Function {..} -> do
             sym <- F.val <$> functionSymbol functionId
             let symId =
@@ -668,9 +685,8 @@ topRefiningCtx Base.Module {..} = do
                     { symIdSymbol = sym,
                       symIdMaybeTypeId = Nothing,
                       symIdMaybeTermId = Just functionId
-                    } ::
-                    SymId
-            funTy <- do
+                    }
+            funType <- do
               functionTypeParameters' <- secondM transType `traverse` functionParameters
               functionTypeOutput' <- transType functionOutput
               return
@@ -681,24 +697,53 @@ topRefiningCtx Base.Module {..} = do
                     functionTypeContextualParameters = functionContextualParameters,
                     functionTypeOutput = functionTypeOutput'
                   }
+
+            FlexM.debug True $
+              vcat
+                [ "insert function",
+                  nest 2 . vcat $
+                    [ "functionId =" <+> pPrint functionId,
+                      "funType    =" <+> pPrint funType
+                    ]
+                ]
+
             flip runReaderT ctx . flip comps ask $
               [ introSymId symId,
-                introApplicantType symId (Base.ApplicantTypeFunction funTy)
+                introApplicantType symId (Base.ApplicantTypeFunction funType)
               ]
           Base.DeclarationConstant Base.Constant {..} -> do
-            sym <- F.val <$> constantSymbol constantId
-            let symId =
+            constSym <- F.val <$> constantSymbol constantId
+            let constSymId =
                   SymId
-                    { symIdSymbol = sym,
+                    { symIdSymbol = constSym,
                       symIdMaybeTypeId = Nothing,
                       symIdMaybeTermId = Just constantId
                     }
-            ty <- transType constantType
+
+            constType <- transType constantType
+
+            FlexM.debug True $
+              vcat
+                [ "insert constant",
+                  nest 2 . vcat $
+                    [ "constantId =" <+> pPrint constantId,
+                      "constType  =" <+> pPrint constType,
+                      "constSymId =" <+> pPrint constSymId
+                    ]
+                ]
+
             flip runReaderT ctx . flip comps ask $
-              [ introSymId symId,
-                introApplicantType symId (Base.ApplicantType ty)
+              [ introSymId constSymId,
+                introApplicantType constSymId (Base.ApplicantType constType)
               ]
-          Base.DeclarationRefinedType reftTy@Base.RefinedType {..} ->
+          Base.DeclarationRefinedType reftTy@Base.RefinedType {..} -> do
+            FlexM.debug True $
+              vcat
+                [ "insert refined type",
+                  nest 2 . vcat $
+                    [ "refinedTypeId =" <+> pPrint refinedTypeId
+                    ]
+                ]
             return . (ctx &) $
               ctxRefinedTypes . at refinedTypeId ?~ reftTy
     )

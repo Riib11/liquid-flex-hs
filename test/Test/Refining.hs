@@ -22,7 +22,7 @@ test =
       concat
         -- True  : full
         -- False : select
-        if False
+        if True
           then
             [ let !fps =
                     unsafePerformIO $
