@@ -32,6 +32,11 @@ struct NonemptyString {
 }
 
 function equalInt32(x: int32, y: int32) -> bit {
+    // !TODO: causes error because renaming is not properly performed in
+    // sequence with embedding 
+
+    // assert !(x == y); 
+    
     x == y
 }
 
