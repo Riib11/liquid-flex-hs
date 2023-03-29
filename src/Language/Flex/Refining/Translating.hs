@@ -244,14 +244,60 @@ variantTypeReft :: MonadFlex m => Base.Variant Base.Type -> [(Base.TermId, [Type
 variantTypeReft varnt@Base.Variant {..} ctors = FlexM.markSectionResult (FlexM.FlexMarkStep "variantTypeReft" . Just $ pPrint variantId) pPrint varnt pPrint do
   varntSym <- freshSymbol ("variantTerm" :: String)
 
-  ctorTys <-
-    forM ctors _
+  ctors' <-
+    forM ctors \(ctorId, paramTypes) -> do
+      paramTypes' <- forM paramTypes \paramType -> do
+        flip fmap_typeAnn paramType \qr -> do
+          paramSym <- freshSymbolFromType paramType
+          return $ setQReftBind paramSym qr
+      return (ctorId, paramTypes')
 
   -- TODO: similar to structure, but over all constructors and disjoin of result
 
-  -- exists a1, ..., an, ..., z1, ..., an . { varnt: V | varnt == ctor_a a1 ... an || ... || varnt == ctor }
+  -- > p = exists a1, ..., an, ..., z1, ..., zn . { varnt: V | varnt == ctor_a a1 ...
+  -- an || ... || varnt == ctor_z z1 ... zn }
 
-  return $ TypeVariant varnt _
+  let varntType = TypeVariant varnt ()
+
+  -- for each constructor @ctor : A1 -> ... -> An -> V@
+  ps <- forM ctors' \(ctorId, paramTypes) ->
+    -- varnt == ctor x1 ... xn
+    eqPred
+      (varTerm (fromSymbolToSymId varntSym) varntType)
+      --
+      ( TermNeutral
+          (SymId (F.symbol (variantId, ctorId)) (Just variantId) (Just ctorId))
+          (paramTypes <&> \paramType -> varTerm (fromSymbolToSymId (qreftBind $ typeAnn paramType)) (void paramType))
+          varntType
+      )
+
+  -- !NOTE this will definitely be a source of slowness
+  let p = F.pOr ps
+
+  quants <-
+    concat . concat
+      <$> forM ctors' \(ctorId, paramTypes) -> do
+        forM paramTypes \paramType -> do
+          let r = qreftReft $ typeAnn paramType
+          bSort <- embedType paramType
+          return $
+            qreftQuants (typeAnn paramType)
+              <> [ QuantExists
+                     H.Bind
+                       { bSym = F.reftBind r,
+                         bSort,
+                         bPred = H.Reft $ F.reftPred r,
+                         bMeta = RefiningError $ F.pprint (F.reftBind r) <+> ":" <+> F.pprint (H.Reft $ F.reftPred r)
+                       }
+                 ]
+
+  let qr =
+        QReft
+          { qreftQuants = quants,
+            qreftReft = F.reft varntSym p
+          }
+
+  return $ TypeVariant varnt qr
 
 -- | Refined structure type.
 --
@@ -277,7 +323,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
   -- tyStruct: S a1 ... aN
   let tyStruct = TypeStructure struct ()
 
-  -- p1(struct, x1, ..., xN): p1(x1, ..., xN): struct = S a1 ... aN
+  -- > p1(struct, x1, ..., xN) = struct = S a1 ... aN
   p1 <-
     eqPred
       (varTerm (fromSymbolToSymId structSym) tyStruct)
@@ -339,17 +385,17 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
                        bMeta = RefiningError $ pPrint fieldId <+> ":" <+> pPrint fieldType
                      }
                ]
-  -- r: { struct: S a1 ... aN | exists x1, ..., exists nN, p2(struct, x1, ...,
+  -- qr: { struct: S a1 ... aN | exists x1, ..., exists nN, p2(struct, x1, ...,
   -- xN) }
-  let r =
+  let qr =
         QReft
           { qreftQuants = quants,
             qreftReft = F.reft structSym p1
           }
 
-  $(FlexM.debugThing False [|pPrint|] [|r|])
+  $(FlexM.debugThing False [|pPrint|] [|qr|])
 
-  return $ TypeStructure struct r
+  return $ TypeStructure struct qr
 
 -- | Refined tuple type.
 --

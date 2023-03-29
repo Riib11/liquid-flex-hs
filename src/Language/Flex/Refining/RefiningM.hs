@@ -192,5 +192,17 @@ freshSymIdTermId tmId = do
         symIdMaybeTermId = Just tmId
       }
 
+freshSymbolFromType :: MonadFlex m => Type r -> m F.Symbol
+freshSymbolFromType = \case
+  (TypeAtomic atomic _qr) -> case atomic of
+    TypeInt -> freshSymbol ("x" :: String)
+    TypeFloat -> freshSymbol ("x" :: String)
+    TypeBit -> freshSymbol ("b" :: String)
+    TypeChar -> freshSymbol ("c" :: String)
+    TypeString -> freshSymbol ("s" :: String)
+  (TypeTuple _x0 _qr) -> freshSymbol ("t" :: String)
+  (TypeStructure Base.Structure {..} _qr) -> freshSymbol . render . pPrint $ structureId
+  (TypeVariant Base.Variant {..} _qr) -> freshSymbol . render . pPrint $ variantId
+
 parsePred :: String -> F.Pred
 parsePred = FP.doParse' FP.predP "parsePred"
