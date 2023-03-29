@@ -151,6 +151,12 @@ transNeutral app mb_args mb_cxargs ty = do
         -- argId => argSymId
         let renaming = fst <$> freshening
 
+        do
+          let renaming' = Map.toList renaming
+          $(FlexM.debugThing True [|pPrint|] [|renaming'|])
+
+        $(FlexM.debugThing True [|pPrint|] [|functionBody|])
+
         -- rename via `renaming` in `functionBody`
         let functionBody' :: Base.Term Base.Type
             functionBody' =
@@ -159,6 +165,8 @@ transNeutral app mb_args mb_cxargs ty = do
                     Base.TermLet (Base.PatternNamed argSymId (Base.termAnn arg')) arg' tm (Base.termAnn tm)
                 )
                 $ renameTerm renaming functionBody
+
+        $(FlexM.debugThing True [|pPrint|] [|functionBody'|])
 
         transTerm functionBody'
     -- non-functions are not inlined
@@ -678,7 +686,7 @@ topRefiningCtx Base.Module {..} = do
               ]
           Base.DeclarationEnum _en -> return ctx -- !TODO
           Base.DeclarationAlias _al -> return ctx -- !TODO
-          Base.DeclarationFunction Base.Function {..} -> do
+          Base.DeclarationFunction fun@Base.Function {..} -> do
             sym <- F.val <$> functionSymbol functionId
             let symId =
                   SymId
@@ -709,7 +717,8 @@ topRefiningCtx Base.Module {..} = do
 
             flip runReaderT ctx . flip comps ask $
               [ introSymId symId,
-                introApplicantType symId (Base.ApplicantTypeFunction funType)
+                introApplicantType symId (Base.ApplicantTypeFunction funType),
+                if functionIsTransform then id else locally ctxFunctions (Map.insert symId fun)
               ]
           Base.DeclarationConstant Base.Constant {..} -> do
             constSym <- F.val <$> constantSymbol constantId

@@ -9,6 +9,6 @@ main = do
   void . runTestTT $
     TestList
       [ -- Parsing.test,
-        Typing.test
-        -- Refining.test
+        -- Typing.test
+        Refining.test
       ]

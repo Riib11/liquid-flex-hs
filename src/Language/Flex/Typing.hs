@@ -118,7 +118,7 @@ topTypingCtx Module {..} = do
   foldlM'
     moduleDeclarations
     TypingCtx
-      { _ctxTypes = mempty,
+      { _ctxTypes = Map.fromList [(TypeId "string", return (TypeArray TypeChar))],
         _ctxApplicants = mempty,
         _ctxCxparamNewtypes = mempty,
         _ctxCxparams = mempty

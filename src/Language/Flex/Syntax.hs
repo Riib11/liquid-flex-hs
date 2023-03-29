@@ -766,7 +766,18 @@ renameTerm tmIds term = case term of
   TermAssert te te' r -> TermAssert (renameTerm tmIds te) (renameTerm tmIds te') r
   TermStructure ti fields r -> TermStructure ti (second (renameTerm tmIds) <$> fields) r
   TermMember te fi r -> TermMember (renameTerm tmIds te) fi r
-  TermNeutral ap m_tes m_te's r -> TermNeutral ap (renameTerm tmIds <$$> m_tes) (renameTerm tmIds <$$> m_te's) r
+  TermNeutral ap m_tes m_te's r ->
+    TermNeutral
+      ( case ap of
+          (Applicant m_ti ti _at) -> case m_ti of
+            Just _ -> ap
+            Nothing -> case Map.lookup ti tmIds of
+              Nothing -> ap
+              Just ti' -> ap {applicantTermId = ti'}
+      )
+      (renameTerm tmIds <$$> m_tes)
+      (renameTerm tmIds <$$> m_te's)
+      r
   TermAscribe te ty r -> TermAscribe (renameTerm tmIds te) ty r
   TermMatch te branches r -> TermMatch (renameTerm tmIds te) (second (renameTerm tmIds) <$> branches) r
 

@@ -174,8 +174,12 @@ freshenReftBind r = do
   x' <- liftFlex $ freshSymbol (render $ pprintInline x)
   return $ F.substa (\y -> if y == x then x' else y) r
 
-freshenTermId :: Base.TermId -> RefiningM Base.TermId
-freshenTermId = error "!TODO freshenTermId"
+freshenTermId :: MonadFlex m => Base.TermId -> m Base.TermId
+freshenTermId (Base.TermId s) = do
+  i <- FlexM.freshInt
+  return $ Base.TermId (s <> "~" <> show i)
+
+-- error "!TODO freshenTermId"
 
 freshSymId :: MonadFlex m => String -> m SymId
 freshSymId str = do

@@ -19,3 +19,24 @@ const abs2: bit = {
 
 // FAIL
 // const abs3: EqualBits = EqualBits{ b1 = true; b2 = false }
+
+// struct A {
+//     x: int32;
+//     y: int32;
+//     assert (x < y); // !TODO implement primitive `<`
+// }
+
+struct NonemptyString {
+    content: string;
+    assert !(content == "");
+}
+
+function equalInt32(x: int32, y: int32) -> bit {
+    x == y
+}
+
+struct EqualInt32s {
+    x1: int32;
+    x2: int32;
+    assert equalInt32(x1, x2);
+}

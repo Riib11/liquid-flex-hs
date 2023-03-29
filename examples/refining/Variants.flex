@@ -15,7 +15,8 @@ const ex1: bit = {
     true
 }
 
-variant Nat {
-    Zero();
-    Suc();
-}
+// !TODO fix bug in typing to allow for recursive types
+// variant Nat {
+//     Zero();
+//     Suc(Nat);
+// }

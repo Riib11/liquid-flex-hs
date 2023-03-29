@@ -137,6 +137,12 @@ freshenSymbol x = do
   liftFlex $ modifying flexFreshSymbolIndex (1 +)
   return $ F.symbol (render (F.pprint x) <> "~" <> show i)
 
+freshInt :: MonadFlex m => m Int
+freshInt = do
+  i <- liftFlex $ gets (^. flexFreshSymbolIndex)
+  liftFlex $ modifying flexFreshSymbolIndex (1 +)
+  return i
+
 -- | Implicitly use flexTrace' by reversing it, since it is built up with most
 -- recent stacks at the beginning of the trace list
 flexTrace :: Lens' FlexEnv [FlexMark]
