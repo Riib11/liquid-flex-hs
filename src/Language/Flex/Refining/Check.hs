@@ -6,7 +6,7 @@
 
 module Language.Flex.Refining.Check where
 
--- TODO: rename this module to "Refining"
+-- !TODO rename this module to "Refining"
 
 import Control.Lens (at, (&), (^.))
 import Control.Monad
@@ -76,7 +76,7 @@ synthCheckTerm tyExpect tm = FlexM.markSection [FlexM.FlexMarkStep "synthCheckTe
 
 -- ** Synthesizing
 
--- TODO: TermStructure and TermMember don't properly freshen the binds of the
+-- !TODO TermStructure and TermMember don't properly freshen the binds of the
 -- child refinements -- gotta do that
 
 synthTerm :: Term Base.Type -> CheckingM (Term TypeReft)
@@ -126,14 +126,14 @@ synthTerm term = FlexM.markSectionResult (FlexM.FlexMarkStep "synthTerm" . Just 
           $ synthTerm bod
 
       ty' <- inferTerm bod'
-      -- TODO: use ty (??)
+      -- !TODO use ty (??)
 
       return $ TermLet symId tm' bod' ty'
     --
     TermStructure {..} -> FlexM.markSection [FlexM.FlexMarkStep "TermStructure" Nothing] do
       -- check the structure refinement
       do
-        -- TODO: rewrite this to convert into @ let x = a; let y = b; let z = c;
+        -- !TODO rewrite this to convert into @ let x = a; let y = b; let z = c;
         -- assert p(x, y, z); true : { VV: bit | VV == true } @
 
         -- First. get the (translated, but not refined) refinement of the
@@ -422,8 +422,8 @@ checkSubtype tmSynth tySynth tyExpect = FlexM.markSection [FlexM.FlexMarkStep "c
           "tyExpect' =" <+> pPrint tyExpect'
         ]
 
-  -- TODO: more properly extract quantifiers here??
-  -- TODO: probably want to extract Lets as equations or something but for now just use refinements with euqalities in them
+  -- !TODO more properly extract quantifiers here??
+  -- !TODO probably want to extract Lets as equations or something but for now just use refinements with euqalities in them
   cstr <-
     cstrForall y tySynth' $
       cstrHead tmSynth' tyExpect' pSpec

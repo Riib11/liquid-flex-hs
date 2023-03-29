@@ -237,7 +237,7 @@ pprintInline =
     . PJ.renderStyle PJ.style {PJ.mode = PJ.OneLineMode}
     . F.pprint
 
--- TODO: this apparently doesn't really work... it makes the width 0
+-- !TODO this apparently doesn't really work... it makes the width 0
 renderInline :: Doc -> String
 renderInline = fullRender OneLineMode 0 0 (\_td s -> s) ""
 

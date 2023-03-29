@@ -125,7 +125,7 @@ application of a function)
 - can be a _transform_
 - if is a _transform_:
   - param types and output type must be _message_ types
-  - TODO: should contextual param types also have to be _message_ types?
+  - !TODO should contextual param types also have to be _message_ types?
   - function definition is refinement-checked
 - if is not a _transform_:
   - during refinement-checking, function calls are inlined
@@ -253,6 +253,6 @@ primitive polymorphic functions are annotated with their monomorphized type.
   | <pat> : <ty> // ascribe
   | <pat> extends <type-id> // structure extends
   | <constr>?[(*[<pat>])] // variant/newtype/enum constructor
-  | TODO: other patterns
+  | !TODO other patterns
 ```
 

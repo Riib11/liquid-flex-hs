@@ -44,7 +44,7 @@ newtype ModuleId = ModuleId String
 instance Pretty ModuleId where
   pPrint (ModuleId x) = text x
 
--- TODO: although I originally tried to separate these, they actually kinda all
+-- !TODO although I originally tried to separate these, they actually kinda all
 -- live in the same namespace, so I should probably just merge them
 
 newtype TypeId = TypeId String
@@ -74,7 +74,7 @@ instance F.Symbolic TypeId where
 -- and Newtypes in particular.
 newtype TypeTermConstructor = TypeTermConstructor TypeId
 
--- TODO: is this used anywhere?
+-- !TODO is this used anywhere?
 instance F.Symbolic TypeTermConstructor where
   symbol (TypeTermConstructor (TypeId x)) = F.symbol $ "make$" <> x
 
@@ -174,7 +174,7 @@ pPrintDeclarationHeader =
 
 -- *** Structure
 
--- TODO: why isn't this parametrized by a type variable in place of @Type@?
+-- !TODO why isn't this parametrized by a type variable in place of @Type@?
 data Structure = Structure
   { structureId :: TypeId,
     structureIsMessage :: Bool,

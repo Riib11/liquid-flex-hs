@@ -113,7 +113,7 @@ throwTypingError err mb_syn = throwError $ TypingError err mb_syn
 
 topTypingCtx :: forall m. MonadError TypingError m => Module () -> m TypingCtx
 topTypingCtx Module {..} = do
-  let structs = undefined :: Map.Map TypeId Structure -- TODO:
+  let structs = undefined :: Map.Map TypeId Structure -- !TODO
   foldlM'
     moduleDeclarations
     TypingCtx
@@ -468,7 +468,7 @@ synthPrimitive _term prim = case prim of
     -- output type is Tuple alphas
     tys <- inferTerm `traverse` tms'
     return $ TermPrimitive (PrimitiveTuple tms') (TypeTuple <$> sequence tys)
-  -- TODO: actually, just iterate through array after introducing new type
+  -- !TODO actually, just iterate through array after introducing new type
   -- var, and make sure all unfiy with it
   PrimitiveArray tms -> do
     -- array elem type as unification var
@@ -693,7 +693,7 @@ satisfiesUnifyConstraint ty = \case
       | all (`elem` [TypeInt, TypeUInt]) [numty1, numty2] -> True
       | all (`elem` [TypeFloat]) [numty1, numty2] -> True
     (TypeUnifyVar _ mb_uc, _) -> maybe True (satisfiesUnifyConstraint ty') mb_uc
-    -- TODO: FlexM.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
+    -- !TODO FlexM.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
     _uc -> False
   UnifyConstraintNumeric -> case ty of
     TypeNumber _ _ -> True
@@ -865,7 +865,7 @@ defaultType type_ = case type_ of
     Nothing -> throwTypingError ("can't default unconstrained unification type variable:" <+> pPrint type_) Nothing
     Just uc -> case uc of
       UnifyConstraintCasted ty -> return ty
-      -- TODO: maybe you want a different default number type?
+      -- !TODO maybe you want a different default number type?
       UnifyConstraintNumeric -> return $ TypeNumber TypeInt 32
   TypeStructure struct@Structure {..} -> do
     fields <- secondM defaultType `traverse` structureFields

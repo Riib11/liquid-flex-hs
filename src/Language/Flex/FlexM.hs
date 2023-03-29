@@ -215,7 +215,7 @@ throw doc = liftFlex do
           vcat
             [ header "bug begin",
               doc,
-              -- TODO: temporarily disabled, since need to make choices about
+              -- !TODO temporarily disabled, since need to make choices about
               -- how to render logs
 
               -- subheader "bug stack",

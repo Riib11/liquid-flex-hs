@@ -47,10 +47,10 @@ _qMats = lens H.qMats (\q qMats -> q {H.qMats = qMats})
 _qData :: Functor f => (_ -> f _) -> _ -> f _
 _qData = lens H.qData (\q qData -> q {H.qData = qData})
 
--- - TODO: add primitives and constructor via wrapping Cstr with `H.Any
+-- - !TODO add primitives and constructor via wrapping Cstr with `H.Any
 --   (<Constr> )`
--- - TODO:  as `qualifiers` argument, give all local bindings (?)
--- - TODO: can move definition of datatypes and other top-level stuff to be
+-- - !TODO  as `qualifiers` argument, give all local bindings (?)
+-- - !TODO can move definition of datatypes and other top-level stuff to be
 --   computed at top level instead of here (which is called every time something
 --   is checked)
 makeQuery :: Cstr -> RefiningM Query
@@ -69,11 +69,11 @@ makeQuery cstr = FlexM.markSection [FlexM.FlexMarkStep "makeQuery" Nothing] do
           }
 
   flip execStateT protoQuery do
-    -- TODO: add prelude signature (via @applicantTypes@); this will have to
+    -- !TODO add prelude signature (via @applicantTypes@); this will have to
     -- introduce (prelude) functions, but they'll have totally unrefined function types so
     -- don't worry
 
-    -- TODO:OLD: things are introduced in @applicantTypes@ now, and all neutral
+    -- !TODOOLD: things are introduced in @applicantTypes@ now, and all neutral
     -- forms are reflected
 
     -- -- add local bindings
@@ -111,7 +111,7 @@ addUserDatatypes = do
     modify $ _qData %~ (datadecl :)
 
 {-
--- TODO: maybe actually DataDecl already introduces projectors?
+-- !TODO maybe actually DataDecl already introduces projectors?
 
 -- add field projectors
 
@@ -166,7 +166,7 @@ forM_
 
 addTransforms :: StateT Query RefiningM ()
 addTransforms = do
-  -- TODO: add transforms as uninterpreted functions
+  -- !TODO add transforms as uninterpreted functions
   return ()
 
 -- | Submit query to LH backend, which checks for validity

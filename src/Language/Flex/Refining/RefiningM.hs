@@ -31,7 +31,7 @@ type RefiningM = StateT RefiningEnv (ReaderT RefiningCtx (ExceptT RefiningError 
 throwRefiningError :: Doc -> RefiningM a
 throwRefiningError msg = throwError $ RefiningError msg
 
--- TODO: refined structures and newtypes
+-- !TODO refined structures and newtypes
 data RefiningCtx = RefiningCtx
   { -- During translation: map of each applicant to its corresponding @SymId@,
     -- which is used during embedding
@@ -97,7 +97,7 @@ getSymId app =
     Just symId -> return symId
 
 -- can only introduce SymIds that have a TermId
--- TODO: bug if try to introduce SymId without a TermId?
+-- !TODO bug if try to introduce SymId without a TermId?
 introSymId :: (MonadFlex m, MonadReader RefiningCtx m) => SymId -> m a -> m a
 introSymId symId =
   comps
@@ -175,7 +175,7 @@ freshenReftBind r = do
   return $ F.substa (\y -> if y == x then x' else y) r
 
 freshenTermId :: Base.TermId -> RefiningM Base.TermId
-freshenTermId = error "TODO: freshenTermId"
+freshenTermId = error "!TODO freshenTermId"
 
 freshSymId :: MonadFlex m => String -> m SymId
 freshSymId str = do

@@ -139,7 +139,7 @@ checkTerm hyp tm k = case tm ^. termPreterm of
   TermArray _tms -> unimplemented "checkTerm TermArray"
   TermTuple _tms -> unimplemented "checkTerm TermTuple"
   TermIf _tm1 _tm2 _tm3 -> unimplemented "checkTerm TermIf"
-  -- TODO: other interesting cases
+  -- !TODO other interesting cases
   _ -> k tm hyp
 
 checkStatement :: Refinement -> Statement -> (Term -> Refinement -> Refine a) -> Refine a
@@ -160,7 +160,7 @@ ascribeBindingRefinement :: Pattern -> Term -> Refine Refinement
 ascribeBindingRefinement _pat _tm = unimplemented "ascribeBindingRefinement"
 
 introLocal :: Id -> Type -> Refine a -> Refine a
-introLocal = unimplemented "TODO: introLocal"
+introLocal = unimplemented "!TODO introLocal"
 
 -- ** normalizing
 
@@ -171,10 +171,10 @@ normTerm :: Term -> Refine Term
 normTerm _tm = unimplemented "normTerm"
 
 substRefinement :: Map.Map Id Term -> Refinement -> Refine Refinement
-substRefinement = unimplemented "TODO: substRefinement"
+substRefinement = unimplemented "!TODO substRefinement"
 
 substTerm :: Map.Map Id Term -> Term -> Refine Term
-substTerm = unimplemented "TODO: substTerm"
+substTerm = unimplemented "!TODO substTerm"
 
 -- ** backend
 

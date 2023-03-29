@@ -17,7 +17,7 @@ conjPred ps
 replaceSym :: F.Symbol -> F.Symbol -> (F.Symbol -> F.Symbol)
 replaceSym x y z = if z == x then y else z
 
--- TODO: actually, probably need to do this more fundamentally in TypeReft
+-- !TODO actually, probably need to do this more fundamentally in TypeReft
 
 -- fromPredToCstr :: F.Pred -> Cstr
 -- fromPredToCstr prd0 = foldr ($) cstr fs

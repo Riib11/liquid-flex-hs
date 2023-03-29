@@ -161,7 +161,7 @@ instance F.Subable Quant where
   substf :: (F.Symbol -> F.Expr) -> Quant -> Quant
   substf f q = q {quantBind = F.substf (\sym -> if sym == H.bSym (quantBind q) then F.expr sym else f sym) (quantBind q)}
   subst :: F.Subst -> Quant -> Quant
-  subst sub q = q {quantBind = F.subst sub (quantBind q)} -- TODO: censor substitution of the symbol @H.bSym quantBind@
+  subst sub q = q {quantBind = F.subst sub (quantBind q)} -- !TODO censor substitution of the symbol @H.bSym quantBind@
 
 instance Pretty Quant where
   pPrint = \case
@@ -196,8 +196,8 @@ setReftBind x' r = F.substa (replaceSym x x') r
 fromReft :: F.Reft -> QReft
 fromReft qreftReft = QReft {qreftQuants = mempty, qreftReft}
 
--- TODO: handle more advanced types
--- TODO: can structure and newtype be merged for the refinement phase?
+-- !TODO handle more advanced types
+-- !TODO can structure and newtype be merged for the refinement phase?
 
 -- | TypeArray
 -- | TypeOptional
@@ -253,7 +253,7 @@ fmap_typeAnn k ty = do
   r <- k $ typeAnn ty
   return ty {typeAnn = r}
 
--- TODO: is it ok to use F.PTrue as an expression here? or is there a different
+-- !TODO is it ok to use F.PTrue as an expression here? or is there a different
 -- encoding of booleans as expression, e.g. as ints or something?
 typeEqTrue :: TypeReft
 typeEqTrue = typeBit $ QReft [] (F.exprReft F.PTrue)
@@ -383,7 +383,7 @@ instance PrettyTermAnn r => Pretty (Primitive r) where
 
 -- ** Term
 
--- TODO: construct enum, construct variant, match
+-- !TODO construct enum, construct variant, match
 data Term r
   = TermNeutral {termSymId :: !SymId, termArgs :: [Term r], termAnn :: r}
   | TermLiteral {termLiteral :: !Literal, termAnn :: r}
@@ -448,18 +448,18 @@ fromSymbolToSymId symIdSymbol = SymId {symIdSymbol, symIdMaybeTypeId = Nothing, 
 
 -- ** Substitution
 
--- TODO: don't use this, use F.subst* instead
+-- !TODO don't use this, use F.subst* instead
 -- -- substitute `x` for `y` in `thing` via `Subable`
 -- subst :: F.Subable a => a -> F.Symbol -> F.Symbol -> a
 -- subst thing x y = F.subst (F.mkSubst [(x, F.expr y)]) thing
 
--- -- TODO: do i need this? could only work on Term(Var|Literal)
+-- -- !TODO do i need this? could only work on Term(Var|Literal)
 -- subst' :: F.Subable a => a -> F.Symbol -> Term -> a
 -- subst' thing x y = F.subst sigma thing
 --   where
 --     sigma = F.mkSubst [(x, embedVar y)]
 
--- TODO: SHOULDNT need this
+-- !TODO SHOULDNT need this
 -- substTerm :: TermId -> Term r -> Term r -> Term r
 -- substTerm tmId tm' term = case term of
 --   TermLiteral {} -> term

@@ -167,7 +167,7 @@ transNeutral app mb_args mb_cxargs ty = do
       let args'' = fromMaybe [] mb_args' ++ fromMaybe [] mb_cxargs'
       return $ TermNeutral symId args'' ty
 
--- TODO: put the stuff for transTypeRefinement (from
+-- !TODO put the stuff for transTypeRefinement (from
 -- Language.Flex.Refining.Refining) here
 
 transRefinedTypeRefinement ::
@@ -212,7 +212,7 @@ transType type_ = FlexM.markSection [FlexM.FlexMarkStep "transType" . Just $ pPr
               [ F.PAtom F.Le (F.expr (0 :: Int)) (F.expr x),
                 F.PAtom F.Lt (F.expr x) (F.expr (2 ^ n :: Int))
               ]
-          Base.TypeFloat -> error "TODO: transType TypeFloat"
+          Base.TypeFloat -> error "!TODO transType TypeFloat"
     let atomic = case numty of
           Base.TypeInt -> TypeInt
           Base.TypeUInt -> TypeInt
@@ -252,7 +252,7 @@ variantTypeReft varnt@Base.Variant {..} ctors = FlexM.markSectionResult (FlexM.F
           return $ setQReftBind paramSym qr
       return (ctorId, paramTypes')
 
-  -- TODO: similar to structure, but over all constructors and disjoin of result
+  -- !TODO similar to structure, but over all constructors and disjoin of result
 
   -- > p = exists a1, ..., an, ..., z1, ..., zn . { varnt: V | varnt == ctor_a a1 ...
   -- an || ... || varnt == ctor_z z1 ... zn }
@@ -341,9 +341,9 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
 
   $(FlexM.debugThing False [|pPrint|] [|fieldTys|])
 
-  -- TODO: if the changes look ok, then p1 ~~> p
+  -- !TODO if the changes look ok, then p1 ~~> p
 
-  -- TODO: OLD, now can just put the predicate on the existential
+  -- !TODO OLD, now can just put the predicate on the existential
   -- quantifier for the field
 
   -- -- p2(x1, ..., xN): r1(x1) && ... && rN(xN)
@@ -351,7 +351,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
 
   -- \$(FlexM.debugThing False [|F.pprint|] [|p2|])
 
-  -- -- TODO:OLD: now put existential quantifiers on the refinement
+  -- -- !TODOOLD: now put existential quantifiers on the refinement
 
   -- p(struct): exists x1, ..., xN . p1(struct, x1, ..., xN) && p2(x1, ..., xN)
   -- fieldSrts <- secondM embedType `traverse` fieldTys
@@ -362,7 +362,7 @@ structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult
   --         )
   --         $ conjPred [p1, p2]
 
-  -- TODO:OLD: just use p1 now
+  -- !TODOOLD: just use p1 now
 
   -- -- p(struct, x1, ..., xN): p1(struct, x1, ..., xN) && p2(x1, ..., xN)
   -- let p = conjPred [p1, p2]
@@ -419,7 +419,7 @@ tupleTypeReft tys_ = do
         -- unrefined, since only used for embedding
         let tyTuple = TypeTuple (void ty1, void ty2) ()
 
-        -- TODO: if using contraint quantifiers works, then p1 ~~> p
+        -- !TODO if using contraint quantifiers works, then p1 ~~> p
 
         -- p1(tuple, x1, x2): tuple == (x1, x2)
         p1 <-
@@ -434,7 +434,7 @@ tupleTypeReft tys_ = do
                 tyTuple
             )
 
-        -- TODO:OLD: don't need to do this anymore because Reft keeps track of
+        -- !TODOOLD: don't need to do this anymore because Reft keeps track of
         -- refinement on quantifier vars
 
         -- -- p2(tuple, x1, x2): r1(x1) && r2(x2)
@@ -492,7 +492,7 @@ eqPred tm1 tm2 =
 
 -- *** Translating to Sorts
 
--- -- TODO:DEPRECATED: is this still needed?
+-- -- !TODODEPRECATED: is this still needed?
 -- sortOfBaseType :: Base.Type -> F.Sort
 -- sortOfBaseType = \case
 --   Base.TypeNumber nt _n -> case nt of
@@ -501,7 +501,7 @@ eqPred tm1 tm2 =
 --     Base.TypeFloat -> F.realSort
 --   Base.TypeBit -> F.boolSort
 --   Base.TypeChar -> F.charSort
---   -- TODO: use FApp (type constructor application) and FObj (uninterpreted
+--   -- !TODO use FApp (type constructor application) and FObj (uninterpreted
 --   -- type), and don't need to worry about needing to directly convert TypeIds to
 --   -- Symbols since there's never any possible shadoing of TypeIds
 --   Base.TypeArray _ty -> error "sortOfBaseType"
@@ -521,7 +521,7 @@ eqPred tm1 tm2 =
 embedSymId :: MonadFlex m => SymId -> m F.Expr
 embedSymId SymId {..} = return $ F.eVar symIdSymbol
 
--- TODO: need to use a Writer to emit equalities that will be bound by the parent predicate
+-- !TODO need to use a Writer to emit equalities that will be bound by the parent predicate
 embedTerm :: MonadFlex m => Term (Type ()) -> m F.Expr
 embedTerm = \case
   TermLiteral lit _ -> embedLiteral lit
@@ -550,7 +550,7 @@ embedTerm = \case
     argExpr <- embedTerm termTerm
     return $ F.eApps projExpr [argExpr]
 
--- TODO:DEPRECATED: since transTerm just turns into app of field projector
+-- !TODODEPRECATED: since transTerm just turns into app of field projector
 -- -- x.s ~~> (proj$S#x s)
 -- TermMember {..} -> do
 --   projExpr <- F.eVar <$> structureFieldProjectorSymbol (Base.structureId termStructure) termFieldId
@@ -561,9 +561,9 @@ embedLiteral :: MonadFlex m => Literal -> m F.Expr
 embedLiteral =
   return . \case
     Base.LiteralInteger n -> F.expr n
-    Base.LiteralFloat _x -> error "TODO: embed float literal"
+    Base.LiteralFloat _x -> error "!TODO embed float literal"
     Base.LiteralBit b -> if b then F.PTrue else F.PFalse
-    Base.LiteralChar _c -> error "TODO: how to embed a literal char? can't just be a Text because of Sort error..." -- F.expr c -- (pack [c])
+    Base.LiteralChar _c -> error "!TODO how to embed a literal char? can't just be a Text because of Sort error..." -- F.expr c -- (pack [c])
     Base.LiteralString s -> F.expr (pack s)
 
 embedPrimitive :: MonadFlex m => Primitive (Type ()) -> m F.Expr
@@ -607,7 +607,7 @@ embedType = \case
 
 -- *** Structure
 
--- TODO: change this to be polymorphic so refined argumen types are handled automatically
+-- !TODO change this to be polymorphic so refined argumen types are handled automatically
 structureDataDecl :: MonadFlex m => Base.Structure -> m F.DataDecl
 structureDataDecl Base.Structure {..} =
   do
@@ -669,7 +669,7 @@ constantSymbol conId = defaultLocated $ F.symbol conId
 
 topRefiningCtx :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningCtx
 topRefiningCtx Base.Module {..} = do
-  -- TODO: enums, newtypes
+  -- !TODO enums, newtypes
   foldrM
     ( \decl ctx -> do
         case decl of
