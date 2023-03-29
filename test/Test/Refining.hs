@@ -5,7 +5,7 @@ module Test.Refining where
 import Control.Monad
 import Data.List (singleton)
 import Language.Flex.DefaultFlexCtx (defaultFlexCtx)
-import Language.Flex.FlexM (FlexCtx (flexVerbose), runFlexM)
+import Language.Flex.FlexM (FlexCtx (flexDebug), runFlexM)
 import Language.Flex.Parsing (parseModuleFile)
 import Language.Flex.Refining (refineModule)
 import Language.Flex.Typing (typeModule)
@@ -15,24 +15,25 @@ import Test.HUnit
 import Text.PrettyPrint.HughesPJ (render, text, ($$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 
+-- whether to do FULL test suite or just the specified tests
+_FULL = False
+
+_DEBUG = not _FULL
+
 test :: Test
 test =
   TestLabel "refining" $
     TestList $
       concat
-        -- True  : full
-        -- False : select
-        if True
+        if _FULL
           then
             [ let !fps =
-                    unsafePerformIO $
-                      fmap concat . sequence $
-                        [getDirectoryFilesBySuffix dir_examples_refining ".flex"]
+                    unsafePerformIO . fmap concat . sequence $
+                      [getDirectoryFilesBySuffix dir_examples_refining ".flex"]
                in makeTest_refineModule True <$> fps,
               let !fps =
-                    unsafePerformIO $
-                      fmap concat . sequence $
-                        [getDirectoryFilesBySuffix dir_examples_refining_fail ".flex"]
+                    unsafePerformIO . fmap concat . sequence $
+                      [getDirectoryFilesBySuffix dir_examples_refining_fail ".flex"]
                in makeTest_refineModule False <$> fps
             ]
           else
@@ -73,6 +74,6 @@ makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . Tes
 
   !_ <- return ()
 
-  runFlexM defaultFlexCtx {flexVerbose = True} (refineModule mdl') >>= \case
+  runFlexM defaultFlexCtx {flexDebug = _DEBUG} (refineModule mdl') >>= \case
     Left err -> when pass $ assertFailure (render . pPrint $ err)
     Right _ -> unless pass $ assertFailure "expected refining to fail"

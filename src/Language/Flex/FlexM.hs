@@ -18,6 +18,7 @@ import Control.Monad.Writer (MonadWriter, WriterT (runWriterT), when)
 import qualified Control.Monad.Writer.Class as Writer
 import Data.Foldable (traverse_)
 import Data.Maybe (fromMaybe)
+import Language.Fixpoint.Misc (whenM)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.PrettyPrint as F
 import qualified Language.Haskell.TH as TH
@@ -44,6 +45,7 @@ newtype FlexM a = FlexM (StateT FlexEnv (ReaderT FlexCtx (WriterT [FlexLog] (Exc
 
 data FlexCtx = FlexCtx
   { flexVerbose :: Bool,
+    flexDebug :: Bool,
     flexSourceFilePath :: FilePath
   }
 
@@ -146,14 +148,19 @@ markSection :: MonadFlex m => [FlexMarkStep] -> m a -> m a
 markSection steps m = do
   -- push onto front of stack
   liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (reverse steps <> steps')))
-  markStatic $ FlexMarkStep "BEGIN" Nothing
+  mark Static beginStep
+  debugMark True beginStep
   -- compute internal result
   a <- m
   -- pop from front of stack
-  markStatic $ FlexMarkStep "END" Nothing
+  debugMark True endStep
+  mark Static endStep
   liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (drop (length steps) steps')))
   -- return internal result
   return a
+  where
+    beginStep = FlexMarkStep "BEGIN" Nothing
+    endStep = FlexMarkStep "END" Nothing
 
 markSectionResult ::
   MonadFlex m =>
@@ -166,28 +173,26 @@ markSectionResult ::
 markSectionResult step pIn input pOut m = do
   -- push onto front of stack
   liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (step : steps')))
-  markStatic $ FlexMarkStep "<==  " . Just $ pIn input
+  mark Static beginStep
+  debugMark True beginStep
   -- compute internal result
   a <- m
   -- pop from front of stack
-  markStatic $ FlexMarkStep "  ==>" . Just $ pOut a
+  debugMark True (endStep a)
+  mark Static (endStep a)
   liftFlex $ modify' (flexStack %~ (\(FlexMark steps') -> FlexMark (drop 1 steps')))
   -- return internal result
   return a
+  where
+    beginStep = FlexMarkStep "<==  " . Just $ pIn input
+    endStep = FlexMarkStep "  ==>" . Just . pOut
 
-markDynamic :: MonadFlex m => [FlexMarkStep] -> m ()
-markDynamic steps = liftFlex do
-  -- prepend new stack to trace
-  stack' <- gets (^. flexStack . to (FlexMark (reverse steps) <>))
-  flexTrace %= (stack' :)
-  tell . pPrint . Dynamic $ stack'
-
-markStatic :: MonadFlex m => FlexMarkStep -> m ()
-markStatic step = liftFlex do
+mark :: (MonadFlex m, Pretty a) => (FlexMarkStep -> a) -> FlexMarkStep -> m ()
+mark xx step = liftFlex do
   -- prepend new stack to trace
   stack' <- gets (^. flexStack . to (FlexMark [step] <>))
   flexTrace %= (stack' :)
-  debugMark True step
+  tell $ pPrint $ xx step
 
 -- uses current stack as log mark
 tell :: MonadFlex m => Doc -> m ()
@@ -196,7 +201,7 @@ tell doc = do
   liftFlex $ Writer.tell [FlexLog {logMark = stack, logBody = doc}]
 
 debug :: MonadFlex m => Bool -> Doc -> m ()
-debug isActive doc = when isActive do
+debug isActive doc = whenM ((isActive &&) <$> liftFlex (asks flexDebug)) do
   stack <- liftFlex $ gets (^. flexStack)
   liftFlex . liftIO . putStrLn . render . pPrint . Static $
     FlexLog {logMark = stack, logBody = doc}

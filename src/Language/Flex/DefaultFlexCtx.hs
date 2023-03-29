@@ -6,6 +6,7 @@ defaultFlexCtx :: FlexCtx
 defaultFlexCtx =
   FlexCtx
     { flexVerbose = False,
+      flexDebug = False,
       flexSourceFilePath = "<empty>"
     }
 
