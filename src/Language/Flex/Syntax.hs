@@ -1,4 +1,5 @@
 {-# HLINT ignore "Use newtype instead of data" #-}
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
 
 module Language.Flex.Syntax where
 
@@ -13,27 +14,27 @@ import Prelude hiding (Enum)
 
 -- * Syntax
 
-data Syntax ann
-  = SyntaxDeclaration (Declaration ann)
+data Syntax ty tm
+  = SyntaxDeclaration (Declaration ty tm)
   | SyntaxType Type
-  | SyntaxTerm (Term ann)
+  | SyntaxTerm (Term tm)
 
-instance Pretty ann => Pretty (Syntax ann) where
+instance (Pretty ty, Pretty tm) => Pretty (Syntax ty tm) where
   pPrint = \case
     SyntaxDeclaration de -> pPrint de
     SyntaxType ty -> pPrint ty
     SyntaxTerm te -> pPrint te
 
-class ToSyntax a ann where
-  toSyntax :: a -> Syntax ann
+class ToSyntax a ty tm where
+  toSyntax :: a -> Syntax ty tm
 
-instance ToSyntax (Declaration ann) ann where
+instance ToSyntax (Declaration ty tm) ty tm where
   toSyntax = SyntaxDeclaration
 
-instance ToSyntax Type ann where
+instance ToSyntax Type ty tm where
   toSyntax = SyntaxType
 
-instance ToSyntax (Term ann) ann where
+instance ToSyntax (Term tm) ty tm where
   toSyntax = SyntaxTerm
 
 -- ** Idents
@@ -99,33 +100,73 @@ fromFieldIdToTermId (FieldId x) = TermId x
 fromNewtypeIdToTermId :: TypeId -> TermId
 fromNewtypeIdToTermId (TypeId x) = TermId x
 
+-- ** Ty, Tm
+
+-- Newtype wrappers for deriving Functor, Foldable, and Traversable instances
+-- over the Ty and Tm annoations respectively
+
+newtype Ty f tm ty = Ty {unTy :: f ty tm}
+
+newtype Tm f ty tm = Tm {unTm :: f ty tm}
+
+fmapTy f x = unTy $ fmap f (Ty x)
+
+fmapTm f x = unTm $ fmap f (Tm x)
+
+traverseTy f x = unTy <$> f `traverse` Ty x
+
+traverseTm f x = unTm <$> f `traverse` Tm x
+
 -- ** Module
 
-data Module ann = Module
+-- @ty@ is the type of types, and @tm@ is the type of type annotations on terms
+data Module ty tm = Module
   { moduleId :: ModuleId,
-    moduleDeclarations :: [Declaration ann]
+    moduleDeclarations :: [Declaration ty tm]
   }
-  deriving (Eq, Functor, Foldable, Traversable, Show)
+  deriving (Eq, Show)
 
-instance Pretty ann => Pretty (Module ann) where
+instance (Pretty tm, Pretty ty) => Pretty (Module ty tm) where
   pPrint (Module {..}) =
     ("module" <+> pPrint moduleId <+> "where")
       $$ vcat (pPrint <$> moduleDeclarations)
 
+instance Functor (Ty Module tm) where
+  fmap f (Ty mdl@Module {..}) = Ty mdl {moduleDeclarations = unTy . fmap f . Ty <$> moduleDeclarations}
+
+instance Foldable (Ty Module tm) where
+  foldMap f (Ty Module {..}) = foldMap (foldMap f . Ty) moduleDeclarations
+
+instance Traversable (Ty Module tm) where
+  traverse f (Ty Module {..}) =
+    Ty . (\decls -> Module {moduleId, moduleDeclarations = decls})
+      <$> ((f `traverseTy`) `traverse` moduleDeclarations)
+
+instance Functor (Tm Module ty) where
+  fmap f (Tm mdl@Module {..}) = Tm mdl {moduleDeclarations = unTm . fmap f . Tm <$> moduleDeclarations}
+
+instance Foldable (Tm Module ty) where
+  foldMap f (Tm Module {..}) = foldMap (foldMap f . Tm) moduleDeclarations
+
+instance Traversable (Tm Module ty) where
+  traverse f (Tm Module {..}) =
+    Tm . (\decls -> Module {moduleId, moduleDeclarations = decls})
+      <$> ((f `traverseTm`) `traverse` moduleDeclarations)
+
 -- ** Declarations
 
-data Declaration ann
-  = DeclarationStructure Structure
-  | DeclarationNewtype (Newtype Type)
-  | DeclarationVariant (Variant Type)
-  | DeclarationEnum (Enum Type)
-  | DeclarationAlias Alias
-  | DeclarationFunction (Function ann)
-  | DeclarationConstant (Constant ann)
-  | DeclarationRefinedType (RefinedType ann)
-  deriving (Eq, Functor, Foldable, Traversable, Show)
+data Declaration ty tm
+  = DeclarationStructure (Structure ty)
+  | DeclarationNewtype (Newtype ty)
+  | DeclarationVariant (Variant ty)
+  | DeclarationEnum (Enum ty)
+  | DeclarationAlias (Alias ty)
+  | DeclarationFunction (Function ty tm)
+  | DeclarationConstant (Constant ty tm)
+  | DeclarationRefinedType (RefinedType tm)
+  deriving (Eq, Show)
 
-instance Pretty ann => Pretty (Declaration ann) where
+instance (Pretty ty, Pretty tm) => Pretty (Declaration ty tm) where
   pPrint = \case
     DeclarationStructure struct -> pPrint struct
     DeclarationNewtype newty -> pPrint newty
@@ -136,34 +177,94 @@ instance Pretty ann => Pretty (Declaration ann) where
     DeclarationConstant con -> pPrint con
     DeclarationRefinedType refnStruct -> pPrint refnStruct
 
-class ToDeclaration a ann where
-  toDeclaration :: a -> Declaration ann
+instance Functor (Ty Declaration tm) where
+  fmap f (Ty (DeclarationStructure struc)) = Ty (DeclarationStructure (f <$> struc))
+  fmap f (Ty (DeclarationNewtype new)) = Ty (DeclarationNewtype (f <$> new))
+  fmap f (Ty (DeclarationVariant vari)) = Ty (DeclarationVariant (f <$> vari))
+  fmap f (Ty (DeclarationEnum en)) = Ty (DeclarationEnum (f <$> en))
+  fmap f (Ty (DeclarationAlias al)) = Ty (DeclarationAlias (f <$> al))
+  fmap f (Ty (DeclarationFunction func)) = Ty (DeclarationFunction (f `fmapTy` func))
+  fmap f (Ty (DeclarationConstant con)) = Ty (DeclarationConstant (f `fmapTy` con))
+  fmap _f (Ty (DeclarationRefinedType rt)) = Ty (DeclarationRefinedType rt)
 
-instance ToDeclaration Structure ann where
+instance Foldable (Ty Declaration tm) where
+  foldMap f (Ty (DeclarationStructure struc)) = foldMap f struc
+  foldMap f (Ty (DeclarationNewtype new)) = foldMap f new
+  foldMap f (Ty (DeclarationVariant vari)) = foldMap f vari
+  foldMap f (Ty (DeclarationEnum en)) = foldMap f en
+  foldMap f (Ty (DeclarationAlias al)) = foldMap f al
+  foldMap f (Ty (DeclarationFunction func)) = foldMap f (Ty func)
+  foldMap f (Ty (DeclarationConstant con)) = foldMap f (Ty con)
+  foldMap _f (Ty (DeclarationRefinedType _rt)) = mempty
+
+instance Traversable (Ty Declaration tm) where
+  traverse f (Ty (DeclarationStructure struc)) = Ty . toDeclaration <$> traverse f struc
+  traverse f (Ty (DeclarationNewtype new)) = Ty . toDeclaration <$> traverse f new
+  traverse f (Ty (DeclarationVariant vari)) = Ty . toDeclaration <$> traverse f vari
+  traverse f (Ty (DeclarationEnum en)) = Ty . toDeclaration <$> traverse f en
+  traverse f (Ty (DeclarationAlias al)) = Ty . toDeclaration <$> traverse f al
+  traverse f (Ty (DeclarationFunction func)) = Ty . toDeclaration <$> traverseTy f func
+  traverse f (Ty (DeclarationConstant con)) = Ty . toDeclaration <$> traverseTy f con
+  traverse _f (Ty (DeclarationRefinedType rt)) = pure (Ty (DeclarationRefinedType rt))
+
+instance Functor (Tm Declaration ty) where
+  fmap _f (Tm (DeclarationStructure struc)) = Tm (DeclarationStructure struc)
+  fmap _f (Tm (DeclarationNewtype new)) = Tm (DeclarationNewtype new)
+  fmap _f (Tm (DeclarationVariant vari)) = Tm (DeclarationVariant vari)
+  fmap _f (Tm (DeclarationEnum en)) = Tm (DeclarationEnum en)
+  fmap _f (Tm (DeclarationAlias al)) = Tm (DeclarationAlias al)
+  fmap f (Tm (DeclarationFunction func)) = Tm (DeclarationFunction (f `fmapTm` func))
+  fmap f (Tm (DeclarationConstant con)) = Tm (DeclarationConstant (f `fmapTm` con))
+  fmap f (Tm (DeclarationRefinedType rt)) = Tm (DeclarationRefinedType (f <$> rt))
+
+instance Foldable (Tm Declaration tm) where
+  foldMap _f (Tm (DeclarationStructure _struc)) = mempty
+  foldMap _f (Tm (DeclarationNewtype _new)) = mempty
+  foldMap _f (Tm (DeclarationVariant _vari)) = mempty
+  foldMap _f (Tm (DeclarationEnum _en)) = mempty
+  foldMap _f (Tm (DeclarationAlias _al)) = mempty
+  foldMap f (Tm (DeclarationFunction func)) = foldMap f (Tm func)
+  foldMap f (Tm (DeclarationConstant con)) = foldMap f (Tm con)
+  foldMap f (Tm (DeclarationRefinedType rt)) = foldMap f rt
+
+instance Traversable (Tm Declaration ty) where
+  traverse _f (Tm (DeclarationStructure struc)) = pure (Tm (DeclarationStructure struc))
+  traverse _f (Tm (DeclarationNewtype new)) = pure (Tm (DeclarationNewtype new))
+  traverse _f (Tm (DeclarationVariant vari)) = pure (Tm (DeclarationVariant vari))
+  traverse _f (Tm (DeclarationEnum en)) = pure (Tm (DeclarationEnum en))
+  traverse _f (Tm (DeclarationAlias al)) = pure (Tm (DeclarationAlias al))
+  traverse f (Tm (DeclarationFunction func)) = Tm . toDeclaration <$> traverseTm f func
+  traverse f (Tm (DeclarationConstant con)) = Tm . toDeclaration <$> traverseTm f con
+  traverse f (Tm (DeclarationRefinedType rt)) = Tm . toDeclaration <$> traverse f rt
+
+class ToDeclaration a ty tm where
+  toDeclaration :: a -> Declaration ty tm
+
+instance ToDeclaration (Structure ty) ty tm where
   toDeclaration = DeclarationStructure
 
-instance ToDeclaration (Newtype Type) ann where
+instance ToDeclaration (Newtype ty) ty tm where
   toDeclaration = DeclarationNewtype
 
-instance ToDeclaration (Variant Type) ann where
+instance ToDeclaration (Variant ty) ty tm where
   toDeclaration = DeclarationVariant
 
-instance ToDeclaration (Enum Type) ann where
+instance ToDeclaration (Enum ty) ty tm where
   toDeclaration = DeclarationEnum
 
-instance ToDeclaration Alias ann where
+instance ToDeclaration (Alias ty) ty tm where
   toDeclaration = DeclarationAlias
 
-instance ToDeclaration (Function ann) ann where
+instance ToDeclaration (Function ty tm) ty tm where
   toDeclaration = DeclarationFunction
 
-instance ToDeclaration (Constant ann) ann where
+instance ToDeclaration (Constant ty tm) ty tm where
   toDeclaration = DeclarationConstant
 
-instance ToDeclaration (RefinedType ann) ann where
+instance ToDeclaration (RefinedType tm) ty tm where
   toDeclaration = DeclarationRefinedType
 
-pPrintDeclarationHeader :: Declaration ann -> Doc
+pPrintDeclarationHeader :: Declaration ty tm -> Doc
 pPrintDeclarationHeader =
   \case
     (DeclarationStructure Structure {..}) -> "structure" <+> pPrint structureId
@@ -178,15 +279,15 @@ pPrintDeclarationHeader =
 -- *** Structure
 
 -- !TODO why isn't this parametrized by a type variable in place of @Type@?
-data Structure = Structure
+data Structure ann = Structure
   { structureId :: TypeId,
     structureIsMessage :: Bool,
     structureMaybeExtensionId :: Maybe TypeId,
-    structureFields :: [(FieldId, Type)]
+    structureFields :: [(FieldId, ann)]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty Structure where
+instance Pretty ann => Pretty (Structure ann) where
   pPrint (Structure {..}) =
     hsep
       [ if structureIsMessage then "message" else mempty,
@@ -266,30 +367,54 @@ instance Pretty ann => Pretty (Enum ann) where
 
 -- *** Alias
 
-data Alias = Alias
+data Alias ann = Alias
   { aliasId :: TypeId,
-    aliasType :: Type
+    aliasType :: ann
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty Alias where
+instance Pretty ann => Pretty (Alias ann) where
   pPrint (Alias {..}) = pPrint aliasId <+> equals <+> pPrint aliasType
 
 -- *** Function
 
-data Function ann = Function
+data Function ty tm = Function
   { functionId :: TermId,
     functionIsTransform :: Bool,
-    functionParameters :: [(TermId, Type)],
+    functionParameters :: [(TermId, ty)],
     -- | since contextual parameters must have newtypes, data Term only need to store the
     -- newtypes' ids
     functionContextualParameters :: Maybe [(TypeId, TermId)],
     functionOutput :: Type,
-    functionBody :: Term ann
+    functionBody :: Term tm
   }
-  deriving (Eq, Functor, Foldable, Traversable, Show)
+  deriving (Eq, Show)
 
-instance Pretty (Function ann) where
+instance Functor (Ty Function tm) where
+  fmap f (Ty fun@Function {..}) =
+    Ty fun {functionParameters = second f <$> functionParameters}
+
+instance Foldable (Ty Function tm) where
+  foldMap f (Ty Function {..}) = foldMap (f . snd) functionParameters
+
+instance Traversable (Ty Function tm) where
+  traverse f (Ty fun@Function {..}) =
+    Ty . (\functionParameters' -> fun {functionParameters = functionParameters'})
+      <$> (\(ti, a) -> (ti,) <$> f a) `traverse` functionParameters
+
+instance Functor (Tm Function ty) where
+  fmap f (Tm fun@Function {..}) =
+    Tm fun {functionBody = f <$> functionBody}
+
+instance Foldable (Tm Function ty) where
+  foldMap f (Tm Function {..}) = foldMap f functionBody
+
+instance Traversable (Tm Function ty) where
+  traverse f (Tm fun@Function {..}) =
+    Tm . (\functionBody' -> fun {functionBody = functionBody'})
+      <$> f `traverse` functionBody
+
+instance (Pretty ty, Pretty tm) => Pretty (Function ty tm) where
   pPrint (Function {..}) =
     vcat
       [ (pPrint functionId <> parameters functionParameters)
@@ -312,14 +437,36 @@ instance Pretty (Function ann) where
 
 -- *** Constant
 
-data Constant ann = Constant
+data Constant ty tm = Constant
   { constantId :: TermId,
-    constantBody :: Term ann,
-    constantType :: Type
+    constantBody :: Term tm,
+    constantType :: ty
   }
-  deriving (Eq, Functor, Foldable, Traversable, Show)
+  deriving (Eq, Show)
 
-instance Pretty (Constant ann) where
+instance Functor (Ty Constant tm) where
+  fmap f (Ty con@Constant {..}) = Ty con {constantType = f constantType}
+
+instance Foldable (Ty Constant tm) where
+  foldMap f (Ty Constant {..}) = f constantType
+
+instance Traversable (Ty Constant tm) where
+  traverse f (Ty con@Constant {..}) =
+    Ty . (\constantType' -> con {constantType = constantType'})
+      <$> f constantType
+
+instance Functor (Tm Constant ty) where
+  fmap f (Tm con@Constant {..}) = Tm con {constantBody = f <$> constantBody}
+
+instance Foldable (Tm Constant ty) where
+  foldMap f (Tm Constant {..}) = foldMap f constantBody
+
+instance Traversable (Tm Constant ty) where
+  traverse f (Tm con@Constant {..}) =
+    Tm . (\constantBody' -> con {constantBody = constantBody'})
+      <$> f `traverse` constantBody
+
+instance Pretty (Constant ty tm) where
   pPrint (Constant {..}) =
     "constant"
       <+> pPrint constantId
@@ -477,7 +624,7 @@ data Type
   | -- the types below cannot be written directly by the user; they are only
     -- introduced during typing
     TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
-  | TypeStructure Structure
+  | TypeStructure (Structure Type)
   | TypeEnum (Enum Type)
   | TypeVariant (Variant Type)
   | TypeNewtype (Newtype Type)

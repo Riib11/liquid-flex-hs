@@ -208,7 +208,7 @@ fromReft qreftReft = QReft {qreftQuants = mempty, qreftReft}
 data Type r
   = TypeAtomic {typeAtomic :: AtomicType, typeAnn :: r}
   | TypeTuple {typeTupleComponents :: !(Type r, Type r), typeAnn :: r}
-  | TypeStructure {typeStructure :: Base.Structure, typeAnn :: r}
+  | TypeStructure {typeStructure :: Base.Structure Base.Type, typeAnn :: r}
   | TypeVariant {typeVariant :: Base.Variant Base.Type, typeAnn :: r}
   deriving
     (Eq, Show, Functor, Foldable, Traversable)
@@ -248,8 +248,8 @@ data AtomicType
   deriving (Eq, Show)
 
 -- | Traverses over only the top annotation.
-fmap_typeAnn :: Functor f => (r -> f r) -> Type r -> f (Type r)
-fmap_typeAnn k ty = do
+fmapTop_typeAnn :: Functor f => (r -> f r) -> Type r -> f (Type r)
+fmapTop_typeAnn k ty = do
   r <- k $ typeAnn ty
   return ty {typeAnn = r}
 
@@ -390,8 +390,8 @@ data Term r
   | TermPrimitive {termPrimitive :: !(Primitive r), termAnn :: r}
   | TermLet {termSymId :: !SymId, termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
   | TermAssert {termTerm :: !(Term r), termBody :: !(Term r), termAnn :: r}
-  | TermStructure {termStructure :: !Base.Structure, termFields :: ![(FieldId, Term r)], termAnn :: r}
-  | TermMember {termStructure :: !Base.Structure, termTerm :: !(Term r), termFieldId :: !Base.FieldId, termAnn :: r}
+  | TermStructure {termStructure :: !(Base.Structure Base.Type), termFields :: ![(FieldId, Term r)], termAnn :: r}
+  | TermMember {termStructure :: !(Base.Structure Base.Type), termTerm :: !(Term r), termFieldId :: !Base.FieldId, termAnn :: r}
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 class PrettyTermAnn r where
@@ -432,8 +432,8 @@ instance Pretty SymId where
   pPrint (SymId sym _ _) = pprintInline sym
 
 -- | Traverses over only the top annotation
-fmap_termAnn :: Functor f => (r -> f r) -> Term r -> f (Term r)
-fmap_termAnn k tm = do
+fmapTop_termAnn :: Functor f => (r -> f r) -> Term r -> f (Term r)
+fmapTop_termAnn k tm = do
   r <- k $ termAnn tm
   return tm {termAnn = r}
 

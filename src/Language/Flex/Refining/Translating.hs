@@ -222,17 +222,17 @@ transType type_ = FlexM.markSection [FlexM.FlexMarkStep "transType" . Just $ pPr
   Base.TypeBit -> return $ TypeAtomic TypeBit mempty
   Base.TypeChar -> return $ TypeAtomic TypeChar mempty
   Base.TypeArray Base.TypeChar -> return $ TypeAtomic TypeString mempty
-  Base.TypeArray _ty -> error "transType TODO"
+  Base.TypeArray _ty -> error "transType TypeArray"
   Base.TypeTuple tys -> do
     tupleTypeReft =<< transType `traverse` tys
-  Base.TypeOptional _ty -> error "transType TODO"
-  Base.TypeNamed _ti -> error "transType TODO"
+  Base.TypeOptional _ty -> error "transType TypeOptional"
+  Base.TypeNamed ti -> error $ "transType Named: " <> render (pPrint ti)
   Base.TypeStructure struct@Base.Structure {..} -> do
     structureTypeReft struct =<< secondM transType `traverse` structureFields
-  Base.TypeEnum _en -> error "transType TODO"
+  Base.TypeEnum _en -> error "transType Enum"
   Base.TypeVariant varnt@Base.Variant {..} ->
     variantTypeReft varnt =<< secondM (transType `traverse`) `traverse` variantConstructors
-  Base.TypeNewtype _new -> error "transType TODO"
+  Base.TypeNewtype _new -> error "transType Newtype"
   -- invalid
   Base.TypeUnifyVar _ _ -> FlexM.throw $ "type unification variable should not appear in normalized type:" <+> pPrint type_
 
@@ -248,7 +248,7 @@ variantTypeReft varnt@Base.Variant {..} ctors = FlexM.markSectionResult (FlexM.F
   ctors' <-
     forM ctors \(ctorId, paramTypes) -> do
       paramTypes' <- forM paramTypes \paramType -> do
-        flip fmap_typeAnn paramType \qr -> do
+        flip fmapTop_typeAnn paramType \qr -> do
           paramSym <- freshSymbolFromType paramType
           return $ setQReftBind paramSym qr
       return (ctorId, paramTypes')
@@ -287,7 +287,7 @@ variantTypeReft varnt@Base.Variant {..} ctors = FlexM.markSectionResult (FlexM.F
 -- | Refined structure type.
 --
 -- > structureTypeReft ... = ... TODO
-structureTypeReft :: MonadFlex m => Base.Structure -> [(Base.FieldId, TypeReft)] -> m TypeReft
+structureTypeReft :: MonadFlex m => Base.Structure Base.Type -> [(Base.FieldId, TypeReft)] -> m TypeReft
 structureTypeReft struct@Base.Structure {..} fieldTys_ = FlexM.markSectionResult (FlexM.FlexMarkStep "structureTypeReft" . Just $ pPrint structureId <+> "; " <+> pPrint fieldTys_) pPrint struct pPrint do
   structSym <- freshSymbol ("structTermStructure" :: String)
 
@@ -565,7 +565,7 @@ embedType = \case
 -- *** Structure
 
 -- !TODO change this to be polymorphic so refined argumen types are handled automatically
-structureDataDecl :: MonadFlex m => Base.Structure -> m F.DataDecl
+structureDataDecl :: MonadFlex m => Base.Structure Base.Type -> m F.DataDecl
 structureDataDecl Base.Structure {..} =
   do
     dcName <- structureSymbol structureId
@@ -628,7 +628,7 @@ constantSymbol conId = defaultLocated $ F.symbol conId
 
 -- ** Initializing Refinement Context and Environment
 
-topRefiningCtx :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningCtx
+topRefiningCtx :: Base.Module Base.Type Base.Type -> ExceptT RefiningError FlexM RefiningCtx
 topRefiningCtx Base.Module {..} = do
   -- !TODO enums, newtypes
   foldrM
@@ -759,7 +759,7 @@ topRefiningCtx Base.Module {..} = do
       }
     moduleDeclarations
 
-topRefiningEnv :: Base.Module Base.Type -> ExceptT RefiningError FlexM RefiningEnv
+topRefiningEnv :: Base.Module Base.Type Base.Type -> ExceptT RefiningError FlexM RefiningEnv
 topRefiningEnv _mdl = do
   return
     RefiningEnv {}

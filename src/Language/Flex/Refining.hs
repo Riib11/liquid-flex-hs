@@ -26,13 +26,13 @@ import Text.PrettyPrint.HughesPJ hiding (first, (<>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 import Utility
 
-refineModule :: Base.Module Base.Type -> FlexM (Either RefiningError ((), RefiningEnv))
+refineModule :: Base.Module Base.Type Base.Type -> FlexM (Either RefiningError ((), RefiningEnv))
 refineModule mdl@Base.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("refineModule" <+> pPrint moduleId) Nothing] do
   runExceptT ((,) <$> topRefiningCtx mdl <*> topRefiningEnv mdl) >>= \case
     Left err -> return . Left $ err
     Right (ctx, env) -> runExceptT $ runReaderT (runStateT (checkModule mdl) env) ctx
 
-checkModule :: Base.Module Base.Type -> RefiningM ()
+checkModule :: Base.Module Base.Type Base.Type -> RefiningM ()
 checkModule Base.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("check module" <+> pPrint moduleId) Nothing] do
   do
     appTypes <- asks (^. ctxApplicantTypes . to Map.toList)
@@ -56,7 +56,7 @@ checkModule Base.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("check mod
     )
     (forM_ moduleDeclarations checkDeclaration)
 
-checkDeclaration :: Base.Declaration Base.Type -> RefiningM ()
+checkDeclaration :: Base.Declaration Base.Type Base.Type -> RefiningM ()
 checkDeclaration decl = FlexM.markSection [FlexM.FlexMarkStep ("checkDeclaration" <+> pPrintDeclarationHeader decl) . Just $ pPrint decl] do
   case decl of
     Base.DeclarationFunction Base.Function {..} -> do

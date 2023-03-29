@@ -10,6 +10,7 @@ module Language.Flex.Typing where
 import Control.Category ((>>>))
 import Control.Lens hiding (enum, (<&>)) -- (At (at), makeLenses, modifying, to, (^.))
 -- (At (at), makeLenses, modifying, to, (^.))
+import Control.Monad
 import Control.Monad (forM, join, unless, void, when)
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.Reader (MonadReader (ask, local), MonadTrans (lift), ReaderT (runReaderT), asks, foldM)
@@ -27,6 +28,9 @@ import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Text.Printf (printf)
 import Utility
 import Prelude hiding (Enum)
+
+-- !TODO the uses of traverseTy over module is probably not right.. should have
+-- already been a `Module TypeM Type tm`, and then need to sequenceTy
 
 -- * Typing
 
@@ -49,20 +53,13 @@ data TypingCtx = TypingCtx
     _ctxCxparams :: Map.Map TypeId TermId
   }
 
--- data ApplicantTypeM
---   = ApplicantTypeFunction (TypingM FunctionType)
---   | ApplicantTypeEnumConstructor Enum TermId
---   | ApplicantTypeVariantConstructor (TypingM Variant) TermId [TypeM]
---   | ApplicantTypeNewtypeConstructor (TypingM Newtype)
---   | ApplicantType TypeM
-
 data TypingEnv = TypingEnv
   { -- | unifying substitution
     _envUnification :: Map.Map UnifyVar Type,
     _envFreshUnificationVarIndex :: Int
   }
 
-data TypingError = TypingError Doc (Maybe (Syntax ()))
+data TypingError = TypingError Doc (Maybe (Syntax Type ()))
 
 instance Pretty TypingError where
   pPrint (TypingError msg mb_src) =
@@ -81,7 +78,7 @@ introTerm tmId tyM =
     Nothing -> return . pure $ Applicant Nothing tmId (ApplicantType tyM)
     Just _ -> throwTypingError ("attempted to introduce two terms with the same name:" <+> ticks (pPrint tmId)) Nothing
 
-introCxparam :: Maybe (Syntax ()) -> TypeId -> TermId -> TypingM a -> TypingM a
+introCxparam :: Maybe (Syntax Type ()) -> TypeId -> TermId -> TypingM a -> TypingM a
 introCxparam mb_syn tyId tmId =
   comps
     [ introTerm tmId (normType (TypeNamed tyId)),
@@ -106,14 +103,17 @@ lookupType tyId =
       Nothing -> throwTypingError ("unknown type id" <+> ticks (pPrint tyId)) Nothing
       Just tyM -> return tyM
 
-throwTypingError :: MonadError TypingError m => Doc -> Maybe (Syntax ()) -> m b
+throwTypingError :: MonadError TypingError m => Doc -> Maybe (Syntax Type ()) -> m b
 throwTypingError err mb_syn = throwError $ TypingError err mb_syn
 
 -- ** Top TypingCtx and TypingEnv
 
-topTypingCtx :: forall m. MonadError TypingError m => Module () -> m TypingCtx
+-- !TODO: need to normalize stuff inside of compound types
+
+topTypingCtx :: forall m. MonadError TypingError m => Module Type () -> m TypingCtx
 topTypingCtx Module {..} = do
-  let structs = undefined :: Map.Map TypeId Structure -- !TODO
+  -- !TODO do i need this instead of ctxTypes?
+  let structs = mempty :: Map.Map TypeId (Structure Type)
   foldlM'
     moduleDeclarations
     TypingCtx
@@ -140,7 +140,7 @@ topTypingCtx Module {..} = do
 
       case decl of
         DeclarationStructure struct@Structure {..} -> do
-          struct' <- inlineStructureExtension structs [] struct
+          struct' <- inlineStructureExtension structs [] struct -- (normType <$> struct)
           (ctx &) $
             addType structureId (normType $ TypeStructure struct')
         DeclarationNewtype newty@Newtype {..} ->
@@ -213,7 +213,7 @@ topTypingCtx Module {..} = do
         DeclarationRefinedType RefinedType {} ->
           return ctx
 
-topTypingEnv :: MonadError TypingError m => Module () -> m TypingEnv
+topTypingEnv :: MonadError TypingError m => Module Type () -> m TypingEnv
 topTypingEnv _mdl =
   return
     TypingEnv
@@ -222,17 +222,17 @@ topTypingEnv _mdl =
       }
 
 -- | Fill structure fields with inherited fields
-inlineStructureExtension :: MonadError TypingError m => Map.Map TypeId Structure -> [TypeId] -> Structure -> m Structure
+inlineStructureExtension :: MonadError TypingError m => Map.Map TypeId (Structure Type) -> [TypeId] -> Structure Type -> m (Structure Type)
 inlineStructureExtension structs extIdStack struct = do
   when (structureId struct `elem` extIdStack) $
     throwTypingError
       ("structure extension cycle:" <+> hsep (punctuate (text "extends") (pPrint <$> extIdStack)))
-      (pure $ toSyntax $ toDeclaration @_ @() $ struct)
+      (pure $ toSyntax @_ @Type @() $ toDeclaration @_ @Type @() $ struct)
   case structureMaybeExtensionId struct of
     Nothing -> return struct
     Just extId ->
       case Map.lookup extId structs of
-        Nothing -> throwTypingError ("unknown structure id" <+> ticks (pPrint extId)) (pure $ toSyntax $ toDeclaration @_ @() $ struct)
+        Nothing -> throwTypingError ("unknown structure id" <+> ticks (pPrint extId)) (pure $ toSyntax $ toDeclaration @_ @Type @() $ struct)
         Just structExt -> do
           structExt' <- inlineStructureExtension structs (structureId struct : extIdStack) structExt
           -- merge fields
@@ -241,13 +241,13 @@ inlineStructureExtension structs extIdStack struct = do
               ( \fields (fieldId, ty) ->
                   case fieldId `lookup` fields of
                     Nothing -> return $ fields @ (fieldId, ty)
-                    Just _ -> throwTypingError ("attempted to extend structure by another structure with conflicting field" <+> ticks (pPrint fieldId)) (pure $ toSyntax $ toDeclaration @_ @() $ struct)
+                    Just _ -> throwTypingError ("attempted to extend structure by another structure with conflicting field" <+> ticks (pPrint fieldId)) (pure $ toSyntax $ toDeclaration @_ @Type @() $ struct)
               )
               (structureFields struct)
               (structureFields structExt')
           return struct {structureFields}
 
-typeModule :: Module () -> FlexM (Either TypingError (Module Type, TypingEnv))
+typeModule :: Module Type () -> FlexM (Either TypingError (Module Type Type, TypingEnv))
 typeModule mdl = FlexM.markSection [FlexM.FlexMarkStep "typeModule" . Just $ pPrint mdl] do
   case topTypingCtx mdl of
     Left err -> return . Left $ err
@@ -256,22 +256,22 @@ typeModule mdl = FlexM.markSection [FlexM.FlexMarkStep "typeModule" . Just $ pPr
       Right s -> do
         runExceptT $ flip runReaderT r $ flip runStateT s $ do
           mdl' <- procModule mdl
-          mdl'' <- defaultType `traverse` mdl'
+          mdl'' <- defaultType `traverseTy` mdl'
           assertNormalModule mdl''
           return mdl''
 
 -- ** Processing
 
-procModule :: Module () -> TypingM (Module Type)
+procModule :: Module Type () -> TypingM (Module Type Type)
 procModule (Module {..}) = do
   decls <- procDeclaration `traverse` moduleDeclarations
   return $ Module {moduleId, moduleDeclarations = decls}
 
-procDeclaration :: Declaration () -> TypingM (Declaration Type)
+procDeclaration :: Declaration Type () -> TypingM (Declaration Type Type)
 procDeclaration decl = FlexM.markSection [FlexM.FlexMarkStep "procDeclaration" . Just $ pPrint decl] do
   case decl of
     DeclarationStructure (Structure {..}) ->
-      return . toDeclaration $
+      fmap toDeclaration . traverse normType $
         Structure
           { structureId,
             structureIsMessage,
@@ -279,7 +279,7 @@ procDeclaration decl = FlexM.markSection [FlexM.FlexMarkStep "procDeclaration" .
             structureFields
           }
     DeclarationNewtype (Newtype {..}) ->
-      return . toDeclaration $
+      fmap toDeclaration . traverse normType $
         Newtype
           { newtypeId,
             newtypeConstructorId,
@@ -287,20 +287,20 @@ procDeclaration decl = FlexM.markSection [FlexM.FlexMarkStep "procDeclaration" .
             newtypeType
           }
     DeclarationVariant (Variant {..}) ->
-      return . toDeclaration $
+      fmap toDeclaration . traverse normType $
         Variant
           { variantId,
             variantConstructors
           }
     DeclarationEnum (Enum {..}) ->
-      return . toDeclaration $
+      fmap toDeclaration . traverse normType $
         Enum
           { enumId,
             enumType,
             enumConstructors
           }
     DeclarationAlias (Alias {..}) ->
-      return . toDeclaration $
+      fmap toDeclaration . traverse normType $
         Alias
           { aliasId,
             aliasType
@@ -351,9 +351,8 @@ procDeclaration decl = FlexM.markSection [FlexM.FlexMarkStep "procDeclaration" .
         lookupType refinedTypeId >>>= \case
           TypeStructure struct ->
             foldr'
-              ( \(fieldId, ty) ->
-                  introTerm (fromFieldIdToTermId fieldId) (normType ty)
-              )
+              -- !TODO probably an unecessary amount of normalization happening here
+              (\(fieldId, ty) -> introTerm (fromFieldIdToTermId fieldId) (normType ty))
               (structureFields struct)
               m_rfn
           TypeNewtype newty ->
@@ -834,14 +833,14 @@ isTypedTerm = \case
   TermAscribe {} -> False
   TermMatch te branches _ -> isTypedTerm te && isTypedTerm `all` (snd <$> branches)
 
-assertNormalModule :: Module Type -> TypingM ()
+assertNormalModule :: Module Type Type -> TypingM ()
 assertNormalModule =
-  void . traverse
+  void . traverseTy
     \ty ->
       unlessM (isNormalType ty) $
         throwTypingError ("type in module is not normal:" <+> pPrint ty) Nothing
 
-isTypedModule :: Module Type -> Bool
+isTypedModule :: Module Type Type -> Bool
 isTypedModule Module {..} =
   all
     ( \de -> case de of

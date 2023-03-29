@@ -14,3 +14,8 @@ const ex1: bit = {
 
     true
 }
+
+variant Nat {
+    Zero();
+    Suc(Nat);
+}

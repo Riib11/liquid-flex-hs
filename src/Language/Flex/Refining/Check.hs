@@ -31,7 +31,7 @@ import Language.Flex.Refining.Translating (embedTerm, embedType, eqPred, makeBin
 import Language.Flex.Syntax (Literal (..))
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint), comma, hcat, hsep, nest, parens, punctuate, render, space, text, vcat, ($$), (<+>))
-import Utility (for, pprintInline, ticks)
+import Utility (comps, compsM, for, pprintInline, ticks)
 
 type CheckingM = Writer.WriterT CstrMonoid RefiningM
 
@@ -87,13 +87,13 @@ synthTerm term = FlexM.markSectionResult (FlexM.FlexMarkStep "synthTerm" . Just 
       args' <- synthTerm `traverse` args
       ty' <- transType ty
       let tm = TermNeutral symId args' ty'
-      tm' <- fmap_termAnn (fmap_typeAnn (reflectTermInReft (void <$> tm))) tm
+      tm' <- fmapTop_termAnn (fmapTop_typeAnn (reflectTermInReft (void <$> tm))) tm
       return tm'
     TermLiteral lit ty -> do
       -- literals are reflected
       ty' <- transType ty
       tm' <-
-        fmap_termAnn (fmap_typeAnn (reflectLiteralInReft (void ty') lit)) $
+        fmapTop_termAnn (fmapTop_typeAnn (reflectLiteralInReft (void ty') lit)) $
           TermLiteral lit ty'
       return tm'
     TermPrimitive prim ty ->
@@ -173,8 +173,8 @@ synthTerm term = FlexM.markSectionResult (FlexM.FlexMarkStep "synthTerm" . Just 
             -- > fieldTerm' := tm : { fieldId : a | p(fieldId) }
             fieldTerm'' <-
               lift $
-                fmap_termAnn
-                  (fmap_typeAnn (return . setQReftBind (F.symbol fieldId)))
+                fmapTop_termAnn
+                  (fmapTop_typeAnn (return . setQReftBind (F.symbol fieldId)))
                   fieldTerm'
             $(FlexM.debugThing False [|pPrint|] [|(fieldId, fieldTerm'')|])
             return (fieldId, fieldTerm'')
@@ -202,7 +202,7 @@ synthTerm term = FlexM.markSectionResult (FlexM.FlexMarkStep "synthTerm" . Just 
               }
 
       -- reflect in the refinement that this term is equal to it's reflection
-      fmap_termAnn (fmap_typeAnn $ reflectTermInReft (void <$> tm)) tm
+      fmapTop_termAnn (fmapTop_typeAnn $ reflectTermInReft (void <$> tm)) tm
     --
     TermMember struct@Base.Structure {..} tm termFieldId ty -> FlexM.markSection [FlexM.FlexMarkStep "TermMember" Nothing] do
       ty' <- transType ty
@@ -304,7 +304,23 @@ synthPrimitive _term ty primitive =
       -- outwards
       tyTuple <- tupleTypeReft [ty1, ty2]
       return $ TermPrimitive (PrimitiveTuple (tm1', tm2')) tyTuple
-    PrimitiveIf tm1 tm2 tm3 -> go3 PrimitiveIf tm1 tm2 tm3
+    PrimitiveIf tm1 tm2 tm3 -> do
+      tm1' <- synthTerm tm1
+      -- !TODO assume tm1 == True
+      tm2' <- synthTerm tm2
+      -- !TODO assume tm1 == False
+      tm3' <- synthTerm tm3
+      let prim = PrimitiveIf tm1' tm2' tm3'
+      ty' <- transType ty
+      fmapTop_termAnn
+        ( fmapTop_typeAnn $
+            compsM
+              [ reflectPrimitiveInReft (void ty') (void <$> prim),
+                return, -- !TODO tm1 == True ==> reft(tm1')
+                return -- !TODO tm2 == False ==> reft(tm2')
+              ]
+        )
+        $ TermPrimitive prim ty'
     PrimitiveAnd tm1 tm2 -> go2 PrimitiveAnd tm1 tm2
     PrimitiveOr tm1 tm2 -> go2 PrimitiveOr tm1 tm2
     PrimitiveNot tm -> go1 PrimitiveNot tm
@@ -318,16 +334,16 @@ synthPrimitive _term ty primitive =
       tm2' <- synthTerm tm2
       let prim = constr tm1' tm2'
       ty' <- transType ty
-      fmap_termAnn
-        (fmap_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      fmapTop_termAnn
+        (fmapTop_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
     go1 constr tm = do
       tm' <- synthTerm tm
       let prim = constr tm'
       ty' <- transType ty
-      fmap_termAnn
-        (fmap_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      fmapTop_termAnn
+        (fmapTop_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
     go3 constr tm1 tm2 tm3 = do
@@ -336,8 +352,8 @@ synthPrimitive _term ty primitive =
       tm3' <- synthTerm tm3
       let prim = constr tm1' tm2' tm3'
       ty' <- transType ty
-      fmap_termAnn
-        (fmap_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
+      fmapTop_termAnn
+        (fmapTop_typeAnn $ reflectPrimitiveInReft (void ty') (void <$> prim))
         $ TermPrimitive prim ty'
 
 -- ** Reflection
@@ -414,5 +430,5 @@ checkSubtype tmSynth tySynth tyExpect = FlexM.markSection [FlexM.FlexMarkStep "c
 -- @{ VV: bit | VV == true }@
 reftTypeIsTrue :: CheckingM TypeReft
 reftTypeIsTrue =
-  fmap_typeAnn (reflectLiteralInReft (TypeAtomic TypeBit ()) (LiteralBit True))
+  fmapTop_typeAnn (reflectLiteralInReft (TypeAtomic TypeBit ()) (LiteralBit True))
     =<< transType Base.TypeBit

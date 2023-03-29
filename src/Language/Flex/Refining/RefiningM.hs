@@ -40,9 +40,9 @@ data RefiningCtx = RefiningCtx
     -- | During translation: context of top and local refined signatures
     _ctxApplicantTypes :: Map.Map SymId (Base.ApplicantType TypeReft),
     -- | Before translation: accumulate functions
-    _ctxFunctions :: Map.Map SymId (Base.Function Base.Type),
+    _ctxFunctions :: Map.Map SymId (Base.Function Base.Type Base.Type),
     -- | Before translation: accumulate structures
-    _ctxStructures :: Map.Map Base.TypeId Base.Structure,
+    _ctxStructures :: Map.Map Base.TypeId (Base.Structure Base.Type),
     -- | Init before translation: accumulate refined types
     _ctxRefinedTypes :: Map.Map Base.TypeId (Base.RefinedType Base.Type),
     -- | During translation, before refinement-checking: translated but not yet

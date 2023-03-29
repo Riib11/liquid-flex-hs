@@ -16,7 +16,7 @@ import Utility hiding (angles)
 
 -- * Parsing
 
-parseModuleFile :: FilePath -> IO (Either ParseError (Module ()))
+parseModuleFile :: FilePath -> IO (Either ParseError (Module Type ()))
 parseModuleFile fp = do
   src <- readFile fp
   runParserT (parseModule <* eof) emptyLexingEnv fp src
@@ -41,7 +41,7 @@ parseContextualParameterId = TermId <$> ((++) <$> string "?" <*> identifier)
 
 -- ** Module
 
-parseModule :: Parser (Module ())
+parseModule :: Parser (Module Type ())
 parseModule = do
   comments
   reserved "module"
@@ -56,7 +56,7 @@ parseModule = do
 
 -- ** Declaration
 
-parseDeclaration :: Parser [Declaration ()]
+parseDeclaration :: Parser [Declaration Type ()]
 parseDeclaration = do
   comments
   choice
@@ -69,7 +69,7 @@ parseDeclaration = do
       parseConstant
     ]
 
-parseStructure :: Parser [Declaration ()]
+parseStructure :: Parser [Declaration Type ()]
 parseStructure = do
   structureIsMessage <-
     try $
@@ -111,7 +111,7 @@ parseStructure = do
           }
     ]
 
-parseNewtype :: Parser [Declaration ()]
+parseNewtype :: Parser [Declaration Type ()]
 parseNewtype = do
   try $ reserved "newtype"
   newtypeId <- parseTypeId
@@ -151,7 +151,7 @@ parseNewtype = do
           }
     ]
 
-parseVariant :: Parser [Declaration ()]
+parseVariant :: Parser [Declaration Type ()]
 parseVariant = do
   try $ reserved "variant"
   variantId <- parseTypeId
@@ -169,7 +169,7 @@ parseVariant = do
           variantConstructors
         }
 
-parseEnum :: Parser [Declaration ()]
+parseEnum :: Parser [Declaration Type ()]
 parseEnum = do
   try $ reserved "enum"
   enumId <- parseTypeId
@@ -190,7 +190,7 @@ parseEnum = do
           enumConstructors
         }
 
-parseAlias :: Parser [Declaration ()]
+parseAlias :: Parser [Declaration Type ()]
 parseAlias = do
   try $ reserved "type"
   aliasId <- parseTypeId
@@ -203,7 +203,7 @@ parseAlias = do
           aliasType
         }
 
-parseFunction :: Parser [Declaration ()]
+parseFunction :: Parser [Declaration Type ()]
 parseFunction = do
   functionIsTransform <-
     try $
@@ -238,7 +238,7 @@ parseFunction = do
           functionBody
         }
 
-parseConstant :: Parser [Declaration ()]
+parseConstant :: Parser [Declaration Type ()]
 parseConstant = do
   try $ reserved "const"
   constantId <- parseTermId
