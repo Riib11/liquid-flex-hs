@@ -1,3 +1,13 @@
+module Test.Refining where
+
+import Test.HUnit
+
+
+test :: Test
+test = TestCase $ 
+  assertFailure "refining test is disabled"
+
+{-
 {-# HLINT ignore "Use ++" #-}
 {-# HLINT ignore "Use camelCase" #-}
 module Test.Refining where
@@ -77,3 +87,4 @@ makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . Tes
   runFlexM defaultFlexCtx {flexDebug = _DEBUG} (refineModule mdl') >>= \case
     Left err -> when pass $ assertFailure (render . pPrint $ err)
     Right _ -> unless pass $ assertFailure "expected refining to fail"
+-}
