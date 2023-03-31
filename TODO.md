@@ -1,26 +1,25 @@
 # TODO
 
-- [ ] TermField
-    - `s.xI: { VV | exists a1 ... aN . s == S a1 ... aN && VV == aI }`
 
-- [ ] note that can introduce equations into query context (Query.qEqns) but
-  then also have to add them to the constantst (H.qCon) 
-    - could do this instead of what i do now for `let` and `function` inlining
-    - but, could this have scoping issues? might be best to just leave
-      everything in refinements where i know it works
-- [ ] field of strcuture 
-
-- [x] Structures
-    - [ ] constructing, destructing (with refinement)
-- [ ] Newtypes
-    - [ ] destructing (with refinement)
-    - [ ] can be translated as Structures?
+- [ ] fix named type normalization
 - [ ] Enums
-    - [ ] pattern matching
+    - [ ] translate to Variant
+- [ ] Newtypes
+    - [ ] translate to Structure
 - [ ] Variants
+    - [x] translate type
+        - `V ~~> { VV: V | exists x y . VV = V1 x || VV == V2 y }
+    - [x] constructing (straightforward reflection)
+        - `V1 a : { VV: V | VV = V1 a }`
     - [ ] pattern matching
-- [x] Proper freshening of variables when inlining functions
-- [ ] expand refinement test suite
+- [ ] Function inlining
+    - [x] implement
+    - [ ] bug: renaming of function params is only applied to syntactic term and
+          not to embedded term
+- [ ] If-then-else
+    - [x] implemented
+    - [ ] introduce local assumption
+    - [ ] needs more tests
 - [ ] totality
     - [x] assertions
     - [ ] exhaustive branching
@@ -29,6 +28,25 @@
     - [ ] try
         - reasoning in refinements: make optional result explicit, and try works
           over that?
+- [ ] Primitives (includes reflection)
+    - [x] `==`
+        - [ ] `!=`
+    - [x] `&&`, `||`, `!`
+        [ ] `==>`
+    - [x] `+`
+        - [ ] `-`, `*`, `/`, `mod`, `<=`, `<`, `>`, `>=`, ...
+- [x] Structures
+    - [x] constructing
+        - `S{ x = 1; y = 2 } : { VV: S | VV = S 1 2 }`
+    - [x] field access
+        - `s.x: { VV | exists y . s == S VV y }`
+- [x] Proper freshening of variables when inlining functions
+- [x] expand refinement test suite
+- [ ] note that can introduce equations into query context (Query.qEqns) but
+  then also have to add them to the constants (H.qCon) 
+    - could do this instead of what i do now for `let` and `function` inlining
+    - but, could this have scoping issues? might be best to just leave
+      everything in refinements where i know it works
 
 To get refinement type checking working with at least base types (e.g. just
 `int*` types):

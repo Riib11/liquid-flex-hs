@@ -399,8 +399,10 @@ instance Foldable (Ty Function tm) where
 
 instance Traversable (Ty Function tm) where
   traverse f (Ty fun@Function {..}) =
-    Ty . (\functionParameters' -> fun {functionParameters = functionParameters'})
-      <$> (\(ti, a) -> (ti,) <$> f a) `traverse` functionParameters
+    Ty
+      . (\functionParameters' -> fun {functionParameters = functionParameters'})
+      <$> (\(ti, a) -> (ti,) <$> f a)
+      `traverse` functionParameters
 
 instance Functor (Tm Function ty) where
   fmap f (Tm fun@Function {..}) =
@@ -411,8 +413,10 @@ instance Foldable (Tm Function ty) where
 
 instance Traversable (Tm Function ty) where
   traverse f (Tm fun@Function {..}) =
-    Tm . (\functionBody' -> fun {functionBody = functionBody'})
-      <$> f `traverse` functionBody
+    Tm
+      . (\functionBody' -> fun {functionBody = functionBody'})
+      <$> f
+      `traverse` functionBody
 
 instance (Pretty ty, Pretty tm) => Pretty (Function ty tm) where
   pPrint (Function {..}) =
@@ -463,8 +467,10 @@ instance Foldable (Tm Constant ty) where
 
 instance Traversable (Tm Constant ty) where
   traverse f (Tm con@Constant {..}) =
-    Tm . (\constantBody' -> con {constantBody = constantBody'})
-      <$> f `traverse` constantBody
+    Tm
+      . (\constantBody' -> con {constantBody = constantBody'})
+      <$> f
+      `traverse` constantBody
 
 instance Pretty (Constant ty tm) where
   pPrint (Constant {..}) =
