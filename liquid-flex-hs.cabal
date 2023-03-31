@@ -32,6 +32,8 @@ library
       Language.Flex.Parsing
       Language.Flex.Syntax
       Language.Flex.Typing
+      Language.Flex.Typing.Typing
+      Language.Flex.Typing.TypingM
       Utility
   other-modules:
       Paths_liquid_flex_hs

@@ -385,24 +385,33 @@ data Function ty tm = Function
     -- | since contextual parameters must have newtypes, data Term only need to store the
     -- newtypes' ids
     functionContextualParameters :: Maybe [(TypeId, TermId)],
-    functionOutput :: Type,
+    functionOutput :: ty,
     functionBody :: Term tm
   }
   deriving (Eq, Show)
 
 instance Functor (Ty Function tm) where
   fmap f (Ty fun@Function {..}) =
-    Ty fun {functionParameters = second f <$> functionParameters}
+    Ty
+      fun
+        { functionParameters = second f <$> functionParameters,
+          functionOutput = f functionOutput
+        }
 
 instance Foldable (Ty Function tm) where
   foldMap f (Ty Function {..}) = foldMap (f . snd) functionParameters
 
 instance Traversable (Ty Function tm) where
   traverse f (Ty fun@Function {..}) =
-    Ty
-      . (\functionParameters' -> fun {functionParameters = functionParameters'})
-      <$> (\(ti, a) -> (ti,) <$> f a)
-      `traverse` functionParameters
+    fmap Ty $
+      ( \functionParameters' functionOutput' ->
+          fun
+            { functionParameters = functionParameters',
+              functionOutput = functionOutput'
+            }
+      )
+        <$> ((\(ti, a) -> (ti,) <$> f a) `traverse` functionParameters)
+        <*> f functionOutput
 
 instance Functor (Tm Function ty) where
   fmap f (Tm fun@Function {..}) =
@@ -416,7 +425,7 @@ instance Traversable (Tm Function ty) where
     Tm
       . (\functionBody' -> fun {functionBody = functionBody'})
       <$> f
-      `traverse` functionBody
+        `traverse` functionBody
 
 instance (Pretty ty, Pretty tm) => Pretty (Function ty tm) where
   pPrint (Function {..}) =
@@ -470,7 +479,7 @@ instance Traversable (Tm Constant ty) where
     Tm
       . (\constantBody' -> con {constantBody = constantBody'})
       <$> f
-      `traverse` constantBody
+        `traverse` constantBody
 
 instance Pretty (Constant ty tm) where
   pPrint (Constant {..}) =
@@ -626,31 +635,30 @@ data Type
   | TypeArray Type
   | TypeTuple [Type]
   | TypeOptional Type
-  | TypeNamed TypeId
-  | -- the types below cannot be written directly by the user; they are only
-    -- introduced during typing
+  | -- | If this is a reference to a type alias, then @Maybe Type@ starts off as
+    -- @Nothing@ after parsing, and then is replaced with the (normalized)
+    -- aliased type after typing.
+    TypeNamed TypeId (Maybe Type)
+  | -- | Only introduced during typing.
     TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
-  | TypeStructure (Structure Type)
-  | TypeEnum (Enum Type)
-  | TypeVariant (Variant Type)
-  | TypeNewtype (Newtype Type)
   deriving (Eq, Show)
 
 data ApplicantType ann
-  = ApplicantTypeFunction (FunctionType ann)
-  | ApplicantTypeEnumConstructor (Enum ann) TermId
-  | ApplicantTypeVariantConstructor (Variant ann) TermId [ann]
-  | ApplicantTypeNewtypeConstructor (Newtype ann)
+  = ApplicantTypeFunction TermId
+  | ApplicantTypeEnumConstructor TypeId TermId
+  | ApplicantTypeVariantConstructor TypeId TermId
+  | ApplicantTypeNewtypeConstructor TypeId
   | ApplicantType ann
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty r => Pretty (ApplicantType r) where
   pPrint = \case
-    (ApplicantTypeFunction ft) -> pPrint ft
-    (ApplicantTypeEnumConstructor Enum {..} ti) -> pPrint enumId <> "#" <> pPrint ti
-    (ApplicantTypeVariantConstructor Variant {..} ti rs) -> pPrint variantId <> "#" <> pPrint ti <> parens (hcat $ punctuate (comma <> space) $ pPrint <$> rs)
-    (ApplicantTypeNewtypeConstructor Newtype {..}) -> pPrint newtypeId <> parens (pPrint newtypeType)
-    (ApplicantType r) -> pPrint r
+    -- (ApplicantTypeFunction ft) -> pPrint ft
+    -- (ApplicantTypeEnumConstructor Enum {..} ti) -> pPrint enumId <> "#" <> pPrint ti
+    -- (ApplicantTypeVariantConstructor Variant {..} ti rs) -> pPrint variantId <> "#" <> pPrint ti <> parens (hcat $ punctuate (comma <> space) $ pPrint <$> rs)
+    -- (ApplicantTypeNewtypeConstructor Newtype {..}) -> pPrint newtypeId <> parens (pPrint newtypeType)
+    -- (ApplicantType r) -> pPrint r
+    _ -> error "TODO: Pretty ApplicantType"
 
 data FunctionType ann = FunctionType
   { functionTypeId :: TermId,
@@ -669,14 +677,10 @@ instance Pretty Type where
     TypeArray ty -> "Array<" <> pPrint ty <> ">"
     TypeTuple tys -> "Tuple<" <> (tuple . fmap pPrint $ tys) <> ">"
     TypeOptional ty -> "Optional<" <> pPrint ty <> ">"
-    TypeNamed ti -> pPrint ti
+    TypeNamed ti _ -> pPrint ti
     TypeUnifyVar uv mb_uc -> case mb_uc of
       Nothing -> pPrint uv
       Just uc -> pPrint uv <> "{" <> pPrint uc <> "}"
-    TypeStructure struct -> pPrint (structureId struct)
-    TypeEnum enum -> pPrint (enumId enum)
-    TypeVariant varnt -> pPrint (variantId varnt)
-    TypeNewtype newty -> pPrint (newtypeId newty)
     where
       tuple :: [Doc] -> Doc
       tuple = parens . hcat . punctuate (comma <> space)

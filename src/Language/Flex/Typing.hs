@@ -8,10 +8,8 @@
 module Language.Flex.Typing where
 
 import Control.Category ((>>>))
-import Control.Lens hiding (enum, (<&>)) -- (At (at), makeLenses, modifying, to, (^.))
--- (At (at), makeLenses, modifying, to, (^.))
+import Control.Lens hiding (enum, (<&>))
 import Control.Monad
-import Control.Monad (forM, join, unless, void, when)
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.Reader (MonadReader (ask, local), MonadTrans (lift), ReaderT (runReaderT), asks, foldM)
 import Control.Monad.State (StateT (runStateT), gets)
@@ -29,83 +27,9 @@ import Text.Printf (printf)
 import Utility
 import Prelude hiding (Enum)
 
--- !TODO BUG: can't currently do recursive types, since my normalization expands
--- variants/structures by value. change how normalization works to not do that,
--- and then need to carry a typing context into refining probably
-
 -- * Typing
 
 -- ** Utility Types
-
--- | During typing, store each type as a `TypeM = TypingM Type` so that whenever
--- a `Type`'s value is used, the `TypingM` must be run first (in a `TypingM`
--- computation), which normalizes the internal `Type` via the contextual
--- unification substitution.
-type TypeM = TypingM Type
-
--- ** TypingM
-
-type TypingM = StateT TypingEnv (ReaderT TypingCtx (ExceptT TypingError FlexM))
-
-data TypingCtx = TypingCtx
-  { _ctxTypes :: Map.Map TypeId TypeM,
-    _ctxApplicants :: Map.Map (Applicant ()) (Applicant TypeM),
-    _ctxCxparamNewtypes :: Map.Map TermId TypeId,
-    _ctxCxparams :: Map.Map TypeId TermId
-  }
-
-data TypingEnv = TypingEnv
-  { -- | unifying substitution
-    _envUnification :: Map.Map UnifyVar Type,
-    _envFreshUnificationVarIndex :: Int
-  }
-
-data TypingError = TypingError Doc (Maybe (Syntax Type ()))
-
-instance Pretty TypingError where
-  pPrint (TypingError msg mb_src) =
-    text "typing error:"
-      <+> msg
-      $$ maybe mempty (nest 2 . pPrint) mb_src
-
-makeLenses 'TypingCtx
-makeLenses 'TypingEnv
-
--- ** TypingM utilities
-
-introTerm :: TermId -> TypeM -> TypingM a -> TypingM a
-introTerm tmId tyM =
-  locallyM (ctxApplicants . at (Applicant Nothing tmId (ApplicantType ()))) \case
-    Nothing -> return . pure $ Applicant Nothing tmId (ApplicantType tyM)
-    Just _ -> throwTypingError ("attempted to introduce two terms with the same name:" <+> ticks (pPrint tmId)) Nothing
-
-introCxparam :: Maybe (Syntax Type ()) -> TypeId -> TermId -> TypingM a -> TypingM a
-introCxparam mb_syn tyId tmId =
-  comps
-    [ introTerm tmId (normType (TypeNamed tyId)),
-      locallyM (ctxCxparamNewtypes . at tmId) \case
-        Nothing -> return $ pure tyId
-        Just _ -> throwTypingError ("attempted to introduce two contextual parameters with the same name:" <+> ticks (pPrint tmId)) mb_syn,
-      locallyM (ctxCxparams . at tyId) \case
-        Nothing -> return $ pure tmId
-        Just _ -> throwTypingError ("attempted to introduce two contextual parameters with the same type:" <+> ticks (pPrint tyId)) mb_syn
-    ]
-
-lookupApplicant :: Applicant () -> TypingM (Applicant TypeM)
-lookupApplicant app =
-  asks (^. ctxApplicants . at app) >>= \case
-    Nothing -> throwTypingError ("unknown applicant:" <+> ticks (pPrint app)) Nothing
-    Just appTyM -> return appTyM
-
-lookupType :: TypeId -> TypingM TypeM
-lookupType tyId =
-  asks (^. ctxTypes . at tyId)
-    >>= \case
-      Nothing -> throwTypingError ("unknown type id" <+> ticks (pPrint tyId)) Nothing
-      Just tyM -> return tyM
-
-throwTypingError :: MonadError TypingError m => Doc -> Maybe (Syntax Type ()) -> m b
-throwTypingError err mb_syn = throwError $ TypingError err mb_syn
 
 -- ** Top TypingCtx and TypingEnv
 
@@ -120,8 +44,8 @@ topTypingCtx Module {..} = do
     TypingCtx
       { _ctxTypes = Map.fromList [(TypeId "string", return (TypeArray TypeChar))],
         _ctxApplicants = mempty,
-        _ctxCxparamNewtypes = mempty,
-        _ctxCxparams = mempty
+        _ctxCxparamNewtypeIds = mempty,
+        _ctxCxparamTermIds = mempty
       }
     \ctx decl -> do
       let addType :: TypeId -> TypeM -> TypingCtx -> m TypingCtx
@@ -534,7 +458,7 @@ synthNeutral term app mb_args mb_cxargs =
               -- implicit cxparams
               Just cxparams ->
                 fmap Just . forM cxparams $ \(tyIdCxparam, tmIdCxparam) ->
-                  asks (^. ctxCxparams . at tyIdCxparam) >>= \case
+                  asks (^. ctxCxparamTermIds . at tyIdCxparam) >>= \case
                     Nothing -> throwTypingError ("could not infer the implicit contextual argument" <+> ticks (pPrint tmIdCxparam)) (pure . toSyntax $ term)
                     Just tmIdCxarg ->
                       return $
