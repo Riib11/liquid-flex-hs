@@ -273,6 +273,8 @@ pPrintDeclarationHeader =
     (DeclarationEnum Enum {..}) -> "enum" <+> pPrint enumId
     (DeclarationAlias Alias {..}) -> "alias" <+> pPrint aliasId
     (DeclarationFunction Function {..}) -> "function" <+> pPrint functionId
+      where
+        FunctionType {..} = functionType
     (DeclarationConstant Constant {..}) -> "constant" <+> pPrint constantId
     (DeclarationRefinedType RefinedType {..}) -> "refine" <+> pPrint refinedTypeId
 
@@ -379,39 +381,23 @@ instance Pretty ann => Pretty (Alias ann) where
 -- *** Function
 
 data Function ty tm = Function
-  { functionId :: TermId,
-    functionIsTransform :: Bool,
-    functionParameters :: [(TermId, ty)],
-    -- | since contextual parameters must have newtypes, data Term only need to store the
-    -- newtypes' ids
-    functionContextualParameters :: Maybe [(TypeId, TermId)],
-    functionOutput :: ty,
+  { functionType :: FunctionType ty,
     functionBody :: Term tm
   }
   deriving (Eq, Show)
 
 instance Functor (Ty Function tm) where
   fmap f (Ty fun@Function {..}) =
-    Ty
-      fun
-        { functionParameters = second f <$> functionParameters,
-          functionOutput = f functionOutput
-        }
+    Ty fun {functionType = f <$> functionType}
 
 instance Foldable (Ty Function tm) where
-  foldMap f (Ty Function {..}) = foldMap (f . snd) functionParameters
+  foldMap f (Ty Function {..}) = foldMap f functionType
 
 instance Traversable (Ty Function tm) where
   traverse f (Ty fun@Function {..}) =
     fmap Ty $
-      ( \functionParameters' functionOutput' ->
-          fun
-            { functionParameters = functionParameters',
-              functionOutput = functionOutput'
-            }
-      )
-        <$> ((\(ti, a) -> (ti,) <$> f a) `traverse` functionParameters)
-        <*> f functionOutput
+      (\functionType' -> fun {functionType = functionType'})
+        <$> (f `traverse` functionType)
 
 instance Functor (Tm Function ty) where
   fmap f (Tm fun@Function {..}) =
@@ -440,6 +426,52 @@ instance (Pretty ty, Pretty tm) => Pretty (Function ty tm) where
           <+> text "{",
         nest 2 $ pPrint functionBody,
         text "}"
+      ]
+    where
+      FunctionType {..} = functionType
+
+      parameters :: (Pretty a, Pretty b) => [(a, b)] -> Doc
+      parameters params = tuple $ params <&> \(a, b) -> pPrint a <+> colon <+> pPrint b
+
+      tuple :: [Doc] -> Doc
+      tuple = parens . hcat . punctuate (comma <> space)
+
+data FunctionType ann = FunctionType
+  { functionId :: TermId,
+    functionIsTransform :: Bool,
+    functionParameters :: [(TermId, ann)],
+    -- | since contextual parameters must have newtypes, data Term only need to store the
+    -- newtypes' ids
+    functionContextualParameters :: Maybe [(TypeId, TermId)],
+    functionOutput :: ann
+  }
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
+instance Pretty Type where
+  pPrint = \case
+    TypeNumber nt n -> pPrint nt <> pPrint n
+    TypeBit -> "bit"
+    TypeChar -> "char"
+    TypeArray ty -> "Array<" <> pPrint ty <> ">"
+    TypeTuple tys -> "Tuple<" <> (tuple . fmap pPrint $ tys) <> ">"
+    TypeOptional ty -> "Optional<" <> pPrint ty <> ">"
+    TypeNamed ti _ -> pPrint ti
+    TypeUnifyVar uv mb_uc -> case mb_uc of
+      Nothing -> pPrint uv
+      Just uc -> pPrint uv <> "{" <> pPrint uc <> "}"
+    where
+      tuple :: [Doc] -> Doc
+      tuple = parens . hcat . punctuate (comma <> space)
+
+instance Pretty ann => Pretty (FunctionType ann) where
+  pPrint FunctionType {..} =
+    hsep
+      [ pPrint functionId,
+        if functionIsTransform then "transform" else mempty,
+        parameters functionParameters,
+        case functionContextualParameters of
+          Nothing -> mempty
+          Just cxparams -> "given" <+> parameters cxparams
       ]
     where
       parameters :: (Pretty a, Pretty b) => [(a, b)] -> Doc
@@ -659,48 +691,6 @@ instance Pretty r => Pretty (ApplicantType r) where
     -- (ApplicantTypeNewtypeConstructor Newtype {..}) -> pPrint newtypeId <> parens (pPrint newtypeType)
     -- (ApplicantType r) -> pPrint r
     _ -> error "TODO: Pretty ApplicantType"
-
-data FunctionType ann = FunctionType
-  { functionTypeId :: TermId,
-    functionTypeIsTransform :: Bool,
-    functionTypeParameters :: [(TermId, ann)],
-    functionTypeContextualParameters :: Maybe [(TypeId, TermId)],
-    functionTypeOutput :: ann
-  }
-  deriving (Eq, Show, Functor, Foldable, Traversable)
-
-instance Pretty Type where
-  pPrint = \case
-    TypeNumber nt n -> pPrint nt <> pPrint n
-    TypeBit -> "bit"
-    TypeChar -> "char"
-    TypeArray ty -> "Array<" <> pPrint ty <> ">"
-    TypeTuple tys -> "Tuple<" <> (tuple . fmap pPrint $ tys) <> ">"
-    TypeOptional ty -> "Optional<" <> pPrint ty <> ">"
-    TypeNamed ti _ -> pPrint ti
-    TypeUnifyVar uv mb_uc -> case mb_uc of
-      Nothing -> pPrint uv
-      Just uc -> pPrint uv <> "{" <> pPrint uc <> "}"
-    where
-      tuple :: [Doc] -> Doc
-      tuple = parens . hcat . punctuate (comma <> space)
-
-instance Pretty ann => Pretty (FunctionType ann) where
-  pPrint FunctionType {..} =
-    hsep
-      [ pPrint functionTypeId,
-        if functionTypeIsTransform then "transform" else mempty,
-        parameters functionTypeParameters,
-        case functionTypeContextualParameters of
-          Nothing -> mempty
-          Just cxparams -> "given" <+> parameters cxparams
-      ]
-    where
-      parameters :: (Pretty a, Pretty b) => [(a, b)] -> Doc
-      parameters params = tuple $ params <&> \(a, b) -> pPrint a <+> colon <+> pPrint b
-
-      tuple :: [Doc] -> Doc
-      tuple = parens . hcat . punctuate (comma <> space)
 
 data NumberType
   = TypeInt

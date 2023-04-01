@@ -230,11 +230,14 @@ parseFunction = do
   return . pure $
     toDeclaration
       Function
-        { functionId,
-          functionParameters,
-          functionContextualParameters,
-          functionIsTransform,
-          functionOutput,
+        { functionType =
+            FunctionType
+              { functionId,
+                functionIsTransform,
+                functionParameters,
+                functionContextualParameters,
+                functionOutput
+              },
           functionBody
         }
 
@@ -291,7 +294,7 @@ parseType =
         return $ TypeOptional ty,
       do
         tyId <- parseTypeId
-        return $ TypeNamed tyId
+        return $ TypeNamed tyId Nothing
     ]
 
 -- ** Term
