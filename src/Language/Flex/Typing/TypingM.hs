@@ -18,18 +18,27 @@ import Prelude hiding (Enum, enum)
 
 type TypingM = StateT TypingEnv (ReaderT TypingCtx (ExceptT TypingError FlexM))
 
--- | During typing, store each type as a `TypeM = TypingM Type` so that whenever
+runTypingM :: TypingEnv -> TypingCtx -> TypingM a -> FlexM (Either TypingError (a, TypingEnv))
+runTypingM env ctx m = runExceptT $ runReaderT (runStateT m env) ctx
+
+runTypingM' :: (MonadError TypingError m, MonadFlex m) => TypingEnv -> TypingCtx -> TypingM a -> m a
+runTypingM' env ctx m =
+  liftFlex (runExceptT (runReaderT (evalStateT m env) ctx)) >>= \case
+    Left err -> throwError err
+    Right a -> return a
+
+-- | During typing, store each type as a `MType = TypingM Type` so that whenever
 -- a `Type`'s value is used, the `TypingM` must be run first (in a `TypingM`
 -- computation), which normalizes the internal `Type` via the contextual
 -- unification substitution.
-type TypeM = TypingM Type
+type MType = TypingM Type
 
 data TypingCtx = TypingCtx
-  { _ctxTypes :: Map.Map TypeId (CtxType TypeM),
-    _ctxFunctions :: Map.Map TermId (Function TypeM ()),
-    _ctxConstants :: Map.Map TermId (Constant TypeM ()),
+  { _ctxTypes :: Map.Map TypeId (CtxType MType),
+    _ctxFunctions :: Map.Map TermId (Function MType ()),
+    _ctxConstants :: Map.Map TermId (Constant MType ()),
     _ctxRefinedTypes :: Map.Map TypeId (RefinedType ()),
-    _ctxApplicants :: Map.Map (Applicant ()) (Applicant TypeM),
+    _ctxApplicants :: Map.Map (Applicant ()) (Applicant MType),
     -- | Map of contextual parameter newtype ids (introduced by transform's
     -- contextual parameters)
     _ctxCxparamNewtypeIds :: Map.Map TermId TypeId,
@@ -61,6 +70,16 @@ data CtxType ann
   | CtxEnum (Enum ann)
   | CtxAlias (Alias ann)
 
+instance Pretty (CtxType ann) where
+  pPrint ct = pPrint (ctxTypeId ct)
+
+fromCtxTypeToDeclaration :: CtxType ty -> Declaration ty tm
+fromCtxTypeToDeclaration (CtxStructure struc) = toDeclaration struc
+fromCtxTypeToDeclaration (CtxNewtype new) = toDeclaration new
+fromCtxTypeToDeclaration (CtxVariant vari) = toDeclaration vari
+fromCtxTypeToDeclaration (CtxEnum en) = toDeclaration en
+fromCtxTypeToDeclaration (CtxAlias al) = toDeclaration al
+
 class IsCtxType a ann where
   toCtxType :: a -> CtxType ann
 
@@ -79,35 +98,73 @@ instance IsCtxType (Enum ann) ann where
 instance IsCtxType (Alias ann) ann where
   toCtxType = CtxAlias
 
+ctxTypeId :: CtxType ann -> TypeId
+ctxTypeId (CtxStructure Structure {..}) = structureId
+ctxTypeId (CtxNewtype Newtype {..}) = newtypeId
+ctxTypeId (CtxVariant Variant {..}) = variantId
+ctxTypeId (CtxEnum Enum {..}) = enumId
+ctxTypeId (CtxAlias Alias {..}) = aliasId
+
 makeLenses 'TypingCtx
 makeLenses 'TypingEnv
 
+-- *** Utilities
+
+modifyInsertUnique :: (MonadError e m, MonadState s m) => Lens' s (Maybe a) -> a -> e -> m ()
+modifyInsertUnique l a e = modifyM \s -> case s ^. l of
+  Nothing -> return $ (l ?~ a) s
+  Just _ -> throwError e
+
 -- ** Normalization
 
-normType :: Type -> TypeM
-normType type_ = case type_ of
-  (TypeNumber nt n) -> return type_
-  TypeBit -> return type_
-  TypeChar -> return type_
-  (TypeArray ty) -> TypeArray <$> normType ty
-  (TypeTuple tys) -> TypeTuple <$> normType `traverse` tys
-  (TypeOptional ty) -> TypeArray <$> normType ty
-  --   (TypeNamed ti _) -> TypeNamed ti . Just <$> join (lookupType ti)
-  (TypeNamed ti _) ->
-    TypeNamed ti
-      <$> ( lookupType ti >>= \case
-              (CtxAlias Alias {..}) -> Just <$> aliasType
-              _ -> return Nothing
-          )
-  (TypeUnifyVar uv _) ->
-    gets (^. envUnification . at uv) >>= \case
-      Nothing -> return type_
-      (Just ty) -> normType ty
+normalizeType :: Type -> MType
+normalizeType = go []
+  where
+    go aliasIds type0 = case type0 of
+      (TypeArray ty) -> TypeArray <$> normalizeType ty
+      (TypeTuple tys) -> TypeTuple <$> normalizeType `traverse` tys
+      (TypeOptional ty) -> TypeArray <$> normalizeType ty
+      (TypeNamed tyId) ->
+        asks (^. ctxTypes . at tyId) >>= \case
+          Nothing -> return (TypeNamed tyId)
+          Just ctxType -> case ctxType of
+            (CtxAlias Alias {..}) -> go (aliasId : aliasIds) =<< aliasType
+            _ -> return (TypeNamed tyId)
+      (TypeUnifyVar uv _) ->
+        gets (^. envUnification . at uv) >>= \case
+          Nothing -> return type0
+          (Just ty) -> normalizeType ty
+      _ -> return type0
+
+normalizeInternalTypes :: Traversable t => t MType -> TypingM (t Type)
+normalizeInternalTypes = traverse (>>= assertNormalType)
+
+assertNormalType :: Type -> TypingM Type
+assertNormalType = error "assertNormalType"
+
+-- ** Defaulting
+
+-- | Abstract types (such as type unification variables) can be defaulted. This
+-- is relevant when an internal type is not concretized during typing. This
+-- should yield a type that has no more type unification variables in it.
+defaultType :: Type -> TypingM Type
+defaultType ty = do
+  ty' <- go ty
+  assertConcreteType ty'
+  return ty'
+  where
+    go = error "defaultType"
+
+defaultInternalTypes :: Traversable t => t Type -> TypingM (t Type)
+defaultInternalTypes = traverse (defaultType >=> assertConcreteType)
+
+assertConcreteType :: Type -> TypingM Type
+assertConcreteType = error "assertConcreteType"
 
 -- ** Utilities
 
-introTerm :: TermId -> TypeM -> TypingM a -> TypingM a
-introTerm tmId tyM =
+introLocal :: TermId -> MType -> TypingM a -> TypingM a
+introLocal tmId tyM =
   locallyM (ctxApplicants . at (Applicant Nothing tmId (ApplicantType ()))) \case
     Nothing -> return . pure $ Applicant Nothing tmId (ApplicantType tyM)
     Just _ -> throwTypingError ("attempted to introduce two terms with the same name:" <+> ticks (pPrint tmId)) Nothing
@@ -115,7 +172,7 @@ introTerm tmId tyM =
 introCxparam :: Maybe (Syntax Type ()) -> TypeId -> TermId -> TypingM a -> TypingM a
 introCxparam mb_syn tyId tmId =
   comps
-    [ introTerm tmId (normType (TypeNamed tyId Nothing)),
+    [ introLocal tmId (normalizeType (TypeNamed tyId)),
       locallyM (ctxCxparamNewtypeIds . at tmId) \case
         Nothing -> return $ pure tyId
         Just _ -> throwTypingError ("attempted to introduce two contextual parameters with the same name:" <+> ticks (pPrint tmId)) mb_syn,
@@ -124,18 +181,24 @@ introCxparam mb_syn tyId tmId =
         Just _ -> throwTypingError ("attempted to introduce two contextual parameters with the same type:" <+> ticks (pPrint tyId)) mb_syn
     ]
 
-lookupApplicant :: Applicant () -> TypingM (Applicant TypeM)
+lookupApplicant :: Applicant () -> TypingM (Applicant MType)
 lookupApplicant app =
   asks (^. ctxApplicants . at app) >>= \case
     Nothing -> throwTypingError ("unknown applicant:" <+> ticks (pPrint app)) Nothing
     Just appTyM -> return appTyM
 
-lookupType :: TypeId -> TypingM (CtxType TypeM)
+lookupType :: TypeId -> TypingM (CtxType MType)
 lookupType tyId =
   asks (^. ctxTypes . at tyId)
     >>= \case
       Nothing -> throwTypingError ("unknown type id" <+> ticks (pPrint tyId)) Nothing
       Just tyM -> return tyM
+
+lookupFunctionType :: TermId -> TypingM (FunctionType MType)
+lookupFunctionType tmId =
+  asks (^. ctxFunctions . at tmId) >>= \case
+    Nothing -> throwTypingError ("unknown function type id" <+> ticks (pPrint tmId)) Nothing
+    Just Function {..} -> return functionType
 
 throwTypingError :: MonadError TypingError m => Doc -> Maybe (Syntax Type ()) -> m b
 throwTypingError err mb_syn = throwError $ TypingError err mb_syn

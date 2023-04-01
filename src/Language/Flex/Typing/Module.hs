@@ -1,4 +1,4 @@
-module Language.Flex.Typing.TypingCtx where
+module Language.Flex.Typing.Module where
 
 import Control.Lens hiding (enum)
 import Control.Monad.Except
@@ -106,17 +106,17 @@ moduleTypingCtx Module {..} = do
       -- extend structure
       struct' <- extendStructure [] struct
       -- normalize structure
-      let struct'' = normType <$> struct'
+      let struct'' = normalizeType <$> struct'
       -- intro structure type
       ctxTypes . at structureId ?= CtxStructure struct''
     (DeclarationNewtype newty@Newtype {..}) -> do
       -- normalize newtype
-      let newty' = normType <$> newty
+      let newty' = normalizeType <$> newty
       -- intro newtype type
       ctxTypes . at newtypeId ?= CtxNewtype newty'
     (DeclarationVariant vari) -> do
       -- intro normalize type
-      let vari'@Variant {..} = normType <$> vari
+      let vari'@Variant {..} = normalizeType <$> vari
       ctxTypes . at variantId ?= CtxVariant vari'
       -- intro constructors
       forM_ variantConstructors \(ctorId, _) -> do
@@ -129,7 +129,7 @@ moduleTypingCtx Module {..} = do
         ctxApplicants . at (void apl) ?= apl
     (DeclarationEnum enum) -> do
       -- intro normalize type
-      let enum'@Enum {..} = normType <$> enum
+      let enum'@Enum {..} = normalizeType <$> enum
       ctxTypes . at enumId ?= CtxEnum enum'
       -- intro constructors
       forM_ enumConstructors \(ctorId, _) -> do
@@ -142,11 +142,11 @@ moduleTypingCtx Module {..} = do
         ctxApplicants . at (void apl) ?= apl
     (DeclarationAlias alias) -> do
       -- intro normalize type
-      let alias'@Alias {..} = normType <$> alias
+      let alias'@Alias {..} = normalizeType <$> alias
       ctxTypes . at aliasId ?= CtxAlias alias'
     (DeclarationFunction fun) -> do
       -- intro normalized function
-      let fun'@Function {..} = fmapTy normType fun
+      let fun'@Function {..} = fmapTy normalizeType fun
       let FunctionType {..} = functionType
       ctxFunctions . at functionId ?= fun'
       -- intro applicant
@@ -159,7 +159,7 @@ moduleTypingCtx Module {..} = do
       ctxApplicants . at (void apl) ?= apl
     (DeclarationConstant con) -> do
       -- intro constant
-      let con'@Constant {..} = fmapTy normType con
+      let con'@Constant {..} = fmapTy normalizeType con
       ctxConstants . at constantId ?= con'
       -- intro applicant
       let apl =
@@ -175,10 +175,10 @@ moduleTypingCtx Module {..} = do
       -- intro refined type
       ctxRefinedTypes . at refinedTypeId ?= rt'
 
--- ** Top Typing Environment
+-- ** Module Typing Environment
 
-topTypingEnv :: (MonadError TypingError m) => Module Type () -> m TypingEnv
-topTypingEnv _ = do
+moduleTypingEnv :: (MonadError TypingError m) => Module Type () -> m TypingEnv
+moduleTypingEnv _ = do
   return
     TypingEnv
       { _envUnification = mempty,

@@ -7,6 +7,7 @@ import Control.Monad
 import Control.Monad.Reader (MonadReader (ask, local), asks)
 import Control.Monad.State (MonadState (get, put))
 import qualified Data.Map as Map
+import Data.Maybe (fromJust)
 import qualified Data.Maybe as Maybe
 import qualified Language.Fixpoint.Types as F
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
@@ -229,6 +230,37 @@ foldr' f ta b = foldr f b ta
 for :: Foldable t => t a -> b -> (a -> b -> b) -> b
 for ta b f = foldr f b ta
 
+-- | Zips two associative lists, where the first list is considered
+-- authoritative for the set of keys and order of keys. Throws error with both
+-- the missing items and extra items of the second list.
+zipAssoc :: Eq k => [(k, v1)] -> [(k, v2)] -> Either ([(k, v1)], [(k, v2)], [(k, v2)]) [(k, (v1, v2))]
+zipAssoc kvs1 kvs2 =
+  -- its ok to use `fromJust` here since we already checked that missing and
+  -- extra are null
+  if null missing && null extra && null dups
+    then Right $ for kvs1 [] (\(k, v1) -> ((k, (v1, fromJust $ lookup k kvs2)) :))
+    else Left (missing, extra, dups)
+  where
+    dups = duplicatesBy (\x0 x1 -> fst x0 == fst x1) kvs2
+    -- iteratively remove things from kvs1 as they are found, leaving the
+    -- missing that were expected to be found in kvs1
+    missing = for kvs2 kvs1 \(k2, _v2) -> filter \(k1, _v1) -> k1 /= k2
+    -- iteratively remove things from kvs2 as they are found, leaving the extras
+    -- that were not expected to be found in kvs2
+    extra = for kvs1 kvs2 \(k1, _vx1) -> filter \(k2, _v2) -> k1 /= k2
+
+-- | The duplicates in a list, by a given comparator.
+duplicatesBy :: (a -> a -> Bool) -> [a] -> [a]
+duplicatesBy _ [] = []
+duplicatesBy f (x : xs) =
+  let xs' = filter (not . f x) xs -- elements that are not duplicates
+   in if length xs' == length xs'
+        then duplicatesBy f xs -- all elements are not duplicates
+        else x : duplicatesBy f xs -- some elements are not duplicates
+
+-- \|
+-- \| otherwise = duplicatesBy f xs
+
 -- ** Pretty-Printing Utilities
 
 pprintInline :: F.PPrint a => a -> Doc
@@ -252,3 +284,6 @@ header doc = "══╣ " <> doc <> " ╠" <> text (replicate 40 '═')
 
 subheader :: Doc -> Doc
 subheader doc = "──┤ " <> doc <> " ├" <> text (replicate 40 '─')
+
+commaList :: [Doc] -> Doc
+commaList = hcat . punctuate (space <> comma <> space)

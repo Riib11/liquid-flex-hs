@@ -18,12 +18,14 @@ data Syntax ty tm
   = SyntaxDeclaration (Declaration ty tm)
   | SyntaxType Type
   | SyntaxTerm (Term tm)
+  | SyntaxPattern (Pattern tm)
 
 instance (Pretty ty, Pretty tm) => Pretty (Syntax ty tm) where
   pPrint = \case
     SyntaxDeclaration de -> pPrint de
     SyntaxType ty -> pPrint ty
     SyntaxTerm te -> pPrint te
+    SyntaxPattern pat -> pPrint pat
 
 class ToSyntax a ty tm where
   toSyntax :: a -> Syntax ty tm
@@ -36,6 +38,9 @@ instance ToSyntax Type ty tm where
 
 instance ToSyntax (Term tm) ty tm where
   toSyntax = SyntaxTerm
+
+instance ToSyntax (Pattern tm) ty tm where
+  toSyntax = SyntaxPattern
 
 -- ** Idents
 
@@ -455,7 +460,7 @@ instance Pretty Type where
     TypeArray ty -> "Array<" <> pPrint ty <> ">"
     TypeTuple tys -> "Tuple<" <> (tuple . fmap pPrint $ tys) <> ">"
     TypeOptional ty -> "Optional<" <> pPrint ty <> ">"
-    TypeNamed ti _ -> pPrint ti
+    TypeNamed ti -> pPrint ti
     TypeUnifyVar uv mb_uc -> case mb_uc of
       Nothing -> pPrint uv
       Just uc -> pPrint uv <> "{" <> pPrint uc <> "}"
@@ -561,7 +566,9 @@ instance Pretty (Applicant ann) where
     Nothing -> pPrint applicantTermId
     Just tyId -> pPrint tyId <> "#" <> pPrint applicantTermId
 
-type Branches ann = [(Pattern ann, Term ann)]
+type Branches ann = [Branch ann]
+
+type Branch ann = (Pattern ann, Term ann)
 
 instance Pretty (Term ann) where
   pPrint = \case
@@ -631,6 +638,7 @@ data Primitive ann
   | PrimitiveNot (Term ann)
   | PrimitiveEq (Term ann) (Term ann)
   | PrimitiveAdd (Term ann) (Term ann)
+  | PrimitiveExtends (Term ann) TypeId
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Primitive ann) where
@@ -645,18 +653,21 @@ instance Pretty (Primitive ann) where
     PrimitiveNot tm -> "!" <> pPrint tm
     PrimitiveEq tm1 tm2 -> parens $ pPrint tm1 <+> "==" <+> pPrint tm2
     PrimitiveAdd tm1 tm2 -> parens $ pPrint tm1 <+> "+" <+> pPrint tm2
+    PrimitiveExtends tm tyId -> parens $ pPrint tm <+> "extends" <+> pPrint tyId
 
 -- ** Pattern
 
 data Pattern ann
   = PatternNamed TermId ann
   | PatternDiscard ann
+  | PatternConstructor (Maybe TypeId) TermId [Pattern ann] ann
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Pattern ann) where
   pPrint = \case
     PatternNamed tmId _ -> pPrint tmId
     PatternDiscard _ -> "_"
+    PatternConstructor tyId tmId pat _ -> (pPrint tyId <> "#" <> pPrint tmId) <+> parens (pPrint pat)
 
 -- ** Type
 
@@ -670,7 +681,7 @@ data Type
   | -- | If this is a reference to a type alias, then @Maybe Type@ starts off as
     -- @Nothing@ after parsing, and then is replaced with the (normalized)
     -- aliased type after typing.
-    TypeNamed TypeId (Maybe Type)
+    TypeNamed TypeId
   | -- | Only introduced during typing.
     TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
   deriving (Eq, Show)

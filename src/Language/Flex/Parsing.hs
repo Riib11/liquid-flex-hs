@@ -294,7 +294,7 @@ parseType =
         return $ TypeOptional ty,
       do
         tyId <- parseTypeId
-        return $ TypeNamed tyId Nothing
+        return $ TypeNamed tyId
     ]
 
 -- ** Term
