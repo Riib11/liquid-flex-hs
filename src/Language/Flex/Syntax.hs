@@ -445,8 +445,8 @@ data FunctionType ann = FunctionType
   { functionId :: TermId,
     functionIsTransform :: Bool,
     functionParameters :: [(TermId, ann)],
-    -- | since contextual parameters must have newtypes, data Term only need to store the
-    -- newtypes' ids
+    -- | since contextual parameters must have newtypes, data Term only need to
+    -- store the newtypes' ids
     functionContextualParameters :: Maybe [(TypeId, TermId)],
     functionOutput :: ann
   }
@@ -535,8 +535,8 @@ data Term ann
   | TermAssert {termTerm :: Term ann, termBody :: Term ann, termAnn :: ann}
   | TermStructure {termStructureId :: TypeId, termFields :: [(FieldId, Term ann)], termAnn :: ann}
   | TermMember {termTerm :: Term ann, termFieldId :: FieldId, termAnn :: ann}
-  | -- | TermNeutral {termApplicant :: Either ProtoApplicant (Applicant ann), termMaybeArgs :: Maybe [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
-    TermNeutral (Either ProtoNeutral (Neutral ann))
+  | TermProtoNeutral (ProtoNeutral ann)
+  | TermNeutral (Neutral ann)
   | TermAscribe {termTerm :: Term ann, termType :: Type, termAnn :: ann}
   | TermMatch {termTerm :: Term ann, termBranches :: Branches ann, termAnn :: ann}
   deriving (Eq, Show, Functor, Foldable, Traversable)
@@ -585,8 +585,8 @@ instance Pretty (Term ann) where
     --             Nothing -> mempty
     --             Just cxargs -> "giving" <+> (parens . hcat . punctuate (comma <> space) $ pPrint <$> cxargs)
     --         )
-    TermNeutral (Left protoNeut) -> pPrint protoNeut
-    TermNeutral (Right neut) -> pPrint neut
+    TermProtoNeutral protoNeu -> pPrint protoNeu
+    TermNeutral neu -> pPrint neu
     TermAscribe {termTerm, termType} ->
       pPrint termTerm <+> colon <+> pPrint termType
     TermMatch {termTerm, termBranches} ->
@@ -606,26 +606,44 @@ mapTopAnnTerm f term = term {termAnn = f $ termAnn term}
 
 -- *** ProtoNeutral
 
-data ProtoNeutral = ProtoNeutral
-  { protoNeutralMaybeTypeId :: Maybe TypeId,
-    protoNeutralTermId :: TermId,
-    protoNeutralMaybeArgs :: Maybe [Term ()],
-    protoNeutralMaybeCxargs :: Maybe [Term ()]
+-- should ONLY exist at parse-time
+data ProtoNeutral ann = ProtoNeutral
+  { protoNeutralProtoApplicant :: ProtoApplicant ann,
+    protoNeutralMaybeArgs :: Maybe [Term ann],
+    protoNeutralMaybeCxargs :: Maybe [Term ann]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
-instance Pretty ProtoNeutral where
-  pPrint ProtoNeutral {..} = case protoNeutralMaybeTypeId of
-    Nothing -> pPrint protoNeutralTermId
-    Just tyId -> pPrint tyId <> "#" <> pPrint protoNeutralTermId
+data ProtoApplicant ann = ProtoApplicant
+  { protoApplicantMaybeTypeId :: Maybe TypeId,
+    protoApplicantTermId :: TermId
+  }
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+
+instance Pretty (ProtoNeutral ann) where
+  pPrint ProtoNeutral {..} =
+    ( pPrint protoNeutralProtoApplicant
+        <> case protoNeutralMaybeArgs of
+          Nothing -> mempty
+          Just args -> parens (commaList $ pPrint <$> args)
+    )
+      <+> case protoNeutralMaybeCxargs of
+        Nothing -> mempty
+        Just cxargs -> "giving" <+> parens (commaList $ pPrint <$> cxargs)
+
+instance Pretty (ProtoApplicant ann) where
+  pPrint ProtoApplicant {..} = case protoApplicantMaybeTypeId of
+    Nothing -> pPrint protoApplicantTermId
+    Just tyId -> pPrint tyId <> "#" <> pPrint protoApplicantTermId
 
 -- *** Neutral
 
 data Neutral ann
-  = NeutralFunctionApplication {neutralApplicant :: Applicant ann, neutralArgs :: [Term ann], neutralCxargs :: Maybe [Term ann], neutralApplicantType :: ApplicantType ann}
-  | NeutralEnumConstruction {neutralApplicant :: Applicant ann, neutralApplicantType :: ApplicantType ann}
-  | NeutralVariantConstruction {neutralApplicant :: Applicant ann, neutralArgs :: [Term ann], neutralApplicantType :: ApplicantType ann}
-  | Neutral {neutralApplicant :: Applicant ann, neutralApplicantType :: ApplicantType ann}
+  = NeutralFunctionApplication {neutralFunctionId :: TermId, neutralArgs :: [Term ann], neutralMaybeCxargs :: Maybe [Term ann], neutralAnn :: ann}
+  | NeutralEnumConstruction {neutralEnumId :: TypeId, neutralConstructorId :: TermId, neutralAnn :: ann}
+  | NeutralVariantConstruction {neutralVariantId :: TypeId, neutralConstructorId :: TermId, neutralArgs :: [Term ann], neutralAnn :: ann}
+  | NeutralNewtypeConstruction {neutralNewtypeId :: TypeId, neutralConstructorId :: TermId, neutralArg :: Term ann, neutralAnn :: ann}
+  | Neutral {neutralTermId :: TermId, neutralAnn :: ann}
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Neutral ann) where
@@ -633,108 +651,25 @@ instance Pretty (Neutral ann) where
 
 -- ** Applicant
 
+-- | `applicantOutputAnn` is the output annotation (e.g. type) of a neutral form
+-- of that has this as its applicant.
 data Applicant ann
-  = ApplicantFunction TermId
-  | ApplicantEnumConstructor TypeId TermId
-  | ApplicantVariantConstructor TypeId TermId
-  | ApplicantNewtypeConstructor TypeId
-  | Applicant ann
-  deriving (Eq, Show, Functor, Foldable, Traversable)
+  = ApplicantFunction {applicantFunctionId :: TermId, applicantOutputAnn :: ann}
+  | ApplicantEnumConstructor {applicantEnumId :: TypeId, applicantConstructorId :: TermId, applicantOutputAnn :: ann}
+  | ApplicantVariantConstructor {applicantVariantId :: TypeId, applicantConstructorId :: TermId, applicantOutputAnn :: ann}
+  | ApplicantNewtypeConstructor {applicantNewtypeId :: TypeId, applicantConstructorId :: TermId, applicantOutputAnn :: ann}
+  | Applicant {applicantTermId :: TermId, applicantOutputAnn :: ann}
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
--- -- *** ProtoApplicant
+instance Pretty (Applicant ann) where
+  pPrint = error "pPrint Applicant"
 
--- -- | A prototype form of applicant, which needs to exist as a target for
--- -- parsing, since the different kinds of applicants are ambiguous at parse-time.
--- data ProtoApplicant = ProtoApplicant
---   { protoApplicantMaybeTypeId :: Maybe TypeId,
---     protoApplicantTermId :: TermId
---   }
---   deriving (Eq, Show, Functor, Foldable, Traversable)
-
--- instance Ord ProtoApplicant where
---   compare app1 app2 = case compare (applicantMaybeTypeId app1) (applicantMaybeTypeId app2) of
---     LT -> LT
---     GT -> GT
---     EQ -> compare (applicantTermId app1) (applicantTermId app2)
-
--- instance Pretty ProtoApplicant where
---   pPrint (ProtoApplicant {..}) = case protoApplicantMaybeTypeId of
---     Nothing -> pPrint protoApplicantTermId
---     Just tyId -> pPrint tyId <> "#" <> pPrint protoApplicantTermId
-
--- kinds of applicants
--- - named
--- - function application
--- - enum construction
--- - variant construction
--- - newtype construction
-
-{-
-makeTermNeutralNamed applicantTermId termAnn =
-  TermNeutral
-    { termApplicant =
-        Applicant
-          { applicantMaybeTypeId = Nothing,
-            applicantTermId,
-            applicantAnn = ApplicantType termAnn
-          },
-      termMaybeArgs = Nothing,
-      termMaybeCxargs = Nothing,
-      termAnn
-    }
-
-makeTermNeutralApplication applicantTermId termMaybeArgs termMaybeCxargs termAnn =
-  TermNeutral
-    { termApplicant =
-        Applicant
-          { applicantMaybeTypeId = Nothing,
-            applicantTermId,
-            applicantAnn = ApplicantTypeFunction applicantTermId
-          },
-      termMaybeArgs,
-      termMaybeCxargs,
-      termAnn
-    }
-
-makeTermNeutralEnumConstruction enumId ctorId =
-  TermNeutral
-    { termApplicant =
-        Applicant
-          { applicantMaybeTypeId = Just enumId,
-            applicantTermId = ctorId,
-            applicantAnn = ApplicantTypeEnumConstructor enumId ctorId
-          },
-      termMaybeArgs = Nothing,
-      termMaybeCxargs = Nothing,
-      termAnn = TypeNamed enumId
-    }
-
-makeTermNeutralVariantConstruction varntId ctorId args =
-  TermNeutral
-    { termApplicant =
-        Applicant
-          { applicantMaybeTypeId = Just varntId,
-            applicantTermId = ctorId,
-            applicantAnn = ApplicantTypeEnumConstructor varntId ctorId
-          },
-      termMaybeArgs = Just args,
-      termMaybeCxargs = Nothing,
-      termAnn = TypeNamed varntId
-    }
-
-makeTermNeutralNewtypeConstruction newtyId ctorId arg =
-  TermNeutral
-    { termApplicant =
-        Applicant
-          { applicantMaybeTypeId = Just newtyId,
-            applicantTermId = ctorId,
-            applicantAnn = ApplicantTypeNewtypeConstructor newtyId
-          },
-      termMaybeArgs = Just [arg],
-      termMaybeCxargs = Nothing,
-      termAnn = TypeNamed newtyId
-    }
--}
+fromApplicantToProtoApplicant :: Applicant ann -> ProtoApplicant ann'
+fromApplicantToProtoApplicant (ApplicantFunction ti _) = ProtoApplicant {protoApplicantMaybeTypeId = Nothing, protoApplicantTermId = ti}
+fromApplicantToProtoApplicant (ApplicantEnumConstructor ti ti' _) = ProtoApplicant {protoApplicantMaybeTypeId = Just ti, protoApplicantTermId = ti'}
+fromApplicantToProtoApplicant (ApplicantVariantConstructor ti ti' _) = ProtoApplicant {protoApplicantMaybeTypeId = Just ti, protoApplicantTermId = ti'}
+fromApplicantToProtoApplicant (ApplicantNewtypeConstructor ti ti' _) = ProtoApplicant {protoApplicantMaybeTypeId = Just ti, protoApplicantTermId = ti'}
+fromApplicantToProtoApplicant (Applicant ti _at) = ProtoApplicant {protoApplicantMaybeTypeId = Nothing, protoApplicantTermId = ti}
 
 -- ** Primitive
 
@@ -797,22 +732,22 @@ data Type
     TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
   deriving (Eq, Show)
 
-data ApplicantType ann
-  = ApplicantTypeFunction TermId
-  | ApplicantTypeEnumConstructor TypeId TermId
-  | ApplicantTypeVariantConstructor TypeId TermId
-  | ApplicantTypeNewtypeConstructor TypeId
-  | ApplicantType ann
-  deriving (Eq, Show, Functor, Foldable, Traversable)
+-- data ApplicantType ann
+--   = ApplicantTypeFunction TermId
+--   | ApplicantTypeEnumConstructor TypeId TermId
+--   | ApplicantTypeVariantConstructor TypeId TermId
+--   | ApplicantTypeNewtypeConstructor TypeId
+--   | ApplicantType ann
+--   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-instance Pretty r => Pretty (ApplicantType r) where
-  pPrint = \case
-    -- (ApplicantTypeFunction ft) -> pPrint ft
-    -- (ApplicantTypeEnumConstructor Enum {..} ti) -> pPrint enumId <> "#" <> pPrint ti
-    -- (ApplicantTypeVariantConstructor Variant {..} ti rs) -> pPrint variantId <> "#" <> pPrint ti <> parens (hcat $ punctuate (comma <> space) $ pPrint <$> rs)
-    -- (ApplicantTypeNewtypeConstructor Newtype {..}) -> pPrint newtypeId <> parens (pPrint newtypeType)
-    -- (ApplicantType r) -> pPrint r
-    _ -> error "TODO: Pretty ApplicantType"
+-- instance Pretty r => Pretty (ApplicantType r) where
+--   pPrint = \case
+--     -- (ApplicantTypeFunction ft) -> pPrint ft
+--     -- (ApplicantTypeEnumConstructor Enum {..} ti) -> pPrint enumId <> "#" <> pPrint ti
+--     -- (ApplicantTypeVariantConstructor Variant {..} ti rs) -> pPrint variantId <> "#" <> pPrint ti <> parens (hcat $ punctuate (comma <> space) $ pPrint <$> rs)
+--     -- (ApplicantTypeNewtypeConstructor Newtype {..}) -> pPrint newtypeId <> parens (pPrint newtypeType)
+--     -- (ApplicantType r) -> pPrint r
+--     _ -> error "TODO: Pretty ApplicantType"
 
 data NumberType
   = TypeInt

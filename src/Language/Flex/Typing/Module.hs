@@ -81,86 +81,90 @@ moduleTypingCtx Module {..} = do
             _ctxCxparamIds = mempty
           }
 
-  flip execStateT ctx . forM_ moduleDeclarations $ \case
+  flip execStateT ctx . forM_ moduleDeclarations $ \decl -> case decl of
     (DeclarationStructure struct@Structure {..}) -> do
       -- extend structure
       struct' <- extendStructure [] struct
       -- normalize structure
       let struct'' = normalizeType <$> struct'
       -- intro structure type
-      ctxTypes . at structureId ?= CtxStructure struct''
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) structureId (ctxTypes . at structureId) (CtxStructure struct'')
     (DeclarationNewtype newty@Newtype {..}) -> do
       -- normalize newtype
       let newty' = normalizeType <$> newty
       -- intro newtype type
-      ctxTypes . at newtypeId ?= CtxNewtype newty'
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) newtypeId (ctxTypes . at newtypeId) (CtxNewtype newty')
       -- intro constructor applicant
-      -- let app = Applicant
-      --       { applicant
-
-      --       }
-      -- ctxApplicants . at _ ?= _
-      error "intro constructor applicant"
+      let app =
+            ApplicantNewtypeConstructor
+              { applicantNewtypeId = newtypeId,
+                applicantConstructorId = newtypeConstructorId,
+                applicantOutputAnn = return $ TypeNamed newtypeId
+              }
+      let protoapp = fromApplicantToProtoApplicant app
+      modifyInsertUnique Nothing (void app) (ctxApplicants . at protoapp) app
     (DeclarationVariant vari) -> do
       -- intro normalize type
       let vari'@Variant {..} = normalizeType <$> vari
-      ctxTypes . at variantId ?= CtxVariant vari'
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) variantId (ctxTypes . at variantId) (CtxVariant vari')
       -- intro constructors' applicants
       forM_ variantConstructors \(ctorId, _) -> do
-        let apl =
-              Applicant
-                { applicantMaybeTypeId = Just variantId,
-                  applicantTermId = ctorId,
-                  applicantAnn = ApplicantTypeVariantConstructor variantId ctorId
+        let app =
+              ApplicantVariantConstructor
+                { applicantVariantId = variantId,
+                  applicantConstructorId = ctorId,
+                  applicantOutputAnn = return $ TypeNamed variantId
                 }
-        ctxApplicants . at (void apl) ?= apl
+        let protoapp = fromApplicantToProtoApplicant app
+        modifyInsertUnique Nothing (void app) (ctxApplicants . at protoapp) app
     (DeclarationEnum enum) -> do
       -- intro normalize type
       let enum'@Enum {..} = normalizeType <$> enum
-      ctxTypes . at enumId ?= CtxEnum enum'
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) enumId (ctxTypes . at enumId) (CtxEnum enum')
       -- intro constructors' applicants
       forM_ enumConstructors \(ctorId, _) -> do
-        let apl =
-              Applicant
-                { applicantMaybeTypeId = Just enumId,
-                  applicantTermId = ctorId,
-                  applicantAnn = ApplicantTypeVariantConstructor enumId ctorId
+        let app =
+              ApplicantEnumConstructor
+                { applicantEnumId = enumId,
+                  applicantConstructorId = ctorId,
+                  applicantOutputAnn = return $ TypeNamed enumId
                 }
-        ctxApplicants . at (void apl) ?= apl
+        let protoapp = fromApplicantToProtoApplicant app
+        modifyInsertUnique Nothing (void app) (ctxApplicants . at protoapp) app
     (DeclarationAlias alias) -> do
       -- intro normalize type
       let alias'@Alias {..} = normalizeType <$> alias
-      ctxTypes . at aliasId ?= CtxAlias alias'
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) aliasId (ctxTypes . at aliasId) (CtxAlias alias')
     (DeclarationFunction fun) -> do
       -- intro normalized function
       let fun'@Function {..} = fmapTy normalizeType fun
       let FunctionType {..} = functionType
-      ctxFunctions . at functionId ?= fun'
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) functionId (ctxFunctions . at functionId) fun'
       -- intro application applicant
-      let apl =
-            Applicant
-              { applicantMaybeTypeId = Nothing,
-                applicantTermId = functionId,
-                applicantAnn = ApplicantTypeFunction functionId
+      let app =
+            ApplicantFunction
+              { applicantFunctionId = functionId,
+                applicantOutputAnn = functionOutput
               }
-      ctxApplicants . at (void apl) ?= apl
+      let protoapp = fromApplicantToProtoApplicant app
+      modifyInsertUnique Nothing (void app) (ctxApplicants . at protoapp) app
     (DeclarationConstant con) -> do
       -- intro constant
       let con'@Constant {..} = fmapTy normalizeType con
-      ctxConstants . at constantId ?= con'
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) constantId (ctxConstants . at constantId) con'
       -- intro named applicant
-      let apl =
+      let app =
             Applicant
-              { applicantMaybeTypeId = Nothing,
-                applicantTermId = constantId,
-                applicantAnn = ApplicantType constantType
+              { applicantTermId = constantId,
+                applicantOutputAnn = constantType
               }
-      ctxApplicants . at (void apl) ?= apl
+      let protoapp = fromApplicantToProtoApplicant app
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) (void app) (ctxApplicants . at protoapp) app
     (DeclarationRefinedType rt@RefinedType {..}) -> do
       -- extend refined type (if refined structure inherits refinements)
       rt' <- extendRefinedType [] rt
       -- intro refined type
-      ctxRefinedTypes . at refinedTypeId ?= rt'
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) refinedTypeId (ctxRefinedTypes . at refinedTypeId) rt'
 
 -- ** Module Typing Environment
 

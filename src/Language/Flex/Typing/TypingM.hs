@@ -38,7 +38,7 @@ data TypingCtx = TypingCtx
     _ctxFunctions :: Map.Map TermId (Function MType ()),
     _ctxConstants :: Map.Map TermId (Constant MType ()),
     _ctxRefinedTypes :: Map.Map TypeId (RefinedType ()),
-    _ctxApplicants :: Map.Map (Applicant ()) (Applicant MType),
+    _ctxApplicants :: Map.Map (ProtoApplicant ()) (Applicant MType),
     -- | Map of contextual parameter newtype ids (introduced by transform's
     -- contextual parameters)
     _ctxCxparamNewtypeIds :: Map.Map TermId TypeId,
@@ -110,10 +110,10 @@ makeLenses 'TypingEnv
 
 -- *** Utilities
 
-modifyInsertUnique :: (MonadError e m, MonadState s m) => Lens' s (Maybe a) -> a -> e -> m ()
-modifyInsertUnique l a e = modifyM \s -> case s ^. l of
-  Nothing -> return $ (l ?~ a) s
-  Just _ -> throwError e
+modifyInsertUnique :: (MonadError TypingError m, MonadState s m, Pretty a) => Maybe (Syntax Type ()) -> a -> Lens' s (Maybe b) -> b -> m ()
+modifyInsertUnique mb_syn a l b = modifyM \s -> case s ^. l of
+  Nothing -> return $ (l ?~ b) s
+  Just _ -> throwError (TypingError ("attempted to shadow" <+> ticks (pPrint a)) mb_syn)
 
 -- ** Normalization
 
@@ -163,29 +163,36 @@ assertConcreteType = error "assertConcreteType"
 
 -- ** Utilities
 
-introLocal :: TermId -> MType -> TypingM a -> TypingM a
-introLocal tmId tyM =
-  locallyM (ctxApplicants . at (Applicant Nothing tmId (ApplicantType ()))) \case
-    Nothing -> return . pure $ Applicant Nothing tmId (ApplicantType tyM)
-    Just _ -> throwTypingError ("attempted to introduce two terms with the same name:" <+> ticks (pPrint tmId)) Nothing
+introLocal :: Maybe (Syntax Type ()) -> TermId -> MType -> TypingM a -> TypingM a
+introLocal mb_syn tmId mty = do
+  let protoapp =
+        ProtoApplicant
+          { protoApplicantMaybeTypeId = Nothing,
+            protoApplicantTermId = tmId
+          }
+  let app =
+        Applicant
+          { applicantTermId = tmId,
+            applicantOutputAnn = mty
+          }
+  localM . execStateT $
+    modifyInsertUnique mb_syn tmId (ctxApplicants . at protoapp) app
 
 introCxparam :: Maybe (Syntax Type ()) -> TypeId -> TermId -> TypingM a -> TypingM a
 introCxparam mb_syn tyId tmId =
   comps
-    [ introLocal tmId (normalizeType (TypeNamed tyId)),
-      locallyM (ctxCxparamNewtypeIds . at tmId) \case
-        Nothing -> return $ pure tyId
-        Just _ -> throwTypingError ("attempted to introduce two contextual parameters with the same name:" <+> ticks (pPrint tmId)) mb_syn,
-      locallyM (ctxCxparamIds . at tyId) \case
-        Nothing -> return $ pure tmId
-        Just _ -> throwTypingError ("attempted to introduce two contextual parameters with the same type:" <+> ticks (pPrint tyId)) mb_syn
+    [ introLocal mb_syn tmId (normalizeType (TypeNamed tyId)),
+      localM . execStateT $
+        modifyInsertUnique mb_syn tmId (ctxCxparamNewtypeIds . at tmId) tyId,
+      localM . execStateT $
+        modifyInsertUnique mb_syn tmId (ctxCxparamIds . at tyId) tmId
     ]
 
-lookupApplicant :: Applicant () -> TypingM (Applicant MType)
-lookupApplicant app =
-  asks (^. ctxApplicants . at app) >>= \case
-    Nothing -> throwTypingError ("unknown applicant:" <+> ticks (pPrint app)) Nothing
-    Just appTyM -> return appTyM
+lookupApplicant :: ProtoApplicant () -> TypingM (Applicant MType)
+lookupApplicant protoapp =
+  asks (^. ctxApplicants . at protoapp) >>= \case
+    Nothing -> throwTypingError ("unknown applicant:" <+> ticks (pPrint protoapp)) Nothing
+    Just app -> return app
 
 lookupType :: TypeId -> TypingM (CtxType MType)
 lookupType tyId =

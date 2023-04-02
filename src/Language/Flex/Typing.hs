@@ -53,6 +53,7 @@ synthDeclaration = \case
 
 synthFunction :: Function Type () -> TypingM (Function Type Type)
 synthFunction fun@Function {..} = do
+  let mb_syn = Just $ SyntaxDeclaration $ DeclarationFunction fun
   let FunctionType {..} = functionType
   let intros :: TypingCtx -> TypingM TypingCtx
       intros = execStateT do
@@ -62,36 +63,29 @@ synthFunction fun@Function {..} = do
           paramType' <- lift . return $ assertNormalType paramType
           let app =
                 Applicant
-                  { applicantMaybeTypeId = Nothing,
-                    applicantTermId = paramId,
-                    applicantAnn = ApplicantType paramType'
+                  { applicantTermId = paramId,
+                    applicantOutputAnn = paramType'
                   }
-          -- assert no shadowing
-          assertNoShadowing app (SyntaxDeclaration $ DeclarationFunction fun)
+          let protoapp = fromApplicantToProtoApplicant app
           -- add applicant
-          modifyInsertUnique (ctxApplicants . at (void app)) app $ TypingError ("attempted to shadow" <+> ticks (pPrint (void app))) (Just (SyntaxDeclaration $ DeclarationFunction fun))
+          modifyInsertUnique mb_syn (void app) (ctxApplicants . at protoapp) app
 
         -- intro contextual params
         forM_ functionContextualParameters $ mapM \(cxparamNewtypeId, cxparamId) -> do
           cxparamType' <- lift . return $ assertNormalType $ TypeNamed cxparamNewtypeId
           let app =
                 Applicant
-                  { applicantMaybeTypeId = Nothing,
-                    applicantTermId = cxparamId,
-                    applicantAnn = ApplicantType cxparamType'
+                  { applicantTermId = cxparamId,
+                    applicantOutputAnn = cxparamType'
                   }
+          let protoapp = fromApplicantToProtoApplicant app
           -- add applicant
-          modifyInsertUnique (ctxApplicants . at (void app)) app $ TypingError ("attempted to shadow" <+> ticks (pPrint (void app))) (Just (SyntaxDeclaration $ DeclarationFunction fun))
+          modifyInsertUnique mb_syn (void app) (ctxApplicants . at protoapp) app
   localM intros do
     functionBody1 <- synthCheckTerm' (normalizeType functionOutput) functionBody
     functionBody2 <- normalizeInternalTypes functionBody1
     functionBody3 <- defaultInternalTypes functionBody2
     return fun {functionBody = functionBody3}
-  where
-    assertNoShadowing app syn = do
-      gets (^. ctxApplicants . at (void app)) >>= \case
-        Just app' -> throwTypingError ("attempted to introduce" <+> ticks (pPrint (void app)) <+> "which shadows" <+> ticks (pPrint (void app'))) (Just syn)
-        Nothing -> return ()
 
 synthConstant :: Constant Type () -> TypingM (Constant Type Type)
 synthConstant con@Constant {..} = do
@@ -147,18 +141,18 @@ synthTerm term0@(TermMember tm fieldId ()) = do
           return $ TermMember tm' fieldId fieldMType
         ctxType -> throwTypingError ("the base of the field access has non-structure type" <+> ticks (pPrint ctxType)) (Just $ toSyntax term0)
     type_ -> throwTypingError ("the base of the field access has non-structure type" <+> ticks (pPrint type_)) (Just $ toSyntax term0)
-synthTerm term0@(TermNeutral {..}) = do
+synthTerm term0@(TermNeutral _) = FlexM.throw $ "TermNeutral should only appear as an OUTPUT of type synthesis, not as an INPUT:" <+> pPrint term0
+synthTerm term0@(TermProtoNeutral ProtoNeutral {..}) = do
   let mb_syn = Just $ toSyntax term0
-  app'@Applicant {..} <- lookupApplicant termApplicant
-  case applicantAnn of
-    (ApplicantTypeFunction funId) -> do
-      FunctionType {..} <- lookupFunctionType funId
+  lookupApplicant protoNeutralProtoApplicant >>= \app -> case app of
+    (ApplicantFunction {..}) -> do
+      FunctionType {..} <- lookupFunctionType applicantFunctionId
 
       -- assert that correct number of args are given
-      args <- case termMaybeArgs of
+      args <- case protoNeutralMaybeArgs of
         Nothing -> throwTypingError "function application requires a list of arguments" mb_syn
         Just args -> return args
-      unless (length termMaybeArgs == length functionParameters) $ throwTypingError "incorrect number of arguments given to function application" mb_syn
+      unless (length protoNeutralMaybeArgs == length functionParameters) $ throwTypingError "incorrect number of arguments given to function application" mb_syn
 
       -- synth-check args
       args' <- forM (functionParameters `zip` args) \((_argId, argMType), argTerm) -> synthCheckTerm' argMType argTerm
@@ -166,11 +160,11 @@ synthTerm term0@(TermNeutral {..}) = do
       mb_cxargs' <- case functionContextualParameters of
         Nothing -> do
           -- assert that no contextual args are given
-          unless (isNothing termMaybeCxargs) $ throwTypingError "function application provided explicit contextual arguments when the function does not have contextual parameters" mb_syn
+          unless (isNothing protoNeutralMaybeCxargs) $ throwTypingError "function application provided explicit contextual arguments when the function does not have contextual parameters" mb_syn
           return Nothing
         Just cxparams ->
           do
-            case termMaybeCxargs of
+            case protoNeutralMaybeCxargs of
               -- infer implicit contextual arguments
               Nothing -> do
                 let cxargsWriter :: WriterT [(TermId, TypeId)] TypingM [Maybe (TermId, TypeId)]
@@ -194,15 +188,10 @@ synthTerm term0@(TermNeutral {..}) = do
                           maybe [] . comp1 pure $ \(cxargId, cxNewtypeId) ->
                             let cxargMType = normalizeType $ TypeNamed cxNewtypeId
                              in TermNeutral
-                                  Applicant
-                                    { applicantMaybeTypeId = Nothing,
-                                      applicantTermId = cxargId,
-                                      applicantAnn = ApplicantType cxargMType
+                                  Neutral
+                                    { neutralTermId = cxargId,
+                                      neutralAnn = cxargMType
                                     }
-                                  Nothing
-                                  Nothing
-                                  cxargMType
-
                 return $ Just cxargs
               -- check explicit contextual args
               Just cxargs -> do
@@ -220,57 +209,83 @@ synthTerm term0@(TermNeutral {..}) = do
                   Left (missing, extra, dups) -> throwTypingError ("function call's explicit contextual arguments is missing contextual arguments" <+> commaList (missing <&> \(newtypeId, paramId) -> pPrint paramId <+> ":" <+> pPrint newtypeId) <+> ", has extra contextual arguments with newtypes" <+> commaList (pPrint <$> extra) <+> "and has contextual arguments with overlapping newtypes for newtypes" <+> commaList (pPrint . fst <$> dups)) mb_syn
                   Right cxargsItemsAssoc -> return $ snd . snd <$> cxargsItemsAssoc
                 return $ Just cxargs''
-      return
+      return $
         TermNeutral
-          { termApplicant = app',
-            termMaybeArgs = Just args',
-            termMaybeCxargs = mb_cxargs',
-            termAnn = functionOutput
-          }
-    (ApplicantTypeEnumConstructor enumId _ctorId) ->
-      lookupType enumId
+          NeutralFunctionApplication
+            { neutralFunctionId = functionId,
+              neutralArgs = args',
+              neutralMaybeCxargs = mb_cxargs',
+              neutralAnn = applicantOutputAnn
+            }
+    (ApplicantEnumConstructor {..}) ->
+      lookupType applicantEnumId
         >>= \case
           (CtxEnum Enum {..}) -> do
             -- assert no args
-            unless (isNothing mb_args) $ throwTypingError "an enum construction cannot have arguments" mb_syn
+            unless (isNothing protoNeutralMaybeCxargs) $ throwTypingError "an enum construction cannot have arguments" mb_syn
             -- assert no cxargs
-            unless (isNothing termMaybeCxargs) $ throwTypingError "an enum construction cannot have contextual arguments" mb_syn
-            return $ TermNeutral app' Nothing Nothing (return $ TypeNamed enumId)
-          ctxType -> FlexM.throw $ "the context stores that the applicant is an enum constructor," <+> ticks (pPrint app') <+> "but the type corresponding to the type id is not an enum," <+> ticks (pPrint ctxType)
-    (ApplicantTypeVariantConstructor varntId ctorId) -> do
-      lookupType varntId >>= \case
+            unless (isNothing protoNeutralMaybeCxargs) $ throwTypingError "an enum construction cannot have contextual arguments" mb_syn
+            return $
+              TermNeutral
+                NeutralEnumConstruction
+                  { neutralEnumId = enumId,
+                    neutralConstructorId = applicantConstructorId,
+                    neutralAnn = applicantOutputAnn
+                  }
+          ctxType -> FlexM.throw $ "the context stores that the applicant is an enum constructor," <+> ticks (pPrint app) <+> "but the type corresponding to the type id is not an enum," <+> ticks (pPrint ctxType)
+    (ApplicantVariantConstructor {..}) -> do
+      lookupType applicantVariantId >>= \case
         CtxVariant Variant {..} -> do
           -- assert no cxargs
-          unless (isNothing termMaybeCxargs) $ throwTypingError "a variant construction cannot have contextual arguments" mb_syn
+          unless (isNothing protoNeutralMaybeCxargs) $ throwTypingError "a variant construction cannot have contextual arguments" mb_syn
           -- synth-check args
-          args <- case mb_args of
+          args <- case protoNeutralMaybeArgs of
             Nothing -> throwTypingError "a variant construction must have arguments" mb_syn
             Just args -> return args
-          params <- case ctorId `lookup` variantConstructors of
+          params <- case applicantConstructorId `lookup` variantConstructors of
             Nothing -> throwTypingError "the variant doesn't have the constructor" mb_syn
             Just params -> return params
           args' <- forM (params `zip` args) (uncurry synthCheckTerm')
-          return $ TermNeutral app' (Just args') Nothing (return $ TypeNamed variantId)
-        ctxType -> FlexM.throw $ "the context stores that the applicant is a variant constructor," <+> ticks (pPrint app') <+> "but the type corresponding to the type id is not a variant," <+> ticks (pPrint ctxType)
-    (ApplicantTypeNewtypeConstructor newtyId) -> do
-      lookupType newtyId >>= \case
+          return $
+            TermNeutral
+              NeutralVariantConstruction
+                { neutralVariantId = variantId,
+                  neutralConstructorId = applicantConstructorId,
+                  neutralArgs = args',
+                  neutralAnn = applicantOutputAnn
+                }
+        ctxType -> FlexM.throw $ "the context stores that the applicant is a variant constructor," <+> ticks (pPrint app) <+> "but the type corresponding to the type id is not a variant," <+> ticks (pPrint ctxType)
+    (ApplicantNewtypeConstructor {..}) -> do
+      lookupType applicantNewtypeId >>= \case
         CtxNewtype Newtype {..} -> do
           -- assert no cxarsg
-          unless (isNothing termMaybeCxargs) $ throwTypingError "a newtype construction cannot have contextual arguments" mb_syn
+          unless (isNothing protoNeutralMaybeCxargs) $ throwTypingError "a newtype construction cannot have contextual arguments" mb_syn
           -- assert single arg
-          arg <- case mb_args of
+          arg <- case protoNeutralMaybeArgs of
             Just [arg] -> return arg
             _ -> throwTypingError "a newtype construction must have exactly one argument" mb_syn
           -- synth-check arg
           arg' <- synthCheckTerm' newtypeType arg
-          return $ TermNeutral app' (Just [arg']) Nothing (return $ TypeNamed newtypeId)
-        ctxType -> FlexM.throw $ "the context stores that the applicant is a newtype constructor," <+> ticks (pPrint app') <+> "but the type corresponding to the type id is not a newtype," <+> ticks (pPrint ctxType)
-    (ApplicantType mtype) -> do
+          return $
+            TermNeutral
+              NeutralNewtypeConstruction
+                { neutralNewtypeId = newtypeId,
+                  neutralConstructorId = applicantConstructorId,
+                  neutralArg = arg',
+                  neutralAnn = applicantOutputAnn
+                }
+        ctxType -> FlexM.throw $ "the context stores that the applicant is a newtype constructor," <+> ticks (pPrint app) <+> "but the type corresponding to the type id is not a newtype," <+> ticks (pPrint ctxType)
+    (Applicant {..}) -> do
       -- assert no args
-      unless (isNothing mb_args) $ throwTypingError "arguments given to a non-function" mb_syn
+      unless (isNothing protoNeutralMaybeArgs) $ throwTypingError "arguments given to a non-function" mb_syn
       -- assert no cxargs
-      unless (isNothing termMaybeCxargs) $ throwTypingError "explicit contextual arguments given to a non-function" mb_syn
-      return $ TermNeutral app' Nothing Nothing mtype
+      unless (isNothing protoNeutralMaybeCxargs) $ throwTypingError "explicit contextual arguments given to a non-function" mb_syn
+      -- return $ TermNeutral app' Nothing Nothing mtype
+      return . TermNeutral $
+        Neutral
+          { neutralTermId = applicantTermId,
+            neutralAnn = applicantOutputAnn
+          }
 synthTerm (TermAscribe tm ty ()) =
   synthCheckTerm' (normalizeType ty) tm
 synthTerm term0@(TermMatch tm branches ()) = do
@@ -370,12 +385,15 @@ synthCheckPattern' _mtype (PatternConstructor _mb_tyId _tmId _pats ()) = error "
 introPattern :: Pattern MType -> TypingM a -> TypingM a
 introPattern pat@(PatternNamed tmId mty) m = do
   let app =
-        Applicant
-          { applicantMaybeTypeId = Nothing,
-            applicantTermId = tmId,
-            applicantAnn = ApplicantType mty
-          }
-  localM (execStateT $ modifyInsertUnique (ctxApplicants . at (void app)) app (TypingError ("attempted to shadow" <+> ticks (pPrint (void app))) (Just $ toSyntax (void pat)))) m
+        -- Applicant
+        --   { applicantMaybeTypeId = Nothing,
+        --     applicantTermId = tmId,
+        --     applicantOutputAnn = ApplicantType mty
+        --   }
+        error "TODO"
+  -- localM (execStateT $ modifyInsertUnique _ _ (ctxApplicants . at (void app)) app) m
+  error "TODO"
+--  (TypingError ("attempted to shadow" <+> ticks (pPrint (void app))) (Just $ toSyntax (void pat)))
 -- introTermId tmId mty m
 introPattern (PatternDiscard _) m = m
 introPattern (PatternConstructor _tyId _ctorId pats _) m = comps (pats <&> introPattern) m

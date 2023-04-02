@@ -419,7 +419,7 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
                 },
           -- starts with «TermId»
           do
-            (protoNeutralMaybeTypeId, protoNeutralTermId) <-
+            (protoApplicantMaybeTypeId, protoApplicantTermId) <-
               choice
                 [ do
                     tyId <- try do
@@ -439,15 +439,16 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
               try $ reserved "giving"
               parens $ commaSep parseTerm
             return $
-              TermNeutral
-                ( Left
-                    ProtoNeutral
-                      { protoNeutralMaybeTypeId,
-                        protoNeutralTermId,
-                        protoNeutralMaybeArgs,
-                        protoNeutralMaybeCxargs
-                      }
-                )
+              TermProtoNeutral
+                ProtoNeutral
+                  { protoNeutralProtoApplicant =
+                      ProtoApplicant
+                        { protoApplicantMaybeTypeId,
+                          protoApplicantTermId
+                        },
+                    protoNeutralMaybeArgs,
+                    protoNeutralMaybeCxargs
+                  }
         ]
 
     table :: OperatorTable String LexingEnv IO (Term ())
