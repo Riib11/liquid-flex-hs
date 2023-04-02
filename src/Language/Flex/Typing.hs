@@ -15,7 +15,7 @@ import Language.Flex.Typing.Module
 import Language.Flex.Typing.TypingM
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
-import Prelude hiding (Enum, enum)
+import Prelude hiding (Enum)
 
 -- ** Typing
 
@@ -141,8 +141,8 @@ synthTerm term0@(TermMember tm fieldId ()) = do
           return $ TermMember tm' fieldId fieldMType
         ctxType -> throwTypingError ("the base of the field access has non-structure type" <+> ticks (pPrint ctxType)) (Just $ toSyntax term0)
     type_ -> throwTypingError ("the base of the field access has non-structure type" <+> ticks (pPrint type_)) (Just $ toSyntax term0)
-synthTerm term0@(TermNeutral _) = FlexM.throw $ "TermNeutral should only appear as an OUTPUT of type synthesis, not as an INPUT:" <+> pPrint term0
-synthTerm term0@(TermProtoNeutral ProtoNeutral {..}) = do
+synthTerm term0@(TermNeutral _ ()) = FlexM.throw $ "TermNeutral should only appear as an OUTPUT of type synthesis, not as an INPUT:" <+> pPrint term0
+synthTerm term0@(TermProtoNeutral ProtoNeutral {..} ()) = do
   let mb_syn = Just $ toSyntax term0
   lookupApplicant protoNeutralProtoApplicant >>= \app -> case app of
     (ApplicantFunction {..}) -> do
@@ -188,10 +188,9 @@ synthTerm term0@(TermProtoNeutral ProtoNeutral {..}) = do
                           maybe [] . comp1 pure $ \(cxargId, cxNewtypeId) ->
                             let cxargMType = normalizeType $ TypeNamed cxNewtypeId
                              in TermNeutral
-                                  Neutral
-                                    { neutralTermId = cxargId,
-                                      neutralAnn = cxargMType
-                                    }
+                                  { termNeutral = Neutral {neutralTermId = cxargId},
+                                    termAnn = cxargMType
+                                  }
                 return $ Just cxargs
               -- check explicit contextual args
               Just cxargs -> do
@@ -211,12 +210,14 @@ synthTerm term0@(TermProtoNeutral ProtoNeutral {..}) = do
                 return $ Just cxargs''
       return $
         TermNeutral
-          NeutralFunctionApplication
-            { neutralFunctionId = functionId,
-              neutralArgs = args',
-              neutralMaybeCxargs = mb_cxargs',
-              neutralAnn = applicantOutputAnn
-            }
+          { termNeutral =
+              NeutralFunctionApplication
+                { neutralFunctionId = functionId,
+                  neutralArgs = args',
+                  neutralMaybeCxargs = mb_cxargs'
+                },
+            termAnn = applicantOutputAnn
+          }
     (ApplicantEnumConstructor {..}) ->
       lookupType applicantEnumId
         >>= \case
@@ -227,11 +228,13 @@ synthTerm term0@(TermProtoNeutral ProtoNeutral {..}) = do
             unless (isNothing protoNeutralMaybeCxargs) $ throwTypingError "an enum construction cannot have contextual arguments" mb_syn
             return $
               TermNeutral
-                NeutralEnumConstruction
-                  { neutralEnumId = enumId,
-                    neutralConstructorId = applicantConstructorId,
-                    neutralAnn = applicantOutputAnn
-                  }
+                { termNeutral =
+                    NeutralEnumConstruction
+                      { neutralEnumId = enumId,
+                        neutralConstructorId = applicantConstructorId
+                      },
+                  termAnn = applicantOutputAnn
+                }
           ctxType -> FlexM.throw $ "the context stores that the applicant is an enum constructor," <+> ticks (pPrint app) <+> "but the type corresponding to the type id is not an enum," <+> ticks (pPrint ctxType)
     (ApplicantVariantConstructor {..}) -> do
       lookupType applicantVariantId >>= \case
@@ -248,12 +251,14 @@ synthTerm term0@(TermProtoNeutral ProtoNeutral {..}) = do
           args' <- forM (params `zip` args) (uncurry synthCheckTerm')
           return $
             TermNeutral
-              NeutralVariantConstruction
-                { neutralVariantId = variantId,
-                  neutralConstructorId = applicantConstructorId,
-                  neutralArgs = args',
-                  neutralAnn = applicantOutputAnn
-                }
+              { termNeutral =
+                  NeutralVariantConstruction
+                    { neutralVariantId = variantId,
+                      neutralConstructorId = applicantConstructorId,
+                      neutralArgs = args'
+                    },
+                termAnn = applicantOutputAnn
+              }
         ctxType -> FlexM.throw $ "the context stores that the applicant is a variant constructor," <+> ticks (pPrint app) <+> "but the type corresponding to the type id is not a variant," <+> ticks (pPrint ctxType)
     (ApplicantNewtypeConstructor {..}) -> do
       lookupType applicantNewtypeId >>= \case
@@ -268,23 +273,24 @@ synthTerm term0@(TermProtoNeutral ProtoNeutral {..}) = do
           arg' <- synthCheckTerm' newtypeType arg
           return $
             TermNeutral
-              NeutralNewtypeConstruction
-                { neutralNewtypeId = newtypeId,
-                  neutralConstructorId = applicantConstructorId,
-                  neutralArg = arg',
-                  neutralAnn = applicantOutputAnn
-                }
+              { termNeutral =
+                  NeutralNewtypeConstruction
+                    { neutralNewtypeId = newtypeId,
+                      neutralConstructorId = applicantConstructorId,
+                      neutralArg = arg'
+                    },
+                termAnn = applicantOutputAnn
+              }
         ctxType -> FlexM.throw $ "the context stores that the applicant is a newtype constructor," <+> ticks (pPrint app) <+> "but the type corresponding to the type id is not a newtype," <+> ticks (pPrint ctxType)
     (Applicant {..}) -> do
       -- assert no args
       unless (isNothing protoNeutralMaybeArgs) $ throwTypingError "arguments given to a non-function" mb_syn
       -- assert no cxargs
       unless (isNothing protoNeutralMaybeCxargs) $ throwTypingError "explicit contextual arguments given to a non-function" mb_syn
-      -- return $ TermNeutral app' Nothing Nothing mtype
-      return . TermNeutral $
-        Neutral
-          { neutralTermId = applicantTermId,
-            neutralAnn = applicantOutputAnn
+      return
+        TermNeutral
+          { termNeutral = Neutral {neutralTermId = applicantTermId},
+            termAnn = applicantOutputAnn
           }
 synthTerm (TermAscribe tm ty ()) =
   synthCheckTerm' (normalizeType ty) tm
@@ -352,7 +358,7 @@ synthPrimitive (PrimitiveAdd te1 te2) = do
   te1' <- synthCheckTerm' ty te1
   te2' <- synthCheckTerm' ty te2
   return $ TermPrimitive (PrimitiveAdd te1' te2') ty
-synthPrimitive (PrimitiveExtends te tyId) = error "synthPrimitive PrimitiveExtends"
+synthPrimitive (PrimitiveExtends {}) = error "synthPrimitive PrimitiveExtends"
 
 synthCheckTerm :: Type -> Term () -> TypingM (Term MType)
 synthCheckTerm type_ term = do

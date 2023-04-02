@@ -440,15 +440,18 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
               parens $ commaSep parseTerm
             return $
               TermProtoNeutral
-                ProtoNeutral
-                  { protoNeutralProtoApplicant =
-                      ProtoApplicant
-                        { protoApplicantMaybeTypeId,
-                          protoApplicantTermId
-                        },
-                    protoNeutralMaybeArgs,
-                    protoNeutralMaybeCxargs
-                  }
+                { termProtoNeutral =
+                    ProtoNeutral
+                      { protoNeutralProtoApplicant =
+                          ProtoApplicant
+                            { protoApplicantMaybeTypeId,
+                              protoApplicantTermId
+                            },
+                        protoNeutralMaybeArgs,
+                        protoNeutralMaybeCxargs
+                      },
+                  termAnn = ()
+                }
         ]
 
     table :: OperatorTable String LexingEnv IO (Term ())

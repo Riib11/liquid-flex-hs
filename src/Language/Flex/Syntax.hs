@@ -535,8 +535,8 @@ data Term ann
   | TermAssert {termTerm :: Term ann, termBody :: Term ann, termAnn :: ann}
   | TermStructure {termStructureId :: TypeId, termFields :: [(FieldId, Term ann)], termAnn :: ann}
   | TermMember {termTerm :: Term ann, termFieldId :: FieldId, termAnn :: ann}
-  | TermProtoNeutral (ProtoNeutral ann)
-  | TermNeutral (Neutral ann)
+  | TermProtoNeutral {termProtoNeutral :: ProtoNeutral ann, termAnn :: ann}
+  | TermNeutral {termNeutral :: Neutral ann, termAnn :: ann}
   | TermAscribe {termTerm :: Term ann, termType :: Type, termAnn :: ann}
   | TermMatch {termTerm :: Term ann, termBranches :: Branches ann, termAnn :: ann}
   deriving (Eq, Show, Functor, Foldable, Traversable)
@@ -585,11 +585,11 @@ instance Pretty (Term ann) where
     --             Nothing -> mempty
     --             Just cxargs -> "giving" <+> (parens . hcat . punctuate (comma <> space) $ pPrint <$> cxargs)
     --         )
-    TermProtoNeutral protoNeu -> pPrint protoNeu
-    TermNeutral neu -> pPrint neu
-    TermAscribe {termTerm, termType} ->
+    TermProtoNeutral {..} -> pPrint termProtoNeutral
+    TermNeutral {..} -> pPrint termNeutral
+    TermAscribe {..} ->
       pPrint termTerm <+> colon <+> pPrint termType
-    TermMatch {termTerm, termBranches} ->
+    TermMatch {..} ->
       "match"
         <+> pPrint termTerm
         <+> "with"
@@ -639,11 +639,11 @@ instance Pretty (ProtoApplicant ann) where
 -- *** Neutral
 
 data Neutral ann
-  = NeutralFunctionApplication {neutralFunctionId :: TermId, neutralArgs :: [Term ann], neutralMaybeCxargs :: Maybe [Term ann], neutralAnn :: ann}
-  | NeutralEnumConstruction {neutralEnumId :: TypeId, neutralConstructorId :: TermId, neutralAnn :: ann}
-  | NeutralVariantConstruction {neutralVariantId :: TypeId, neutralConstructorId :: TermId, neutralArgs :: [Term ann], neutralAnn :: ann}
-  | NeutralNewtypeConstruction {neutralNewtypeId :: TypeId, neutralConstructorId :: TermId, neutralArg :: Term ann, neutralAnn :: ann}
-  | Neutral {neutralTermId :: TermId, neutralAnn :: ann}
+  = NeutralFunctionApplication {neutralFunctionId :: TermId, neutralArgs :: [Term ann], neutralMaybeCxargs :: Maybe [Term ann]}
+  | NeutralEnumConstruction {neutralEnumId :: TypeId, neutralConstructorId :: TermId}
+  | NeutralVariantConstruction {neutralVariantId :: TypeId, neutralConstructorId :: TermId, neutralArgs :: [Term ann]}
+  | NeutralNewtypeConstruction {neutralNewtypeId :: TypeId, neutralConstructorId :: TermId, neutralArg :: Term ann}
+  | Neutral {neutralTermId :: TermId}
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Neutral ann) where
@@ -823,19 +823,33 @@ renameTerm tmIds term = case term of
   TermAssert te te' r -> TermAssert (renameTerm tmIds te) (renameTerm tmIds te') r
   TermStructure ti fields r -> TermStructure ti (second (renameTerm tmIds) <$> fields) r
   TermMember te fi r -> TermMember (renameTerm tmIds te) fi r
-  -- TermNeutral ap m_tes m_te's r ->
-  --   TermNeutral
-  --     ( case ap of
-  --         (Applicant m_ti ti _at) -> case m_ti of
-  --           Just _ -> ap
-  --           Nothing -> case Map.lookup ti tmIds of
-  --             Nothing -> ap
-  --             Just ti' -> ap {applicantTermId = ti'}
-  --     )
-  --     (renameTerm tmIds <$$> m_tes)
-  --     (renameTerm tmIds <$$> m_te's)
-  --     r
-  TermNeutral _ -> error "renameTerm TermNeutral"
+  TermProtoNeutral {..} ->
+    let ProtoNeutral {..} = termProtoNeutral
+        ProtoApplicant {..} = protoNeutralProtoApplicant
+     in TermProtoNeutral
+          { termProtoNeutral =
+              termProtoNeutral
+                { protoNeutralProtoApplicant = case protoApplicantMaybeTypeId of
+                    Nothing
+                      | Just tmId' <- tmIds Map.!? protoApplicantTermId ->
+                          ProtoApplicant
+                            { protoApplicantMaybeTypeId = Nothing,
+                              protoApplicantTermId = tmId'
+                            }
+                    _ -> protoNeutralProtoApplicant,
+                  protoNeutralMaybeArgs = renameTerm tmIds <$$> protoNeutralMaybeArgs,
+                  protoNeutralMaybeCxargs = renameTerm tmIds <$$> protoNeutralMaybeCxargs
+                },
+            termAnn
+          }
+  TermNeutral {..} -> case termNeutral of
+    (NeutralFunctionApplication ti tes m_tes) -> term {termNeutral = NeutralFunctionApplication ti (renameTerm tmIds <$> tes) (renameTerm tmIds <$$> m_tes)}
+    (NeutralEnumConstruction {}) -> term
+    (NeutralVariantConstruction ti ti' tes) -> term {termNeutral = NeutralVariantConstruction ti ti' (renameTerm tmIds <$> tes)}
+    (NeutralNewtypeConstruction ti ti' te) -> term {termNeutral = NeutralNewtypeConstruction ti ti' (renameTerm tmIds te)}
+    (Neutral tmId)
+      | Just tmId' <- tmIds Map.!? tmId -> term {termNeutral = Neutral tmId'}
+      | otherwise -> term
   TermAscribe te ty r -> TermAscribe (renameTerm tmIds te) ty r
   TermMatch te branches r -> TermMatch (renameTerm tmIds te) (second (renameTerm tmIds) <$> branches) r
 
@@ -851,6 +865,7 @@ renamePrimitive tmIds prim = case prim of
   PrimitiveNot te -> PrimitiveNot (renameTerm tmIds te)
   PrimitiveEq te te' -> PrimitiveEq (renameTerm tmIds te) (renameTerm tmIds te')
   PrimitiveAdd te te' -> PrimitiveAdd (renameTerm tmIds te) (renameTerm tmIds te')
+  PrimitiveExtends tm tyId -> PrimitiveExtends (renameTerm tmIds tm) tyId
 
 -- -- substTerm x a b = b[x := a]
 -- substTerm :: TermId -> Term r -> Term r -> Term r
