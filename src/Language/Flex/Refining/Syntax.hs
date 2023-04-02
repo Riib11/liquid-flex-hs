@@ -1,6 +1,7 @@
 module Language.Flex.Refining.Syntax where
 
 import qualified Language.Flex.Syntax as Crude
+import Text.PrettyPrint.HughesPJClass hiding ((<>))
 
 -- * Refined Syntax
 
@@ -11,17 +12,19 @@ data Type
   | TypeBit
   | TypeChar
   | TypeArray Type
-  | TypeTuple [Type]
+  | TypeTuple Type Type
   | TypeOptional Type
   | TypeNamed Crude.TypeId
   deriving (Eq, Show)
+
+instance Pretty Type
 
 -- ** Terms
 
 data Term
   = TermLiteral {termLiteral :: Crude.Literal, termType :: Type}
   | TermPrimitive {termPrimitive :: Primitive, termType :: Type}
-  | TermLet {termPattern :: Pattern, termTerm :: Term, termBody :: Term, termType :: Type}
+  | TermLet {termMaybeTermId :: Maybe Crude.TermId, termTerm :: Term, termBody :: Term, termType :: Type}
   | TermAssert {termTerm :: Term, termBody :: Term, termType :: Type}
   | TermMember {termTerm :: Term, termFieldId :: Crude.FieldId, termType :: Type}
   | TermNamed {termId :: Crude.TermId, termType :: Type}
@@ -31,14 +34,18 @@ data Term
   | TermMatch {termTerm :: Term, termBranches :: [(Pattern, Term)], termType :: Type}
   deriving (Eq, Show)
 
+instance Pretty Term
+
 data Pattern
   = PatternNamed Crude.TermId Type
   | PatternDiscard Type
   deriving (Eq, Show)
 
+instance Pretty Pattern
+
 data Primitive
   = PrimitiveTry Term
-  | PrimitiveTuple [Term]
+  | PrimitiveTuple Term Term
   | PrimitiveArray [Term]
   | PrimitiveIf Term Term Term
   | PrimitiveAnd Term Term
@@ -48,3 +55,5 @@ data Primitive
   | PrimitiveAdd Term Term
   | PrimitiveExtends Term Crude.TypeId
   deriving (Eq, Show)
+
+instance Pretty Primitive

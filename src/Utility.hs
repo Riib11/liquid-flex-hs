@@ -113,6 +113,14 @@ liftM2' k ma mb = do
   b <- mb
   k a b
 
+foldr2 :: (a -> a -> a) -> [a] -> Maybe a
+foldr2 f as = foldl2 (flip f) (reverse as)
+
+foldl2 :: (a -> a -> a) -> [a] -> Maybe a
+foldl2 _f [] = Nothing
+foldl2 _f [_a] = Nothing
+foldl2 f (a : a' : as) = Just $ foldl f (f a a') as
+
 -- asksM :: MonadReader r m => (r -> m a) -> m a
 -- asksM k = k =<< ask
 

@@ -532,7 +532,7 @@ instance Pretty (Constant ty tm) where
 data Term ann
   = TermLiteral {termLiteral :: Literal, termAnn :: ann}
   | TermPrimitive {termPrimitive :: Primitive ann, termAnn :: ann}
-  | TermLet {termPattern :: Pattern ann, termTerm :: Term ann, termBody :: Term ann, termAnn :: ann}
+  | TermLet {termId :: TermId, termTerm :: Term ann, termBody :: Term ann, termAnn :: ann}
   | TermAssert {termTerm :: Term ann, termBody :: Term ann, termAnn :: ann}
   | TermStructure {termStructureId :: TypeId, termFields :: [(FieldId, Term ann)], termAnn :: ann}
   | TermMember {termTerm :: Term ann, termFieldId :: FieldId, termAnn :: ann}
@@ -548,10 +548,10 @@ type Branch ann = (Pattern ann, Term ann)
 
 instance Pretty (Term ann) where
   pPrint = \case
-    TermLiteral {termLiteral} -> pPrint termLiteral
-    TermPrimitive {termPrimitive} -> pPrint termPrimitive
-    TermLet {termPattern, termTerm, termBody} ->
-      text "let" <+> pPrint termPattern <+> equals <+> pPrint termTerm <+> semi <+> pPrint termBody
+    TermLiteral {..} -> pPrint termLiteral
+    TermPrimitive {..} -> pPrint termPrimitive
+    TermLet {..} ->
+      text "let" <+> pPrint termId <+> equals <+> pPrint termTerm <+> semi <+> pPrint termBody
     TermAssert {termTerm, termBody} ->
       text "assert" <+> pPrint termTerm <+> semi <+> pPrint termBody
     TermStructure {termStructureId, termFields} ->
