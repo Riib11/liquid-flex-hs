@@ -13,13 +13,13 @@ import Language.Flex.Syntax as Syntax
 import Language.Flex.Typing.TypingM
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
-import Prelude hiding (Enum, enum)
+import Prelude hiding (Enum)
 
 -- ** Module Typing Context
 
 -- | Constructs the module-level typing context.
 moduleTypingCtx :: (MonadError TypingError m, MonadFlex m) => Module Type () -> m TypingCtx
-moduleTypingCtx Module {..} = do
+moduleTypingCtx Module {..} = FlexM.markSection [FlexM.FlexMarkStep "moduleTypingCtx" Nothing] do
   -- collect all structures
   let structs :: Map.Map TypeId (Structure Type)
       structs = for moduleDeclarations mempty \case
@@ -33,11 +33,11 @@ moduleTypingCtx Module {..} = do
         _ -> id
 
   let -- fully extend the structure's fields
-      extendStructure structIds struct@Structure {..} = do
+      extendStructure structIds struct@Structure {..} = FlexM.markSection [FlexM.FlexMarkStep ("extendStructure" <+> pPrint structureId) . Just $ pPrint (structIds, structureId)] do
         -- assert acyclic extensions
         when (structureId `elem` structIds) $ throwTypingError ("the structure" <+> ticks (pPrint structureId) <+> "has an extension that forms a cycle:" <+> hcat (punctuate (space <> "extends" <> space) $ pPrint <$> reverse structIds)) (Just $ SyntaxDeclaration $ DeclarationStructure struct)
 
-        case structs Map.!? structureId of
+        case (structs Map.!?) =<< structureMaybeExtensionId of
           Nothing -> return struct
           Just struct' -> do
             -- extend the extending struct
@@ -52,22 +52,25 @@ moduleTypingCtx Module {..} = do
             return struct {structureFields = structureFields <> Syntax.structureFields struct''}
 
   let -- fully extend the refined type's refinements (if it is refining a structure that extends another structure)
-      extendRefinedType tyIds rt@RefinedType {..} = case structs Map.!? refinedTypeId of
+      extendRefinedType tyIds rt@RefinedType {..} = FlexM.markSection [FlexM.FlexMarkStep ("extendRefinedType" <+> pPrint refinedTypeId) . Just $ pPrint (tyIds, refinedTypeId)] case structs Map.!? refinedTypeId of
         Nothing -> return rt
-        Just Structure {..} -> case refinedTypes Map.!? structureId of
-          Nothing -> FlexM.throw $ "unknown structure id:" <+> ticks (pPrint structureId)
-          Just rt' -> do
-            -- extend refinement
-            rt'' <- extendRefinedType (refinedTypeId : tyIds) rt'
-            -- conjoin refinements
-            return
-              rt
-                { refinedTypeRefinement =
-                    andRefinements
-                      [ refinedTypeRefinement,
-                        Syntax.refinedTypeRefinement rt''
-                      ]
-                }
+        Just Structure {..} ->
+          case structureMaybeExtensionId of
+            Nothing -> return rt
+            Just extendId -> case refinedTypes Map.!? extendId of
+              Nothing -> FlexM.throw $ "unknown refinable type id:" <+> ticks (text $ show structureId) $$ "known refined types:" <+> text (show $ Map.keys refinedTypes)
+              Just rt' -> do
+                -- extend refinement
+                rt'' <- extendRefinedType (refinedTypeId : tyIds) rt'
+                -- conjoin refinements
+                return
+                  rt
+                    { refinedTypeRefinement =
+                        andRefinements
+                          [ refinedTypeRefinement,
+                            Syntax.refinedTypeRefinement rt''
+                          ]
+                    }
 
   let ctx :: TypingCtx
       ctx =

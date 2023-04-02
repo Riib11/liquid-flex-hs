@@ -7,6 +7,7 @@ import Data.Bifunctor (Bifunctor (bimap, second))
 import Data.Functor ((<&>))
 import Data.List (intercalate)
 import qualified Data.Map as Map
+import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
 import Text.PrettyPrint.HughesPJClass (Doc, Pretty (pPrint), braces, brackets, colon, comma, doubleQuotes, equals, hcat, hsep, nest, parens, punctuate, quotes, semi, space, text, vcat, ($$), (<+>))
 import Utility
@@ -647,7 +648,11 @@ data Neutral ann
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Neutral ann) where
-  pPrint = error "pPrint Neutral"
+  pPrint (NeutralFunctionApplication ti tes m_tes) = (pPrint ti <> parens (commaList (pPrint <$> tes))) <+> maybe mempty (\tes' -> "giving" <+> parens (commaList (pPrint <$> tes'))) m_tes
+  pPrint (NeutralEnumConstruction ti ti') = pPrint ti <> "#" <> pPrint ti'
+  pPrint (NeutralVariantConstruction ti ti' tes) = pPrint ti <> "#" <> pPrint ti' <> parens (commaList (pPrint <$> tes))
+  pPrint (NeutralNewtypeConstruction ti ti' te) = pPrint ti <> "#" <> pPrint ti' <> parens (pPrint te)
+  pPrint (Neutral ti) = pPrint ti
 
 -- ** Applicant
 
@@ -662,7 +667,11 @@ data Applicant ann
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Applicant ann) where
-  pPrint = error "pPrint Applicant"
+  pPrint (ApplicantFunction ti _ann) = pPrint ti
+  pPrint (ApplicantEnumConstructor ti ti' _ann) = pPrint ti <> "#" <> pPrint ti'
+  pPrint (ApplicantVariantConstructor ti ti' _ann) = pPrint ti <> "#" <> pPrint ti'
+  pPrint (ApplicantNewtypeConstructor ti ti' _ann) = pPrint ti <> "#" <> pPrint ti'
+  pPrint (Applicant ti _ann) = pPrint ti
 
 fromApplicantToProtoApplicant :: Applicant ann -> ProtoApplicant ann'
 fromApplicantToProtoApplicant (ApplicantFunction ti _) = ProtoApplicant {protoApplicantMaybeTypeId = Nothing, protoApplicantTermId = ti}

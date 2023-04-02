@@ -9,10 +9,11 @@ import Control.Monad.State
 import Data.Bifunctor (Bifunctor (second))
 import qualified Data.Map as Map
 import Language.Flex.FlexM
+import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Syntax as Syntax
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
-import Prelude hiding (Enum, enum)
+import Prelude hiding (Enum)
 
 -- * TypingM
 
@@ -120,27 +121,45 @@ modifyInsertUnique mb_syn a l b = modifyM \s -> case s ^. l of
 normalizeType :: Type -> MType
 normalizeType = go []
   where
-    go aliasIds type0 = case type0 of
-      (TypeArray ty) -> TypeArray <$> normalizeType ty
-      (TypeTuple tys) -> TypeTuple <$> normalizeType `traverse` tys
-      (TypeOptional ty) -> TypeArray <$> normalizeType ty
-      (TypeNamed tyId) ->
-        asks (^. ctxTypes . at tyId) >>= \case
-          Nothing -> return (TypeNamed tyId)
-          Just ctxType -> case ctxType of
-            (CtxAlias Alias {..}) -> go (aliasId : aliasIds) =<< aliasType
-            _ -> return (TypeNamed tyId)
-      (TypeUnifyVar uv _) ->
-        gets (^. envUnification . at uv) >>= \case
-          Nothing -> return type0
-          (Just ty) -> normalizeType ty
-      _ -> return type0
+    go aliasIds type0 = do
+      FlexM.debug True $ "normalizeType.go" <+> pPrint type0
+      case type0 of
+        (TypeArray ty) -> TypeArray <$> normalizeType ty
+        (TypeTuple tys) -> TypeTuple <$> normalizeType `traverse` tys
+        (TypeOptional ty) -> TypeArray <$> normalizeType ty
+        (TypeNamed tyId) ->
+          asks (^. ctxTypes . at tyId) >>= \case
+            Nothing -> return (TypeNamed tyId)
+            Just ctxType -> case ctxType of
+              (CtxAlias Alias {..}) -> go (aliasId : aliasIds) =<< aliasType
+              _ -> return (TypeNamed tyId)
+        (TypeUnifyVar uv _) ->
+          gets (^. envUnification . at uv) >>= \case
+            Nothing -> return type0
+            (Just ty) -> normalizeType ty
+        _ -> return type0
 
 normalizeInternalTypes :: Traversable t => t MType -> TypingM (t Type)
 normalizeInternalTypes = traverse (>>= assertNormalType)
 
 assertNormalType :: Type -> TypingM Type
-assertNormalType = error "assertNormalType"
+assertNormalType ty = case ty of
+  (TypeNumber {}) -> return ty
+  TypeBit -> return ty
+  TypeChar -> return ty
+  (TypeArray ty') -> TypeArray <$> assertNormalType ty'
+  (TypeTuple tys) -> TypeTuple <$> assertNormalType `traverse` tys
+  (TypeOptional ty') -> TypeOptional <$> assertNormalType ty'
+  (TypeNamed ti) ->
+    asks (^. ctxTypes . at ti) >>= \case
+      Nothing -> FlexM.throw ("assertNormalType: unknown type id" <+> ticks (pPrint ti))
+      (Just ct) -> case ct of
+        (CtxAlias {}) -> FlexM.throw ("assertNormalType: type alias reference" <+> ticks (pPrint ty))
+        _ -> return ty
+  (TypeUnifyVar uv _) ->
+    gets (^. envUnification . at uv) >>= \case
+      Nothing -> return ty
+      (Just {}) -> FlexM.throw ("assertNormalType: unsubstituted type unification variable:" <+> ticks (pPrint ty))
 
 -- ** Defaulting
 
@@ -153,18 +172,30 @@ defaultType ty = do
   assertConcreteType ty'
   return ty'
   where
-    go = error "defaultType"
+    go :: Type -> TypingM Type
+    go (TypeArray ty2) = TypeArray <$> defaultType ty2
+    go (TypeTuple tys) = TypeTuple <$> defaultType `traverse` tys
+    go (TypeOptional ty2) = TypeOptional <$> defaultType ty2
+    go ty2@(TypeUnifyVar _uv Nothing) = FlexM.throw $ "cannot default unconstrained type unification variable" <+> ticks (pPrint ty2)
+    go (TypeUnifyVar _uv (Just (UnifyConstraintCasted ty'))) = return ty'
+    go (TypeUnifyVar _uv (Just UnifyConstraintNumeric)) = return (TypeNumber TypeInt 32)
+    go ty2 = return ty2
 
 defaultInternalTypes :: Traversable t => t Type -> TypingM (t Type)
 defaultInternalTypes = traverse (defaultType >=> assertConcreteType)
 
 assertConcreteType :: Type -> TypingM Type
-assertConcreteType = error "assertConcreteType"
+assertConcreteType (TypeArray ty') = TypeArray <$> assertConcreteType ty'
+assertConcreteType (TypeTuple tys) = TypeTuple <$> assertConcreteType `traverse` tys
+assertConcreteType (TypeOptional ty') = TypeOptional <$> assertConcreteType ty'
+assertConcreteType ty@(TypeUnifyVar {}) = FlexM.throw $ "assertConcreteType: found type unification variable" <+> ticks (pPrint ty)
+assertConcreteType ty = return ty
 
 -- ** Utilities
 
 introLocal :: Maybe (Syntax Type ()) -> TermId -> MType -> TypingM a -> TypingM a
 introLocal mb_syn tmId mty = do
+  let mty' = assertNormalType =<< mty
   let protoapp =
         ProtoApplicant
           { protoApplicantMaybeTypeId = Nothing,
@@ -173,20 +204,10 @@ introLocal mb_syn tmId mty = do
   let app =
         Applicant
           { applicantTermId = tmId,
-            applicantOutputAnn = mty
+            applicantOutputAnn = mty'
           }
   localM . execStateT $
     modifyInsertUnique mb_syn tmId (ctxApplicants . at protoapp) app
-
-introCxparam :: Maybe (Syntax Type ()) -> TypeId -> TermId -> TypingM a -> TypingM a
-introCxparam mb_syn tyId tmId =
-  comps
-    [ introLocal mb_syn tmId (normalizeType (TypeNamed tyId)),
-      localM . execStateT $
-        modifyInsertUnique mb_syn tmId (ctxCxparamNewtypeIds . at tmId) tyId,
-      localM . execStateT $
-        modifyInsertUnique mb_syn tmId (ctxCxparamIds . at tyId) tmId
-    ]
 
 lookupApplicant :: ProtoApplicant () -> TypingM (Applicant MType)
 lookupApplicant protoapp =
