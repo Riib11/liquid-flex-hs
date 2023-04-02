@@ -383,20 +383,17 @@ synthCheckPattern' mtype (PatternDiscard ()) = return $ PatternDiscard mtype
 synthCheckPattern' _mtype (PatternConstructor _mb_tyId _tmId _pats ()) = error "TODO: synthCheckPattern PatternConstructor"
 
 introPattern :: Pattern MType -> TypingM a -> TypingM a
-introPattern pat@(PatternNamed tmId mty) m = do
+introPattern pat@(PatternNamed tmId mty) = do
   let app =
-        -- Applicant
-        --   { applicantMaybeTypeId = Nothing,
-        --     applicantTermId = tmId,
-        --     applicantOutputAnn = ApplicantType mty
-        --   }
-        error "TODO"
-  -- localM (execStateT $ modifyInsertUnique _ _ (ctxApplicants . at (void app)) app) m
-  error "TODO"
---  (TypingError ("attempted to shadow" <+> ticks (pPrint (void app))) (Just $ toSyntax (void pat)))
--- introTermId tmId mty m
-introPattern (PatternDiscard _) m = m
-introPattern (PatternConstructor _tyId _ctorId pats _) m = comps (pats <&> introPattern) m
+        Applicant
+          { applicantTermId = tmId,
+            applicantOutputAnn = mty
+          }
+  let protoapp = fromApplicantToProtoApplicant app
+  localM . execStateT $
+    modifyInsertUnique (Just $ SyntaxPattern (void pat)) app (ctxApplicants . at protoapp) app
+introPattern (PatternDiscard _) = id
+introPattern (PatternConstructor _tyId _ctorId pats _) = comps (pats <&> introPattern)
 
 -- ** Unification
 
