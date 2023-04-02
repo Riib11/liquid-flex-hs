@@ -9,7 +9,7 @@ import Language.Flex.FlexM (FlexCtx (flexDebug, flexVerbose), runFlexM)
 import Language.Flex.Parsing (parseModuleFile)
 import Language.Flex.Typing (typeModule)
 import System.IO.Unsafe (unsafePerformIO)
-import Test.FilePaths (dir_examples, dir_examples_parsing, dir_examples_typing, dir_examples_typing_fail, getDirectoryFilesBySuffix)
+import Test.FilePaths (dir_examples, dir_examples_parsing, dir_examples_refining, dir_examples_refining_fail, dir_examples_typing, dir_examples_typing_fail, getDirectoryFilesBySuffix)
 import Test.HUnit
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 
@@ -27,7 +27,17 @@ test =
                 unsafePerformIO $
                   fmap concat . sequence $
                     [getDirectoryFilesBySuffix dir_examples_typing_fail ".flex"]
-           in makeTest_procModule False <$> fps
+           in makeTest_procModule False <$> fps,
+          let !fps =
+                unsafePerformIO $
+                  fmap concat . sequence $
+                    [getDirectoryFilesBySuffix dir_examples_refining ".flex"]
+           in makeTest_procModule True <$> fps,
+          let !fps =
+                unsafePerformIO $
+                  fmap concat . sequence $
+                    [getDirectoryFilesBySuffix dir_examples_refining_fail ".flex"]
+           in makeTest_procModule True <$> fps
         ]
 
 makeTest_procModule :: Bool -> FilePath -> Test

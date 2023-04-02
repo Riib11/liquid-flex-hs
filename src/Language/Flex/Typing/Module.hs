@@ -10,6 +10,7 @@ import Data.Maybe (isJust)
 import Language.Flex.FlexM
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Syntax as Syntax
+import Language.Flex.Typing.Prelude (preludeTypingCtx)
 import Language.Flex.Typing.TypingM
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
@@ -73,16 +74,7 @@ moduleTypingCtx Module {..} = FlexM.markSection [FlexM.FlexMarkStep "moduleTypin
                     }
 
   let ctx :: TypingCtx
-      ctx =
-        TypingCtx
-          { _ctxTypes = mempty,
-            _ctxFunctions = mempty,
-            _ctxConstants = mempty,
-            _ctxRefinedTypes = mempty,
-            _ctxApplicants = mempty,
-            _ctxCxparamNewtypeIds = mempty,
-            _ctxCxparamIds = mempty
-          }
+      ctx = preludeTypingCtx
 
   flip execStateT ctx . forM_ moduleDeclarations $ \decl -> case decl of
     (DeclarationStructure struct@Structure {..}) -> do

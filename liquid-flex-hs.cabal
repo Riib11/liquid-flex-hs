@@ -33,6 +33,7 @@ library
       Language.Flex.Syntax
       Language.Flex.Typing
       Language.Flex.Typing.Module
+      Language.Flex.Typing.Prelude
       Language.Flex.Typing.TypingM
       Utility
   other-modules:
