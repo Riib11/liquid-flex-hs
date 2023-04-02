@@ -32,6 +32,7 @@ library
       Language.Flex.Parsing
       Language.Flex.Refining
       Language.Flex.Refining.RefiningM
+      Language.Flex.Refining.Reflecting
       Language.Flex.Refining.Syntax
       Language.Flex.Refining.Translating
       Language.Flex.Syntax
