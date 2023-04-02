@@ -191,6 +191,15 @@ assertConcreteType (TypeOptional ty') = TypeOptional <$> assertConcreteType ty'
 assertConcreteType ty@(TypeUnifyVar {}) = FlexM.throw $ "assertConcreteType: found type unification variable" <+> ticks (pPrint ty)
 assertConcreteType ty = return ty
 
+-- ** Typed Term
+
+-- Asserts typed term has been correcly processed.
+-- - no PrimitiveCast
+-- - no TermAscribe
+-- - no ProtoNeutral
+assertTypedTerm :: Term Type -> Term Type
+assertTypedTerm = error "assertTypedTerm"
+
 -- ** Utilities
 
 introLocal :: Maybe (Syntax Type ()) -> TermId -> MType -> TypingM a -> TypingM a

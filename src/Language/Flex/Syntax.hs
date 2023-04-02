@@ -733,30 +733,10 @@ data Type
   | TypeArray Type
   | TypeTuple [Type]
   | TypeOptional Type
-  | -- | If this is a reference to a type alias, then @Maybe Type@ starts off as
-    -- @Nothing@ after parsing, and then is replaced with the (normalized)
-    -- aliased type after typing.
-    TypeNamed TypeId
-  | -- | Only introduced during typing.
+  | TypeNamed TypeId
+  | -- | Introduce and eliminated during typing.
     TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
   deriving (Eq, Show)
-
--- data ApplicantType ann
---   = ApplicantTypeFunction TermId
---   | ApplicantTypeEnumConstructor TypeId TermId
---   | ApplicantTypeVariantConstructor TypeId TermId
---   | ApplicantTypeNewtypeConstructor TypeId
---   | ApplicantType ann
---   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
-
--- instance Pretty r => Pretty (ApplicantType r) where
---   pPrint = \case
---     -- (ApplicantTypeFunction ft) -> pPrint ft
---     -- (ApplicantTypeEnumConstructor Enum {..} ti) -> pPrint enumId <> "#" <> pPrint ti
---     -- (ApplicantTypeVariantConstructor Variant {..} ti rs) -> pPrint variantId <> "#" <> pPrint ti <> parens (hcat $ punctuate (comma <> space) $ pPrint <$> rs)
---     -- (ApplicantTypeNewtypeConstructor Newtype {..}) -> pPrint newtypeId <> parens (pPrint newtypeType)
---     -- (ApplicantType r) -> pPrint r
---     _ -> error "TODO: Pretty ApplicantType"
 
 data NumberType
   = TypeInt

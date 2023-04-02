@@ -30,6 +30,10 @@ library
       Language.Flex.FlexM
       Language.Flex.Lexing
       Language.Flex.Parsing
+      Language.Flex.Refining
+      Language.Flex.Refining.RefiningM
+      Language.Flex.Refining.Syntax
+      Language.Flex.Refining.Translating
       Language.Flex.Syntax
       Language.Flex.Typing
       Language.Flex.Typing.Module

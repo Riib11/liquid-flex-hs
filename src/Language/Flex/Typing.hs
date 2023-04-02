@@ -323,6 +323,7 @@ synthTerm term0 = FlexM.markSection
                 termAnn = applicantOutputAnn
               }
     (TermAscribe tm ty ()) ->
+      -- unwraps TermAscribe, so TermAscribe should not appear in a typed term
       synthCheckTerm' (normalizeType ty) tm
     (TermMatch tm branches ()) -> do
       tm' <- synthTerm tm
@@ -348,12 +349,14 @@ synthPrimitive (PrimitiveTry te) = do
   te' <- synthTerm te
   return $ TermPrimitive (PrimitiveTry te') (TypeOptional <$> termAnn te')
 synthPrimitive (PrimitiveCast te) = do
+  -- PrimitiveCase is unwrapped during typing, so should not appear in typed
+  -- result
   te' <- synthTerm te
   -- since we haven't finished typechecking, this type can be non-normal by the
   -- time it's used again, so make sure to normalize there!
   ty' <- termAnn te'
   ty <- freshTypeUnifyVar' (render $ "cast" <+> pPrint te') (Just (UnifyConstraintCasted ty'))
-  return $ TermPrimitive (PrimitiveCast te') ty
+  return te' {termAnn = ty}
 synthPrimitive (PrimitiveTuple tes) = do
   tes' <- synthTerm `traverse` tes
   return $ TermPrimitive (PrimitiveTuple tes') (TypeTuple <$> mapM termAnn tes')
