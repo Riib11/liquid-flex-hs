@@ -68,6 +68,9 @@ isoFrom iso = withIso iso \_ from -> from
 isoTo :: Iso' a b -> (a -> b)
 isoTo iso = withIso iso const
 
+comp1 :: (t1 -> t2) -> (t3 -> t1) -> t3 -> t2
+comp1 f g a = f (g a)
+
 comp2 :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
 comp2 f g a b = f (g a b)
 

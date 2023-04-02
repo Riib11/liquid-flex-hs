@@ -535,36 +535,11 @@ data Term ann
   | TermAssert {termTerm :: Term ann, termBody :: Term ann, termAnn :: ann}
   | TermStructure {termStructureId :: TypeId, termFields :: [(FieldId, Term ann)], termAnn :: ann}
   | TermMember {termTerm :: Term ann, termFieldId :: FieldId, termAnn :: ann}
-  | TermNeutral {termApplicant :: Applicant ann, termMaybeArgs :: Maybe [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
+  | -- | TermNeutral {termApplicant :: Either ProtoApplicant (Applicant ann), termMaybeArgs :: Maybe [Term ann], termMaybeCxargs :: Maybe [Term ann], termAnn :: ann}
+    TermNeutral (Either ProtoNeutral (Neutral ann))
   | TermAscribe {termTerm :: Term ann, termType :: Type, termAnn :: ann}
   | TermMatch {termTerm :: Term ann, termBranches :: Branches ann, termAnn :: ann}
   deriving (Eq, Show, Functor, Foldable, Traversable)
-
-data Applicant ann = Applicant
-  { applicantMaybeTypeId :: Maybe TypeId,
-    applicantTermId :: TermId,
-    applicantAnn :: ApplicantType ann
-  }
-  deriving (Eq, Show, Functor, Foldable, Traversable)
-
-termIdApplicant :: TermId -> ApplicantType ann -> Applicant ann
-termIdApplicant applicantTermId applicantAnn =
-  Applicant
-    { applicantMaybeTypeId = Nothing,
-      applicantTermId,
-      applicantAnn
-    }
-
-instance Eq ann => Ord (Applicant ann) where
-  compare app1 app2 = case compare (applicantMaybeTypeId app1) (applicantMaybeTypeId app2) of
-    LT -> LT
-    GT -> GT
-    EQ -> compare (applicantTermId app1) (applicantTermId app2)
-
-instance Pretty (Applicant ann) where
-  pPrint (Applicant {..}) = case applicantMaybeTypeId of
-    Nothing -> pPrint applicantTermId
-    Just tyId -> pPrint tyId <> "#" <> pPrint applicantTermId
 
 type Branches ann = [Branch ann]
 
@@ -588,28 +563,30 @@ instance Pretty (Term ann) where
         <> "}"
     TermMember {termTerm, termFieldId} ->
       pPrint termTerm <> "." <> pPrint termFieldId
-    TermNeutral {termApplicant = Applicant Nothing termId _, termMaybeArgs, termMaybeCxargs} ->
-      ( pPrint termId
-          <> ( case termMaybeArgs of
-                 Nothing -> mempty
-                 Just args -> parens . hcat . punctuate (comma <> space) $ pPrint <$> args
-             )
-      )
-        <+> ( case termMaybeCxargs of
-                Nothing -> mempty
-                Just cxargs -> "giving" <+> (parens . hcat . punctuate (comma <> space) $ pPrint <$> cxargs)
-            )
-    TermNeutral {termApplicant = Applicant (Just typeId) termId _, termMaybeArgs, termMaybeCxargs} ->
-      ( (pPrint typeId <> "#" <> pPrint termId)
-          <> ( case termMaybeArgs of
-                 Nothing -> mempty
-                 Just args -> parens . hcat . punctuate (comma <> space) $ pPrint <$> args
-             )
-      )
-        <+> ( case termMaybeCxargs of
-                Nothing -> mempty
-                Just cxargs -> "giving" <+> (parens . hcat . punctuate (comma <> space) $ pPrint <$> cxargs)
-            )
+    -- TermNeutral {termApplicant = Applicant Nothing termId _, termMaybeArgs, termMaybeCxargs} ->
+    --   ( pPrint termId
+    --       <> ( case termMaybeArgs of
+    --              Nothing -> mempty
+    --              Just args -> parens . hcat . punctuate (comma <> space) $ pPrint <$> args
+    --          )
+    --   )
+    --     <+> ( case termMaybeCxargs of
+    --             Nothing -> mempty
+    --             Just cxargs -> "giving" <+> (parens . hcat . punctuate (comma <> space) $ pPrint <$> cxargs)
+    --         )
+    -- TermNeutral {termApplicant = Applicant (Just typeId) termId _, termMaybeArgs, termMaybeCxargs} ->
+    --   ( (pPrint typeId <> "#" <> pPrint termId)
+    --       <> ( case termMaybeArgs of
+    --              Nothing -> mempty
+    --              Just args -> parens . hcat . punctuate (comma <> space) $ pPrint <$> args
+    --          )
+    --   )
+    --     <+> ( case termMaybeCxargs of
+    --             Nothing -> mempty
+    --             Just cxargs -> "giving" <+> (parens . hcat . punctuate (comma <> space) $ pPrint <$> cxargs)
+    --         )
+    TermNeutral (Left protoNeut) -> pPrint protoNeut
+    TermNeutral (Right neut) -> pPrint neut
     TermAscribe {termTerm, termType} ->
       pPrint termTerm <+> colon <+> pPrint termType
     TermMatch {termTerm, termBranches} ->
@@ -624,6 +601,140 @@ instance Pretty (Term ann) where
 -- only maps over the top `termAnn`
 mapTopAnnTerm :: (ann -> ann) -> Term ann -> Term ann
 mapTopAnnTerm f term = term {termAnn = f $ termAnn term}
+
+-- ** Neutral and Applicant
+
+-- *** ProtoNeutral
+
+data ProtoNeutral = ProtoNeutral
+  { protoNeutralMaybeTypeId :: Maybe TypeId,
+    protoNeutralTermId :: TermId,
+    protoNeutralMaybeArgs :: Maybe [Term ()],
+    protoNeutralMaybeCxargs :: Maybe [Term ()]
+  }
+  deriving (Eq, Show)
+
+instance Pretty ProtoNeutral where
+  pPrint ProtoNeutral {..} = case protoNeutralMaybeTypeId of
+    Nothing -> pPrint protoNeutralTermId
+    Just tyId -> pPrint tyId <> "#" <> pPrint protoNeutralTermId
+
+-- *** Neutral
+
+data Neutral ann
+  = NeutralFunctionApplication {neutralApplicant :: Applicant ann, neutralArgs :: [Term ann], neutralCxargs :: Maybe [Term ann], neutralApplicantType :: ApplicantType ann}
+  | NeutralEnumConstruction {neutralApplicant :: Applicant ann, neutralApplicantType :: ApplicantType ann}
+  | NeutralVariantConstruction {neutralApplicant :: Applicant ann, neutralArgs :: [Term ann], neutralApplicantType :: ApplicantType ann}
+  | Neutral {neutralApplicant :: Applicant ann, neutralApplicantType :: ApplicantType ann}
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
+instance Pretty (Neutral ann) where
+  pPrint = error "pPrint Neutral"
+
+-- ** Applicant
+
+data Applicant ann
+  = ApplicantFunction TermId
+  | ApplicantEnumConstructor TypeId TermId
+  | ApplicantVariantConstructor TypeId TermId
+  | ApplicantNewtypeConstructor TypeId
+  | Applicant ann
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
+-- -- *** ProtoApplicant
+
+-- -- | A prototype form of applicant, which needs to exist as a target for
+-- -- parsing, since the different kinds of applicants are ambiguous at parse-time.
+-- data ProtoApplicant = ProtoApplicant
+--   { protoApplicantMaybeTypeId :: Maybe TypeId,
+--     protoApplicantTermId :: TermId
+--   }
+--   deriving (Eq, Show, Functor, Foldable, Traversable)
+
+-- instance Ord ProtoApplicant where
+--   compare app1 app2 = case compare (applicantMaybeTypeId app1) (applicantMaybeTypeId app2) of
+--     LT -> LT
+--     GT -> GT
+--     EQ -> compare (applicantTermId app1) (applicantTermId app2)
+
+-- instance Pretty ProtoApplicant where
+--   pPrint (ProtoApplicant {..}) = case protoApplicantMaybeTypeId of
+--     Nothing -> pPrint protoApplicantTermId
+--     Just tyId -> pPrint tyId <> "#" <> pPrint protoApplicantTermId
+
+-- kinds of applicants
+-- - named
+-- - function application
+-- - enum construction
+-- - variant construction
+-- - newtype construction
+
+{-
+makeTermNeutralNamed applicantTermId termAnn =
+  TermNeutral
+    { termApplicant =
+        Applicant
+          { applicantMaybeTypeId = Nothing,
+            applicantTermId,
+            applicantAnn = ApplicantType termAnn
+          },
+      termMaybeArgs = Nothing,
+      termMaybeCxargs = Nothing,
+      termAnn
+    }
+
+makeTermNeutralApplication applicantTermId termMaybeArgs termMaybeCxargs termAnn =
+  TermNeutral
+    { termApplicant =
+        Applicant
+          { applicantMaybeTypeId = Nothing,
+            applicantTermId,
+            applicantAnn = ApplicantTypeFunction applicantTermId
+          },
+      termMaybeArgs,
+      termMaybeCxargs,
+      termAnn
+    }
+
+makeTermNeutralEnumConstruction enumId ctorId =
+  TermNeutral
+    { termApplicant =
+        Applicant
+          { applicantMaybeTypeId = Just enumId,
+            applicantTermId = ctorId,
+            applicantAnn = ApplicantTypeEnumConstructor enumId ctorId
+          },
+      termMaybeArgs = Nothing,
+      termMaybeCxargs = Nothing,
+      termAnn = TypeNamed enumId
+    }
+
+makeTermNeutralVariantConstruction varntId ctorId args =
+  TermNeutral
+    { termApplicant =
+        Applicant
+          { applicantMaybeTypeId = Just varntId,
+            applicantTermId = ctorId,
+            applicantAnn = ApplicantTypeEnumConstructor varntId ctorId
+          },
+      termMaybeArgs = Just args,
+      termMaybeCxargs = Nothing,
+      termAnn = TypeNamed varntId
+    }
+
+makeTermNeutralNewtypeConstruction newtyId ctorId arg =
+  TermNeutral
+    { termApplicant =
+        Applicant
+          { applicantMaybeTypeId = Just newtyId,
+            applicantTermId = ctorId,
+            applicantAnn = ApplicantTypeNewtypeConstructor newtyId
+          },
+      termMaybeArgs = Just [arg],
+      termMaybeCxargs = Nothing,
+      termAnn = TypeNamed newtyId
+    }
+-}
 
 -- ** Primitive
 
@@ -777,18 +888,19 @@ renameTerm tmIds term = case term of
   TermAssert te te' r -> TermAssert (renameTerm tmIds te) (renameTerm tmIds te') r
   TermStructure ti fields r -> TermStructure ti (second (renameTerm tmIds) <$> fields) r
   TermMember te fi r -> TermMember (renameTerm tmIds te) fi r
-  TermNeutral ap m_tes m_te's r ->
-    TermNeutral
-      ( case ap of
-          (Applicant m_ti ti _at) -> case m_ti of
-            Just _ -> ap
-            Nothing -> case Map.lookup ti tmIds of
-              Nothing -> ap
-              Just ti' -> ap {applicantTermId = ti'}
-      )
-      (renameTerm tmIds <$$> m_tes)
-      (renameTerm tmIds <$$> m_te's)
-      r
+  -- TermNeutral ap m_tes m_te's r ->
+  --   TermNeutral
+  --     ( case ap of
+  --         (Applicant m_ti ti _at) -> case m_ti of
+  --           Just _ -> ap
+  --           Nothing -> case Map.lookup ti tmIds of
+  --             Nothing -> ap
+  --             Just ti' -> ap {applicantTermId = ti'}
+  --     )
+  --     (renameTerm tmIds <$$> m_tes)
+  --     (renameTerm tmIds <$$> m_te's)
+  --     r
+  TermNeutral _ -> error "renameTerm TermNeutral"
   TermAscribe te ty r -> TermAscribe (renameTerm tmIds te) ty r
   TermMatch te branches r -> TermMatch (renameTerm tmIds te) (second (renameTerm tmIds) <$> branches) r
 

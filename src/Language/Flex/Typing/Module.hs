@@ -17,27 +17,7 @@ import Prelude hiding (Enum, enum)
 
 -- ** Module Typing Context
 
--- | Constructs the module-level typing context, which involves the following:
--- - structures
---   - intro extended structure type
--- - newtypes
---   - intro newtype type
---   - intro newtype applicant
--- - variants
---   - intro variant type
---   - intro variant constructors
--- - enums
---   - intro enum type
---   - intro enum constructors
--- - aliases
---   - intro alias
--- - functions
---   - intro function
---   - intro function applicant
--- - constants
---   - intro constant applicant
--- - refined types
---   - intro extended refined type
+-- | Constructs the module-level typing context.
 moduleTypingCtx :: (MonadError TypingError m, MonadFlex m) => Module Type () -> m TypingCtx
 moduleTypingCtx Module {..} = do
   -- collect all structures
@@ -98,7 +78,7 @@ moduleTypingCtx Module {..} = do
             _ctxRefinedTypes = mempty,
             _ctxApplicants = mempty,
             _ctxCxparamNewtypeIds = mempty,
-            _ctxCxparamTermIds = mempty
+            _ctxCxparamIds = mempty
           }
 
   flip execStateT ctx . forM_ moduleDeclarations $ \case
@@ -114,11 +94,18 @@ moduleTypingCtx Module {..} = do
       let newty' = normalizeType <$> newty
       -- intro newtype type
       ctxTypes . at newtypeId ?= CtxNewtype newty'
+      -- intro constructor applicant
+      -- let app = Applicant
+      --       { applicant
+
+      --       }
+      -- ctxApplicants . at _ ?= _
+      error "intro constructor applicant"
     (DeclarationVariant vari) -> do
       -- intro normalize type
       let vari'@Variant {..} = normalizeType <$> vari
       ctxTypes . at variantId ?= CtxVariant vari'
-      -- intro constructors
+      -- intro constructors' applicants
       forM_ variantConstructors \(ctorId, _) -> do
         let apl =
               Applicant
@@ -131,7 +118,7 @@ moduleTypingCtx Module {..} = do
       -- intro normalize type
       let enum'@Enum {..} = normalizeType <$> enum
       ctxTypes . at enumId ?= CtxEnum enum'
-      -- intro constructors
+      -- intro constructors' applicants
       forM_ enumConstructors \(ctorId, _) -> do
         let apl =
               Applicant
@@ -149,7 +136,7 @@ moduleTypingCtx Module {..} = do
       let fun'@Function {..} = fmapTy normalizeType fun
       let FunctionType {..} = functionType
       ctxFunctions . at functionId ?= fun'
-      -- intro applicant
+      -- intro application applicant
       let apl =
             Applicant
               { applicantMaybeTypeId = Nothing,
@@ -161,7 +148,7 @@ moduleTypingCtx Module {..} = do
       -- intro constant
       let con'@Constant {..} = fmapTy normalizeType con
       ctxConstants . at constantId ?= con'
-      -- intro applicant
+      -- intro named applicant
       let apl =
             Applicant
               { applicantMaybeTypeId = Nothing,

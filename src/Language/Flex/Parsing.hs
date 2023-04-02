@@ -419,7 +419,7 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
                 },
           -- starts with «TermId»
           do
-            termApplicant <-
+            (protoNeutralMaybeTypeId, protoNeutralTermId) <-
               choice
                 [ do
                     tyId <- try do
@@ -427,24 +427,27 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
                       hash
                       return tyId
                     tmId <- parseTermId
-                    return $ Applicant (Just tyId) tmId (ApplicantType ()),
+                    return (Just tyId, tmId),
                   do
                     tmId <- parseTermId
-                    return $ Applicant Nothing tmId (ApplicantType ())
+                    return (Nothing, tmId)
                 ]
-            termMaybeArgs <-
+            protoNeutralMaybeArgs <-
               optionMaybe . parensTryOpen $
                 commaSep parseTerm
-            termMaybeCxargs <- optionMaybe do
+            protoNeutralMaybeCxargs <- optionMaybe do
               try $ reserved "giving"
               parens $ commaSep parseTerm
             return $
               TermNeutral
-                { termApplicant,
-                  termMaybeArgs,
-                  termMaybeCxargs = termMaybeCxargs,
-                  termAnn = ()
-                }
+                ( Left
+                    ProtoNeutral
+                      { protoNeutralMaybeTypeId,
+                        protoNeutralTermId,
+                        protoNeutralMaybeArgs,
+                        protoNeutralMaybeCxargs
+                      }
+                )
         ]
 
     table :: OperatorTable String LexingEnv IO (Term ())

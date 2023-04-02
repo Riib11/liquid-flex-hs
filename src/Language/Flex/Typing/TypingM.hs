@@ -44,7 +44,7 @@ data TypingCtx = TypingCtx
     _ctxCxparamNewtypeIds :: Map.Map TermId TypeId,
     -- | Map of contextual parameter term ids (introduced by transform's
     -- contextual parameters)
-    _ctxCxparamTermIds :: Map.Map TypeId TermId
+    _ctxCxparamIds :: Map.Map TypeId TermId
   }
 
 data TypingEnv = TypingEnv
@@ -176,7 +176,7 @@ introCxparam mb_syn tyId tmId =
       locallyM (ctxCxparamNewtypeIds . at tmId) \case
         Nothing -> return $ pure tyId
         Just _ -> throwTypingError ("attempted to introduce two contextual parameters with the same name:" <+> ticks (pPrint tmId)) mb_syn,
-      locallyM (ctxCxparamTermIds . at tyId) \case
+      locallyM (ctxCxparamIds . at tyId) \case
         Nothing -> return $ pure tmId
         Just _ -> throwTypingError ("attempted to introduce two contextual parameters with the same type:" <+> ticks (pPrint tyId)) mb_syn
     ]

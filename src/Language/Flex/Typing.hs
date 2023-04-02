@@ -4,10 +4,11 @@ import Control.Lens hiding (enum)
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
+import Control.Monad.Writer (WriterT (WriterT, runWriterT), tell)
 import Data.Bifunctor (Bifunctor (second))
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
-import Language.Flex.FlexM
+import Language.Flex.FlexM (MonadFlex)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Syntax as Syntax
 import Language.Flex.Typing.Module
@@ -146,18 +147,18 @@ synthTerm term0@(TermMember tm fieldId ()) = do
           return $ TermMember tm' fieldId fieldMType
         ctxType -> throwTypingError ("the base of the field access has non-structure type" <+> ticks (pPrint ctxType)) (Just $ toSyntax term0)
     type_ -> throwTypingError ("the base of the field access has non-structure type" <+> ticks (pPrint type_)) (Just $ toSyntax term0)
-synthTerm term0@(TermNeutral app mb_args mb_cxargs ()) = do
+synthTerm term0@(TermNeutral {..}) = do
   let mb_syn = Just $ toSyntax term0
-  app'@Applicant {..} <- lookupApplicant app
+  app'@Applicant {..} <- lookupApplicant termApplicant
   case applicantAnn of
     (ApplicantTypeFunction funId) -> do
       FunctionType {..} <- lookupFunctionType funId
 
       -- assert that correct number of args are given
-      args <- case mb_args of
+      args <- case termMaybeArgs of
         Nothing -> throwTypingError "function application requires a list of arguments" mb_syn
         Just args -> return args
-      unless (length mb_args == length functionParameters) $ throwTypingError "incorrect number of arguments given to function application" mb_syn
+      unless (length termMaybeArgs == length functionParameters) $ throwTypingError "incorrect number of arguments given to function application" mb_syn
 
       -- synth-check args
       args' <- forM (functionParameters `zip` args) \((_argId, argMType), argTerm) -> synthCheckTerm' argMType argTerm
@@ -165,17 +166,50 @@ synthTerm term0@(TermNeutral app mb_args mb_cxargs ()) = do
       mb_cxargs' <- case functionContextualParameters of
         Nothing -> do
           -- assert that no contextual args are given
-          unless (isNothing mb_cxargs) $ throwTypingError "function application provided explicit contextual arguments when the function does not have contextual parameters" mb_syn
+          unless (isNothing termMaybeCxargs) $ throwTypingError "function application provided explicit contextual arguments when the function does not have contextual parameters" mb_syn
           return Nothing
         Just cxparams ->
           do
-            case mb_cxargs of
-              Nothing -> error "!TODO infer contextual args"
+            case termMaybeCxargs of
+              -- infer implicit contextual arguments
+              Nothing -> do
+                let cxargsWriter :: WriterT [(TermId, TypeId)] TypingM [Maybe (TermId, TypeId)]
+                    cxargsWriter = forM cxparams \(cxparamNewtypeId, cxparamId) -> do
+                      -- look in context for a cxarg that has the right newtype id
+                      -- lookup in context a cxparam that has the right newtype id
+                      asks (^. ctxCxparamIds . at cxparamNewtypeId) >>= \case
+                        Nothing -> do
+                          tell [(cxparamId, cxparamNewtypeId)]
+                          return Nothing
+                        Just cxparamId' -> return $ Just (cxparamId', cxparamNewtypeId)
+                cxargs <-
+                  runWriterT cxargsWriter >>= \(ls_mb_cxarg, missing) ->
+                    if not (null missing)
+                      then do
+                        -- there are some cxargs missing
+                        throwTypingError ("could not infer the implicit contextual arguments:" <+> commaList (missing <&> \(cxparamId, cxparamNewtypeId) -> pPrint cxparamId <+> ":" <+> pPrint cxparamNewtypeId)) mb_syn
+                      else do
+                        -- all cxargs were inferred
+                        return . flip concatMap ls_mb_cxarg $
+                          maybe [] . comp1 pure $ \(cxargId, cxNewtypeId) ->
+                            let cxargMType = normalizeType $ TypeNamed cxNewtypeId
+                             in TermNeutral
+                                  Applicant
+                                    { applicantMaybeTypeId = Nothing,
+                                      applicantTermId = cxargId,
+                                      applicantAnn = ApplicantType cxargMType
+                                    }
+                                  Nothing
+                                  Nothing
+                                  cxargMType
+
+                return $ Just cxargs
+              -- check explicit contextual args
               Just cxargs -> do
                 -- synth and check that each cxarg has a newtype type
                 cxargs' <- forM cxargs \cxarg -> do
                   cxarg' <- synthTerm cxarg
-                  termAnn cxarg' >>= \case
+                  Syntax.termAnn cxarg' >>= \case
                     TypeNamed tyId ->
                       lookupType tyId >>= \case
                         (CtxNewtype Newtype {..}) -> return (newtypeId, cxarg')
@@ -186,7 +220,13 @@ synthTerm term0@(TermNeutral app mb_args mb_cxargs ()) = do
                   Left (missing, extra, dups) -> throwTypingError ("function call's explicit contextual arguments is missing contextual arguments" <+> commaList (missing <&> \(newtypeId, paramId) -> pPrint paramId <+> ":" <+> pPrint newtypeId) <+> ", has extra contextual arguments with newtypes" <+> commaList (pPrint <$> extra) <+> "and has contextual arguments with overlapping newtypes for newtypes" <+> commaList (pPrint . fst <$> dups)) mb_syn
                   Right cxargsItemsAssoc -> return $ snd . snd <$> cxargsItemsAssoc
                 return $ Just cxargs''
-      return $ TermNeutral app' (Just args') mb_cxargs' functionOutput
+      return
+        TermNeutral
+          { termApplicant = app',
+            termMaybeArgs = Just args',
+            termMaybeCxargs = mb_cxargs',
+            termAnn = functionOutput
+          }
     (ApplicantTypeEnumConstructor enumId _ctorId) ->
       lookupType enumId
         >>= \case
@@ -194,14 +234,14 @@ synthTerm term0@(TermNeutral app mb_args mb_cxargs ()) = do
             -- assert no args
             unless (isNothing mb_args) $ throwTypingError "an enum construction cannot have arguments" mb_syn
             -- assert no cxargs
-            unless (isNothing mb_cxargs) $ throwTypingError "an enum construction cannot have contextual arguments" mb_syn
+            unless (isNothing termMaybeCxargs) $ throwTypingError "an enum construction cannot have contextual arguments" mb_syn
             return $ TermNeutral app' Nothing Nothing (return $ TypeNamed enumId)
           ctxType -> FlexM.throw $ "the context stores that the applicant is an enum constructor," <+> ticks (pPrint app') <+> "but the type corresponding to the type id is not an enum," <+> ticks (pPrint ctxType)
     (ApplicantTypeVariantConstructor varntId ctorId) -> do
       lookupType varntId >>= \case
         CtxVariant Variant {..} -> do
           -- assert no cxargs
-          unless (isNothing mb_cxargs) $ throwTypingError "a variant construction cannot have contextual arguments" mb_syn
+          unless (isNothing termMaybeCxargs) $ throwTypingError "a variant construction cannot have contextual arguments" mb_syn
           -- synth-check args
           args <- case mb_args of
             Nothing -> throwTypingError "a variant construction must have arguments" mb_syn
@@ -216,7 +256,7 @@ synthTerm term0@(TermNeutral app mb_args mb_cxargs ()) = do
       lookupType newtyId >>= \case
         CtxNewtype Newtype {..} -> do
           -- assert no cxarsg
-          unless (isNothing mb_cxargs) $ throwTypingError "a newtype construction cannot have contextual arguments" mb_syn
+          unless (isNothing termMaybeCxargs) $ throwTypingError "a newtype construction cannot have contextual arguments" mb_syn
           -- assert single arg
           arg <- case mb_args of
             Just [arg] -> return arg
@@ -229,7 +269,7 @@ synthTerm term0@(TermNeutral app mb_args mb_cxargs ()) = do
       -- assert no args
       unless (isNothing mb_args) $ throwTypingError "arguments given to a non-function" mb_syn
       -- assert no cxargs
-      unless (isNothing mb_cxargs) $ throwTypingError "explicit contextual arguments given to a non-function" mb_syn
+      unless (isNothing termMaybeCxargs) $ throwTypingError "explicit contextual arguments given to a non-function" mb_syn
       return $ TermNeutral app' Nothing Nothing mtype
 synthTerm (TermAscribe tm ty ()) =
   synthCheckTerm' (normalizeType ty) tm
