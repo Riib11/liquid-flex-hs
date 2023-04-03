@@ -31,7 +31,8 @@ library
       Language.Flex.Lexing
       Language.Flex.Parsing
       Language.Flex.Refining
-      Language.Flex.Refining.Prelude
+      Language.Flex.Refining.Primitive
+      Language.Flex.Refining.PrimitiveTH
       Language.Flex.Refining.RefiningM
       Language.Flex.Refining.Reflecting
       Language.Flex.Refining.Syntax

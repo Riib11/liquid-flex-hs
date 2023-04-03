@@ -72,6 +72,12 @@ newtype FieldId = FieldId String
 instance Pretty FieldId where
   pPrint (FieldId x) = text x
 
+fromFieldIdToTermId :: FieldId -> TermId
+fromFieldIdToTermId (FieldId x) = TermId x
+
+fromNewtypeIdToTermId :: TypeId -> TermId
+fromNewtypeIdToTermId (TypeId x) = TermId x
+
 -- *** F.Symbolic instances
 
 instance F.Symbolic TypeId where
@@ -79,32 +85,30 @@ instance F.Symbolic TypeId where
 
 -- | The term-level constructor for a value of a type. Relevant for Structures
 -- and Newtypes in particular.
-newtype TypeTermConstructor = TypeTermConstructor TypeId
+newtype ConstructorSymbol = ConstructorSymbol TypeId
 
 -- !TODO is this used anywhere?
-instance F.Symbolic TypeTermConstructor where
-  symbol (TypeTermConstructor (TypeId x)) = F.symbol $ "make$" <> x
+instance F.Symbolic ConstructorSymbol where
+  symbol (ConstructorSymbol (TypeId x)) = F.symbol $ "make" <> x
 
 instance F.Symbolic TermId where
   symbol (TermId x) = F.symbol x
 
+-- raw field as referenced in the refinement of a type refinement
 instance F.Symbolic FieldId where
   symbol (FieldId y) = F.symbol y
 
+-- structure/newtype member accessor function
 instance F.Symbolic (TypeId, FieldId) where
   symbol (TypeId x, FieldId y) = F.symbol $ x <> "." <> y
 
-instance F.Symbolic (TypeId, TermId) where
-  symbol (TypeId x, TermId y) = F.symbol $ x <> "#" <> y
-
+-- !TODO where should this get used?
 instance F.Symbolic (TypeId, TermId, Int) where
   symbol (TypeId x, TermId y, fieldIx) = F.symbol $ x <> "#" <> y <> show fieldIx
 
-fromFieldIdToTermId :: FieldId -> TermId
-fromFieldIdToTermId (FieldId x) = TermId x
-
-fromNewtypeIdToTermId :: TypeId -> TermId
-fromNewtypeIdToTermId (TypeId x) = TermId x
+-- variant/enum constructor
+instance F.Symbolic (TypeId, TermId) where
+  symbol (TypeId x, TermId y) = F.symbol $ x <> "#" <> y
 
 -- ** Ty, Tm
 

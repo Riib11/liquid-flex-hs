@@ -1,68 +1,86 @@
 module Language.Flex.Refining.Reflecting where
 
+import qualified Data.Text as Text
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexM as FlexM
-import Language.Flex.Refining.Prelude (tupleCtorSym)
+import Language.Flex.Refining.Primitive
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
-import Utility (ticks)
+import Utility
 
 reflTerm :: Term -> RefiningM F.Expr
-reflTerm (TermLiteral lit ty) = reflLiteral lit
-reflTerm (TermPrimitive prim ty) = reflPrimitive prim
+reflTerm (TermLiteral lit _ty) = reflLiteral lit
+reflTerm (TermPrimitive prim _ty) = reflPrimitive prim
 reflTerm (TermLet Nothing _tm1 tm2 _ty) = reflTerm tm2
-reflTerm (TermLet (Just x) tm1 tm2 ty) = do
+reflTerm (TermLet (Just x) tm1 tm2 _ty) = do
   -- (let x = a in b) ~~> ((lam x => b) a)
-  tm1' <- reflTerm tm1
-  ty' <- reflType (termType tm1)
-  tm2' <- reflTerm tm2
-  return $ F.eApps (F.ELam (F.symbol x, ty') tm2') [tm1']
-reflTerm (TermAssert _te tm _ty) = reflTerm tm
-reflTerm (TermMember te fi _ty) = do
-  te' <- reflTerm te
+  ex1 <- reflTerm tm1
+  srt <- reflType (termType tm1)
+  ex2 <- reflTerm tm2
+  return $ F.eApps (F.ELam (F.symbol x, srt) ex2) [ex1]
+reflTerm (TermAssert _te tm _ty) = do
+  -- assert is unwrapped
+  reflTerm tm
+reflTerm (TermMember te fieldId _ty) = do
+  ex <- reflTerm te
   case termType te of
-    TypeNamed tyId -> do
-      f <- reflMember tyId fi
-      return $ F.eApps f [te']
+    TypeNamed tyId -> return $ F.eApps (F.eVar $ F.symbol (tyId, fieldId)) [ex]
     ty -> FlexM.throw $ "the type of TermMember's first argument must have a TypeNamed type (with a structure id), but instead it has type:" <+> ticks (pPrint ty)
 reflTerm (TermNamed x _) = do
   return $ F.eVar x
-reflTerm (TermApplication f tes ty) = do
-  tes' <- reflTerm `traverse` tes
-  return $ F.eApps (F.eVar f) tes'
-reflTerm (TermConstructor ti ti' tes ty) = do
-  tes' <- reflTerm `traverse` tes
-  return $ F.eApps (F.eVar (ti, ti')) tes'
-reflTerm (TermStructure ti tes ty) = do
-  tes' <- reflTerm `traverse` tes
-  return $ F.eApps (F.eVar ti) tes'
-reflTerm (TermMatch te fields ty) = error "!TODO how to reflect match"
+reflTerm (TermApplication f tms _ty) = do
+  exs <- reflTerm `traverse` tms
+  return $ F.eApps (F.eVar f) exs
+reflTerm (TermConstructor ti ti' tms _ty) = do
+  exs <- reflTerm `traverse` tms
+  return $ F.eApps (F.eVar (ti, ti')) exs
+reflTerm (TermStructure ti tms _ty) = do
+  exs <- reflTerm `traverse` tms
+  return $ F.eApps (F.eVar ti) exs
+reflTerm (TermMatch {}) = error "!TODO reflect TermMatch"
 
 reflPrimitive :: Primitive -> RefiningM F.Expr
-reflPrimitive (PrimitiveTry te) = error "reflPrimitive PrimitiveTry"
-reflPrimitive (PrimitiveTuple te1 te2) = do
-  tes' <- reflTerm `traverse` [te1, te2]
-  return $ F.eApps (F.eVar tupleCtorSym) tes'
-reflPrimitive (PrimitiveArray tes) = do
-  tes' <- reflTerm `traverse` tes
-  -- F.eApps (F.eVar arrayCtor)
-  -- !TODO fold over list structure using the Cons and Nil constructors (in prelude)
-  _
-reflPrimitive (PrimitiveIf te te' te2) = _wq
-reflPrimitive (PrimitiveAnd te te') = _wr
-reflPrimitive (PrimitiveOr te te') = _ws
-reflPrimitive (PrimitiveNot te) = _wt
-reflPrimitive (PrimitiveEq te te') = _wu
-reflPrimitive (PrimitiveAdd te te') = _wv
-reflPrimitive (PrimitiveExtends te ti) = _ww
+reflPrimitive (PrimitiveTry {}) = error "!TODO reflect PrimitiveTry"
+reflPrimitive (PrimitiveTuple tm1 tm2) = do
+  exs <- reflTerm `traverse` [tm1, tm2]
+  return $ F.eApps (F.eVar tuple_TupleConstructorSymbol) exs
+reflPrimitive (PrimitiveArray tms) = do
+  exs <- reflTerm `traverse` tms
+  case exs of
+    -- Nil
+    [] -> return $ F.eVar array_ConsConstructorSymbol
+    -- Cons _ _
+    firstExpr : restExprs -> return $
+      for restExprs firstExpr \headExpr tailExpr ->
+        F.eApps (F.eVar array_ConsConstructorSymbol) [headExpr, tailExpr]
+reflPrimitive (PrimitiveIf tm1 tm2 tm3) = F.EIte <$> reflTerm tm1 <*> reflTerm tm2 <*> reflTerm tm3
+reflPrimitive (PrimitiveAnd tm1 tm2) = F.pAnd <$> reflTerm `traverse` [tm1, tm2]
+reflPrimitive (PrimitiveOr tm1 tm2) = F.pOr <$> reflTerm `traverse` [tm1, tm2]
+reflPrimitive (PrimitiveNot tm) = F.ENeg <$> reflTerm tm
+reflPrimitive (PrimitiveEq tm1 tm2) = F.PAtom F.Eq <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveAdd tm1 tm2) = F.EBin F.Plus <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveExtends {}) = error "!TODO reflect PrimitiveExtends"
 
 reflLiteral :: Crude.Literal -> RefiningM F.Expr
-reflLiteral = _
+reflLiteral (Crude.LiteralInteger n) = return $ F.expr n
+-- !WARN proper way to create something of sort `realSort`?
+reflLiteral (Crude.LiteralFloat x) = return $ F.ECon (F.R x)
+reflLiteral (Crude.LiteralBit b) = return $ F.prop b
+-- !WARN proper way to create something of sort `charSort`?
+reflLiteral (Crude.LiteralChar c) = return $ F.expr (Text.pack [c])
+-- !WARN proper way to create something of sort `strSort`?
+reflLiteral (Crude.LiteralString s) = return $ F.expr (Text.pack s)
 
 reflType :: Type -> RefiningM F.Sort
-reflType = error "reflType"
-
-reflMember :: Crude.TypeId -> Crude.FieldId -> RefiningM F.Expr
-reflMember = _
+reflType (TypeNumber Crude.TypeInt _) = return F.intSort
+reflType (TypeNumber Crude.TypeUInt _) = return F.intSort
+reflType (TypeNumber Crude.TypeFloat _) = return F.realSort
+reflType TypeBit = return F.boolSort
+reflType TypeChar = return F.charSort
+reflType (TypeArray TypeChar) = return F.strSort
+reflType (TypeArray ty) = F.fAppTC array_ArrayFTycon <$> reflType `traverse` [ty]
+reflType (TypeTuple ty1 ty2) = F.fAppTC tuple_TupleFTycon <$> reflType `traverse` [ty1, ty2]
+reflType (TypeOptional ty) = F.fAppTC optional_OptionalFTycon <$> reflType `traverse` [ty]
+reflType (TypeNamed tyId) = return $ F.FObj $ F.symbol tyId
