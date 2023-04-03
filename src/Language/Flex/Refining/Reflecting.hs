@@ -1,5 +1,8 @@
 module Language.Flex.Refining.Reflecting where
 
+import Control.Category hiding ((.))
+import Control.Monad (forM)
+import Data.Functor
 import qualified Data.Text as Text
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexM as FlexM
@@ -84,3 +87,60 @@ reflType (TypeArray ty) = F.fAppTC array_ArrayFTycon <$> reflType `traverse` [ty
 reflType (TypeTuple ty1 ty2) = F.fAppTC tuple_TupleFTycon <$> reflType `traverse` [ty1, ty2]
 reflType (TypeOptional ty) = F.fAppTC optional_OptionalFTycon <$> reflType `traverse` [ty]
 reflType (TypeNamed tyId) = return $ F.FObj $ F.symbol tyId
+
+reflStructure :: Structure -> RefiningM F.DataDecl
+reflStructure Structure {..} = do
+  structureTypeLocatedSymbol <- FlexM.defaultLocated $ F.symbol structureId
+  structureConstructorLocatedSymbol <- FlexM.defaultLocated $ F.symbol structureConstructorId
+  fields <-
+    forM structureFields $
+      bimapM
+        (FlexM.defaultLocated . F.symbol)
+        reflType
+  return
+    F.DDecl
+      { ddTyCon = F.symbolFTycon structureTypeLocatedSymbol,
+        ddVars = 0,
+        ddCtors =
+          [ F.DCtor
+              { dcName = structureConstructorLocatedSymbol,
+                dcFields =
+                  fields <&> \(fieldLocatedSymbol, fieldSort) ->
+                    F.DField
+                      { dfName = fieldLocatedSymbol,
+                        dfSort = fieldSort
+                      }
+              }
+          ]
+      }
+
+reflVariant :: Variant -> RefiningM F.DataDecl
+reflVariant Variant {..} = do
+  variantTypeLocatedSymbol <- FlexM.defaultLocated $ F.symbol variantId
+  ctors <-
+    forM variantConstructors $
+      bimapM
+        (FlexM.defaultLocated . F.symbol)
+        ( ([0 ..] `zip`)
+            >>> traverse
+              ( bimapM
+                  (FlexM.defaultLocated . F.symbol . ("param" <>) . show)
+                  reflType
+              )
+        )
+  return
+    F.DDecl
+      { ddTyCon = F.symbolFTycon variantTypeLocatedSymbol,
+        ddVars = 0,
+        ddCtors =
+          ctors <&> \(ctorLocatedSymbol, ctorParamTypes) ->
+            F.DCtor
+              { dcName = ctorLocatedSymbol,
+                dcFields =
+                  ctorParamTypes <&> \(ctorParamLocatedSymbol, ctorParamSort) ->
+                    F.DField
+                      { dfName = ctorParamLocatedSymbol,
+                        dfSort = ctorParamSort
+                      }
+              }
+      }

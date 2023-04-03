@@ -1,6 +1,7 @@
 module Language.Flex.Refining.Translating where
 
 import Data.Maybe (fromMaybe)
+import Language.Flex.FlexM (FlexM)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
@@ -9,7 +10,7 @@ import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
 
 -- - checks for bad forms
-transType :: Crude.Type -> RefiningM Type
+transType :: Crude.Type -> FlexM Type
 transType (Crude.TypeNumber nt n) = return $ TypeNumber nt n
 transType Crude.TypeBit = return TypeBit
 transType Crude.TypeChar = return TypeChar
@@ -26,7 +27,7 @@ transType ty@(Crude.TypeUnifyVar _uv _m_uc) = FlexM.throw $ "transType should no
 -- - inlines functions
 -- - homogenizes neutrals
 -- - checks for bad forms
-transTerm :: Crude.Term Crude.Type -> RefiningM Term
+transTerm :: Crude.Term Crude.Type -> FlexM Term
 transTerm (Crude.TermLiteral lit ty) = TermLiteral lit <$> transType ty
 transTerm term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
   where
@@ -59,7 +60,7 @@ transTerm (Crude.TermMatch te' _branches ty) = TermMatch <$> transTerm te' <*> e
 transTerm term0@Crude.TermProtoNeutral {} = FlexM.throw $ "transTerm should not encounter this form:" <+> pPrint term0
 transTerm term0@Crude.TermAscribe {} = FlexM.throw $ "transTerm should not encounter this form:" <+> pPrint term0
 
-transPattern :: Crude.Pattern Crude.Type -> Term -> Term -> Type -> RefiningM Term
+transPattern :: Crude.Pattern Crude.Type -> Term -> Term -> Type -> FlexM Term
 transPattern (Crude.PatternNamed ti _ty) tm1 tm2 ty = return (TermLet (Just ti) tm1 tm2 ty)
 transPattern (Crude.PatternDiscard _ty) tm1 tm2 ty = return (TermLet Nothing tm1 tm2 ty)
 transPattern (Crude.PatternConstructor {}) _tm1 _tm2 _ty = error "transPattern Crude.PatternConstructor"

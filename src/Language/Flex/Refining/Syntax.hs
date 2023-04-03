@@ -5,7 +5,41 @@ import Text.PrettyPrint.HughesPJClass hiding ((<>))
 
 -- * Refined Syntax
 
--- ** Types
+-- ** Function
+
+data Function = Function
+  { functionId :: Crude.TermId,
+    functionIsTranform :: Bool,
+    functionParameters :: [(Crude.TermId, Type)],
+    functionBody :: Term
+  }
+  deriving (Eq, Show)
+
+instance Pretty Function
+
+-- ** Structure
+
+data Structure = Structure
+  { structureId :: Crude.TypeId,
+    structureConstructorId :: Crude.TermId,
+    structureFields :: [(Crude.FieldId, Type)],
+    structureRefinement :: Term
+  }
+  deriving (Eq, Show)
+
+instance Pretty Structure
+
+-- ** Variant
+
+data Variant = Variant
+  { variantId :: Crude.TypeId,
+    variantConstructors :: [(Crude.TermId, [Type])]
+  }
+  deriving (Eq, Show)
+
+instance Pretty Variant
+
+-- ** Type
 
 data Type
   = TypeNumber Crude.NumberType Integer
@@ -19,7 +53,7 @@ data Type
 
 instance Pretty Type
 
--- ** Terms
+-- ** Term
 
 data Term
   = TermLiteral {termLiteral :: Crude.Literal, termType :: Type}
@@ -36,12 +70,16 @@ data Term
 
 instance Pretty Term
 
+-- *** Pattern
+
 data Pattern
   = PatternNamed Crude.TermId Type
   | PatternDiscard Type
   deriving (Eq, Show)
 
 instance Pretty Pattern
+
+-- *** Primitive
 
 data Primitive
   = PrimitiveTry Term

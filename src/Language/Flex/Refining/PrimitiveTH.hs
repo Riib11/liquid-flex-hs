@@ -25,7 +25,7 @@ makePrimitiveSymbols label typeLabel ctorLabels = do
               thisTypeLocatedSymbol_Name = mkName (label <> "_" <> typeLabel <> "TypeLocatedSymbol")
               thisTypeFTycon_Name = mkName (label <> "_" <> typeLabel <> "FTycon")
           [d|
-            $(varP thisTypeSymbol_Name) = $(litE (StringL typeLabel))
+            $(varP thisTypeSymbol_Name) = F.symbol @String $(litE (StringL typeLabel))
 
             $(varP thisTypeLocatedSymbol_Name) = primitiveLocated $(varE thisTypeSymbol_Name)
 
@@ -36,7 +36,7 @@ makePrimitiveSymbols label typeLabel ctorLabels = do
         let thisConstructorSymbol_Name = mkName (label <> "_" <> ctorLabel <> "ConstructorSymbol")
             thisConstructorLocatedSymbol_Name = mkName (label <> "_" <> ctorLabel <> "ConstructorLocatedSymbol")
         [d|
-          $(varP thisConstructorSymbol_Name) = $(litE (StringL ctorLabel))
+          $(varP thisConstructorSymbol_Name) = F.symbol @String $(litE (StringL ctorLabel))
 
           $(varP thisConstructorLocatedSymbol_Name) = primitiveLocated $(varE thisConstructorSymbol_Name)
           |]
