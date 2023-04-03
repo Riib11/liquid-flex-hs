@@ -63,21 +63,3 @@ transPattern :: Crude.Pattern Crude.Type -> Term -> Term -> Type -> RefiningM Te
 transPattern (Crude.PatternNamed ti _ty) tm1 tm2 ty = return (TermLet (Just ti) tm1 tm2 ty)
 transPattern (Crude.PatternDiscard _ty) tm1 tm2 ty = return (TermLet Nothing tm1 tm2 ty)
 transPattern (Crude.PatternConstructor {}) _tm1 _tm2 _ty = error "transPattern Crude.PatternConstructor"
-
--- transPrimitive :: Crude.Type ->  Crude.Primitive Crude.Type -> RefiningM Term
--- transPrimitive (Crude.PrimitiveTry te) = PrimitiveTry <$> transTerm te
--- transPrimitive (Crude.PrimitiveTuple tes) = do
---     tes' <- transTerm `traverse` tes
---     case foldl2 _ tes'  of
---         Nothing -> _
---         Just te -> return te
---     -- PrimitiveTuple <$> transTerm `traverse` tes
--- transPrimitive (Crude.PrimitiveArray tes) = PrimitiveArray <$> transTerm `traverse` tes
--- transPrimitive (Crude.PrimitiveIf te te' te2) = PrimitiveIf <$> transTerm te <*> transTerm te' <*> transTerm te2
--- transPrimitive (Crude.PrimitiveAnd te te') = PrimitiveAnd <$> transTerm te <*> transTerm te'
--- transPrimitive (Crude.PrimitiveOr te te') = PrimitiveOr <$> transTerm te <*> transTerm te'
--- transPrimitive (Crude.PrimitiveNot te) = PrimitiveNot <$> transTerm te
--- transPrimitive (Crude.PrimitiveEq te te') = PrimitiveEq <$> transTerm te <*> transTerm te'
--- transPrimitive (Crude.PrimitiveAdd te te') = PrimitiveAdd <$> transTerm te <*> transTerm te'
--- transPrimitive (Crude.PrimitiveExtends te ti) = PrimitiveExtends <$> transTerm te <*> return ti
--- transPrimitive prim@(Crude.PrimitiveCast {}) = FlexM.throw $ "transPrimitive should not encounter this form:" <+> pPrint prim
