@@ -32,7 +32,7 @@ data RefiningCtx = RefiningCtx
     _ctxVariants :: Map.Map Crude.TypeId Variant,
     _ctxFunctions :: Map.Map Crude.TermId Function,
     -- | This includes module-level constants.
-    _ctxBindings :: Map.Map Crude.TermId Term
+    _ctxBindings :: Map.Map Crude.TermId TermExpr
   }
 
 -- ** Refining Environment

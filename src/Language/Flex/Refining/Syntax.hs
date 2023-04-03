@@ -1,5 +1,6 @@
 module Language.Flex.Refining.Syntax where
 
+import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 
@@ -70,11 +71,18 @@ data Term
 
 instance Pretty Term
 
+data TermExpr = TermExpr {getTerm :: Term, getExpr :: F.Expr}
+
+trueTerm :: Term
+trueTerm = TermLiteral (Crude.LiteralBit True) TypeBit
+
+falseTerm :: Term
+falseTerm = TermLiteral (Crude.LiteralBit False) TypeBit
+
 -- *** Pattern
 
 data Pattern
-  = PatternNamed Crude.TermId Type
-  | PatternDiscard Type
+  = PatternConstructor Crude.TypeId Crude.TermId [Crude.TermId]
   deriving (Eq, Show)
 
 instance Pretty Pattern
@@ -95,3 +103,6 @@ data Primitive
   deriving (Eq, Show)
 
 instance Pretty Primitive
+
+eqTerm :: Term -> Term -> Term
+eqTerm tm1 tm2 = TermPrimitive (PrimitiveEq tm1 tm2) TypeBit

@@ -32,6 +32,7 @@ library
       Language.Flex.Parsing
       Language.Flex.Refining
       Language.Flex.Refining.Checking
+      Language.Flex.Refining.Constraint
       Language.Flex.Refining.Primitive
       Language.Flex.Refining.PrimitiveTH
       Language.Flex.Refining.Query
