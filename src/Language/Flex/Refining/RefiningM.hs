@@ -31,8 +31,9 @@ data RefiningCtx = RefiningCtx
   { _ctxStructures :: Map.Map Crude.TypeId Structure,
     _ctxVariants :: Map.Map Crude.TypeId Variant,
     _ctxFunctions :: Map.Map Crude.TermId Function,
-    -- | This includes module-level constants.
-    _ctxBindings :: Map.Map Crude.TermId TermExpr
+    -- -- | This includes module-level constants.
+    -- _ctxBindings :: Map.Map Crude.TermId TermExpr
+    _ctxConstants :: Map.Map Crude.TermId Term
   }
 
 -- ** Refining Environment
@@ -87,3 +88,21 @@ type Result = F.FixResult RefiningError
 type Cstr = H.Cstr RefiningError
 
 type Bind = H.Bind RefiningError
+
+-- ** Utilities
+
+lookupVariant varntId =
+  asks (^. ctxVariants . at varntId) >>= \case
+    Nothing -> FlexM.throw $ "unknown variant id:" <+> ticks (pPrint varntId)
+    Just varnt -> return varnt
+
+lookupConstructorParameterTypes varntId ctorId = do
+  lookupVariant varntId >>= \Variant {..} ->
+    case ctorId `lookup` variantConstructors of
+      Nothing -> FlexM.throw $ "unknown constructor id:" <+> ticks (pPrint ctorId)
+      Just ctorParamTypes -> return ctorParamTypes
+
+lookupStructure structId =
+  asks (^. ctxStructures . at structId) >>= \case
+    Nothing -> FlexM.throw $ "unknown structure id:" <+> ticks (pPrint structId)
+    Just struct -> return struct

@@ -128,14 +128,19 @@ initFlexEnv =
         }
     )
 
-freshSymbol :: (MonadFlex m, F.Symbolic a) => a -> m F.Symbol
-freshSymbol = freshenSymbol . F.symbol
-
-freshenSymbol :: MonadFlex m => F.Symbol -> m F.Symbol
-freshenSymbol x = do
+freshSymbol :: MonadFlex m => String -> m F.Symbol
+freshSymbol str = do
   i <- liftFlex $ gets (^. flexFreshSymbolIndex)
-  liftFlex $ modifying flexFreshSymbolIndex (1 +)
-  return $ F.symbol (render (F.pprint x) <> "~" <> show i)
+  return $ F.symbol (str <> "~" <> show i)
+
+-- freshSymbol :: (MonadFlex m, F.Symbolic a) => a -> m F.Symbol
+-- freshSymbol = freshenSymbol . F.symbol
+
+-- freshenSymbol :: MonadFlex m => F.Symbol -> m F.Symbol
+-- freshenSymbol x = do
+--   i <- liftFlex $ gets (^. flexFreshSymbolIndex)
+--   liftFlex $ modifying flexFreshSymbolIndex (1 +)
+--   return $ F.symbol (render (F.pprint x) <> "~" <> show i)
 
 freshInt :: MonadFlex m => m Int
 freshInt = do

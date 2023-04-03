@@ -28,15 +28,19 @@ data Structure = Structure
   }
   deriving (Eq, Show)
 
+type Fields = (Crude.FieldId, Type)
+
 instance Pretty Structure
 
 -- ** Variant
 
 data Variant = Variant
   { variantId :: Crude.TypeId,
-    variantConstructors :: [(Crude.TermId, [Type])]
+    variantConstructors :: [Constructor]
   }
   deriving (Eq, Show)
+
+type Constructor = (Crude.TermId, [Type])
 
 instance Pretty Variant
 
@@ -65,7 +69,7 @@ data Term
   | TermNamed {termId :: Crude.TermId, termType :: Type}
   | TermApplication {termFunctionId :: Crude.TermId, termArguments :: [Term], termType :: Type}
   | TermConstructor {termVariantId :: Crude.TypeId, termConstructorId :: Crude.TermId, termArguments :: [Term], termType :: Type}
-  | TermStructure {termStructureId :: Crude.TypeId, termFields :: [Term], termType :: Type}
+  | TermStructure {termStructureId :: Crude.TypeId, termFields :: [(Crude.FieldId, Term)], termType :: Type}
   | TermMatch {termTerm :: Term, termBranches :: [(Pattern, Term)], termType :: Type}
   deriving (Eq, Show)
 

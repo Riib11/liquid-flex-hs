@@ -87,11 +87,11 @@ makeQuery cstr = FlexM.markSection [FlexM.FlexMarkStep "makeQuery" Nothing] do
     -- intro transforms (as uninterpreted functions)
     introTransforms
 
-    -- intro local bindings (as equations)
-    asks (^. ctxBindings . to Map.toList) >>= traverse_ \(termId, tmex) -> do
-      let sym = F.symbol termId
-      ex <- lift $ reflTerm (getTerm tmex)
-      srt <- lift $ reflType (termType (getTerm tmex))
+    -- intro constants (as equations)
+    asks (^. ctxConstants . to Map.toList) >>= traverse_ \(tmId, tm) -> do
+      let sym = F.symbol tmId
+      ex <- lift $ reflTerm tm
+      srt <- lift $ reflType (termType tm)
       modify $
         _qEqns
           %~ ( F.Equ

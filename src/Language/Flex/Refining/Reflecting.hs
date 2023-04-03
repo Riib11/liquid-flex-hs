@@ -39,8 +39,8 @@ reflTerm (TermApplication f tms _ty) = do
 reflTerm (TermConstructor ti ti' tms _ty) = do
   exs <- reflTerm `traverse` tms
   return $ F.eApps (F.eVar (ti, ti')) exs
-reflTerm (TermStructure ti tms _ty) = do
-  exs <- reflTerm `traverse` tms
+reflTerm (TermStructure ti fields _ty) = do
+  exs <- (reflTerm . snd) `traverse` fields
   return $ F.eApps (F.eVar ti) exs
 reflTerm (TermMatch {}) = error "!TODO reflect TermMatch"
 
