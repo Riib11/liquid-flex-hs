@@ -121,7 +121,7 @@ reflVariant Variant {..} = do
     forM variantConstructors $
       bimapM
         (FlexM.defaultLocated . F.symbol)
-        ( ([0 ..] `zip`)
+        ( ([0 :: Int ..] `zip`)
             >>> traverse
               ( bimapM
                   (FlexM.defaultLocated . F.symbol . ("param" <>) . show)
