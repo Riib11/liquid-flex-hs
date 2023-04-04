@@ -137,9 +137,11 @@ synthTerm term0 = FlexM.markSection
   case term0 of
     (TermLiteral lit ()) -> TermLiteral lit <$> synthLiteral lit
     (TermPrimitive prim ()) -> synthPrimitive prim
-    (TermLet tmId te1 te2 ()) -> do
+    (TermLet mb_tmId te1 te2 ()) -> do
       te1' <- synthTerm te1
-      introPattern (PatternNamed tmId (termAnn te1')) $ synthTerm te2
+      case mb_tmId of
+        Nothing -> introPattern (PatternDiscard (termAnn te1')) $ synthTerm te2
+        Just tmId -> introPattern (PatternNamed tmId (termAnn te1')) $ synthTerm te2
     (TermAssert tm1 tm2 ()) -> do
       tm1' <- synthCheckTerm TypeBit tm1
       tm2' <- synthTerm tm2

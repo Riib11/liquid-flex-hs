@@ -1,6 +1,6 @@
 module Tuples where
 
-function main() -> bit {
+transform main() -> bit {
     // (true, false, true)
 
     assert   (1, 2, 3) == (1, 2, 3);
@@ -8,7 +8,8 @@ function main() -> bit {
 
     let t = (1, 2, 3);
     assert   t == (1, 2, 3);
-    assert !(t == (1, 2, 4));
+    // assert !(t == (1, 2, 4));
+    assert (t == (1, 2, 4));
 
     true
 }

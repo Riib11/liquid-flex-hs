@@ -1,24 +1,16 @@
-module Test.Refining where
-
-import Test.HUnit
-
-
-test :: Test
-test = TestCase $ 
-  assertFailure "refining test is disabled"
-
-{-
 {-# HLINT ignore "Use ++" #-}
 {-# HLINT ignore "Use camelCase" #-}
 module Test.Refining where
 
 import Control.Monad
+import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
 import Data.List (singleton)
 import Language.Flex.DefaultFlexCtx (defaultFlexCtx)
-import Language.Flex.FlexM (FlexCtx (flexDebug), runFlexM)
+import Language.Flex.FlexM (FlexCtx (flexDebug), FlexM, runFlexM)
 import Language.Flex.Parsing (parseModuleFile)
 import Language.Flex.Refining (refineModule)
 import Language.Flex.Typing (typeModule)
+import Language.Flex.Typing.TypingM (TypingError (TypingError))
 import System.IO.Unsafe (unsafePerformIO)
 import Test.FilePaths
 import Test.HUnit
@@ -47,7 +39,8 @@ test =
                in makeTest_refineModule False <$> fps
             ]
           else
-            [ [makeTest_refineModule True "examples/refining/Structures.flex"]
+            [ [makeTest_refineModule True "examples/refining/Tuples.flex"]
+            --  [makeTest_refineModule True "examples/refining/Structures.flex"]
             -- [makeTest_refineModule True "examples/refining/Variants.flex"]
             ]
 
@@ -72,9 +65,9 @@ makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . Tes
   !_ <- return ()
 
   mdl' <-
-    runFlexM defaultFlexCtx (typeModule mdl) >>= \case
+    (runFlexM defaultFlexCtx . runExceptT) (typeModule mdl) >>= \case
       Left err -> assertFailure (render $ "[error: typing failure in refinement test]" $$ pPrint err)
-      Right (mdl', _env) -> return mdl' -- assertFailure "typing failed in refining test"
+      Right (_env, mdl') -> return mdl'
   !_ <- return ()
 
   putStrLn "[typed module]"
@@ -84,7 +77,6 @@ makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . Tes
 
   !_ <- return ()
 
-  runFlexM defaultFlexCtx {flexDebug = _DEBUG} (refineModule mdl') >>= \case
+  (runFlexM defaultFlexCtx {flexDebug = _DEBUG} . runExceptT) (refineModule mdl') >>= \case
     Left err -> when pass $ assertFailure (render . pPrint $ err)
     Right _ -> unless pass $ assertFailure "expected refining to fail"
--}

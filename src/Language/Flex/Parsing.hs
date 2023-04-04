@@ -481,7 +481,12 @@ parseTermBlock = braces go
         [ -- TermLet
           do
             try $ reserved "let"
-            tmId <- parseTermId
+            mb_tmId <-
+              choice
+                [ Just <$> parseTermId,
+                  symbol "_" >> return Nothing
+                ]
+
             choice
               [ do
                   try colon
@@ -490,13 +495,13 @@ parseTermBlock = braces go
                   tm <- parseTerm
                   semi
                   body <- go
-                  return $ TermLet tmId (TermAscribe tm ty ()) body (),
+                  return $ TermLet mb_tmId (TermAscribe tm ty ()) body (),
                 do
                   try equals
                   tm <- parseTerm
                   semi
                   body <- go
-                  return $ TermLet tmId tm body ()
+                  return $ TermLet mb_tmId tm body ()
               ],
           -- TermAssert
           do

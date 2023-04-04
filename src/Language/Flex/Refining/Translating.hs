@@ -55,7 +55,7 @@ transTerm term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
     -- or something about extension relations?
     transPrimitive ((Crude.PrimitiveExtends te ti)) = TermPrimitive <$> (PrimitiveExtends <$> transTerm te <*> return ti) <*> return ty
     transPrimitive ((Crude.PrimitiveCast {})) = FlexM.throw $ "transPrimitive should not encounter this form:" <+> pPrint prim
-transTerm (Crude.TermLet tmId te' te2 ty) = TermLet (Just tmId) <$> transTerm te' <*> transTerm te2 <*> return ty
+transTerm (Crude.TermLet mb_tmId te' te2 ty) = TermLet mb_tmId <$> transTerm te' <*> transTerm te2 <*> return ty
 transTerm (Crude.TermAssert te' te2 ty) = TermAssert <$> transTerm te' <*> transTerm te2 <*> return ty
 transTerm (Crude.TermStructure structId fields ty) = do
   Structure {..} <- lookupStructure structId
@@ -87,7 +87,7 @@ transTerm (Crude.TermNeutral (Crude.NeutralFunctionApplication funId args mb_cxa
       -- an assigned value
       let body' =
             foldr321 (params' `zip` args) body \(paramId, argTerm) body'' ->
-              Crude.TermLet paramId argTerm body'' (Crude.termAnn body'')
+              Crude.TermLet (Just paramId) argTerm body'' (Crude.termAnn body'')
       -- translate new body
       transTerm body'
 transTerm (Crude.TermNeutral (Crude.NeutralEnumConstruction newtyId ctorId) ty) = return $ TermConstructor newtyId ctorId False mempty ty
