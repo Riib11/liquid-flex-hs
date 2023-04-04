@@ -5,10 +5,10 @@ module Language.Flex.Refining.Query where
 
 import Control.Lens
 import Control.Monad
-import Control.Monad.Reader (MonadIO (liftIO), MonadTrans (lift), asks)
-import Control.Monad.State (StateT (StateT, runStateT), execStateT, modify)
+import Control.Monad.Reader
+import Control.Monad.State
 import Data.Bifunctor
-import Data.Foldable (traverse_)
+import Data.Foldable
 import qualified Data.Map as Map
 import qualified Language.Fixpoint.Horn.Solve as HS
 import qualified Language.Fixpoint.Horn.Types as H
@@ -129,11 +129,12 @@ introUserDatatypes = do
 introTransforms :: StateT Query RefiningM ()
 introTransforms = do
   -- intro transforms as uninterpreted functions (in Query.qCon)
-  tforms <- asks (^. ctxTransforms)
-  forM_ (Map.elems tforms) \Transform {..} -> do
-    tformOutputSort <- lift $ reflType transformOutput
-    tformSort <- lift $ foldr F.FFunc tformOutputSort <$> ((reflType . snd) `traverse` transformParameters)
-    modify $ _qCon . at (F.symbol transformId) ?~ tformSort
+  funs <- asks (^. ctxFunctions)
+  forM_ (Map.elems funs) \Function {..} ->
+    when functionIsTransform do
+      funOutputSort <- lift $ reflType functionOutput
+      funSort <- lift $ foldr F.FFunc funOutputSort <$> ((reflType . snd) `traverse` functionParameters)
+      modify $ _qCon . at (F.symbol functionId) ?~ funSort
 
 -- | Submit query to LH backend, which checks for validity
 submitQuery :: Query -> RefiningM Result
