@@ -76,7 +76,6 @@ data Term
   | TermPrimitive {termPrimitive :: Primitive, termType :: Type}
   | TermLet {termMaybeTermId :: Maybe Crude.TermId, termTerm :: Term, termBody :: Term, termType :: Type}
   | TermAssert {termTerm :: Term, termBody :: Term, termType :: Type}
-  | TermMember {termTerm :: Term, termFieldId :: Crude.FieldId, termType :: Type}
   | TermNamed {termId :: Crude.TermId, termType :: Type}
   | TermApplication {termFunctionId :: Crude.TermId, termArguments :: [Term], termType :: Type}
   | TermConstructor {termVariantId :: Crude.TypeId, termConstructorId :: Crude.TermId, termArguments :: [Term], termType :: Type}

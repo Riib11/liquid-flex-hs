@@ -59,10 +59,6 @@ transTerm term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
 transTerm (Crude.TermLet tmId te' te2 ty) = TermLet (Just tmId) <$> transTerm te' <*> transTerm te2 <*> FlexM.liftFlex (transType ty)
 transTerm (Crude.TermAssert te' te2 ty) = TermAssert <$> transTerm te' <*> transTerm te2 <*> FlexM.liftFlex (transType ty)
 transTerm (Crude.TermStructure ti fields ty) = TermStructure ti <$> secondM transTerm `traverse` fields <*> FlexM.liftFlex (transType ty)
--- !TODO:OLD
--- transTerm (Crude.TermMember tm fieldId ty) = do
---   TermMember <$> transTerm tm <*> return fieldId <*> FlexM.liftFlex (transType ty)
--- !TODO:NEW
 transTerm (Crude.TermMember tm fieldId ty) = do
   -- s.x_i ~~> (match s with S x_1 ... x_n => x_i)
   tm' <- transTerm tm

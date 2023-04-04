@@ -72,8 +72,6 @@ checkTerm (TermAssert tm1 tm2 _) = do
         (RefiningError $ "unable to prove assertion" <+> ticks (pPrint tm1) <+> ".")
     ]
   checkTerm tm2
-checkTerm (TermMember tm _fieldId _) =
-  checkTerm tm
 checkTerm (TermNamed _tmId _) =
   return ()
 checkTerm (TermApplication _tmId tms _) =

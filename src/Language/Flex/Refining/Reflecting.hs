@@ -26,11 +26,6 @@ reflTerm (TermLet (Just x) tm1 tm2 _ty) = do
 reflTerm (TermAssert _te tm _ty) = do
   -- assert is unwrapped
   reflTerm tm
-reflTerm (TermMember te fieldId _ty) = do
-  ex <- reflTerm te
-  case termType te of
-    TypeNamed tyId -> return $ F.eApps (F.eVar $ F.symbol (tyId, fieldId)) [ex]
-    ty -> FlexM.throw $ "the type of TermMember's first argument must have a TypeNamed type (with a structure id), but instead it has type:" <+> ticks (pPrint ty)
 reflTerm (TermNamed x _) = do
   return $ F.eVar x
 reflTerm (TermApplication f tms _ty) = do
