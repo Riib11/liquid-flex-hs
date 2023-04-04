@@ -85,17 +85,6 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
                 functionOutput = output,
                 functionBody
               }
-
-    -- if functionIsTransform
-    --   then
-    --     modifying (ctxTransforms . at functionId) . const . Just $
-    --       Function
-    --         { transformId = functionId,
-    --           transformParameters = params',
-    --           transformOutput = output,
-    --           transformBody = functionBody
-    --         }
-    --   else
     (Crude.DeclarationConstant Crude.Constant {..}) ->
       modifying (ctxConstants . at constantId) . const . Just $ constantBody
     (Crude.DeclarationRefinedType {}) -> do
