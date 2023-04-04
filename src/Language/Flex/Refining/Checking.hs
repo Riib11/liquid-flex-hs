@@ -91,7 +91,7 @@ checkTerm term0@(TermStructure structId fields _) = do
     fieldSort <- reflType fieldType
     fieldEqPred <- reflTerm $ eqTerm (TermNamed (Crude.fromFieldIdToTermId fieldId) fieldType) fieldTerm
     return (fieldId, fieldTerm, fieldType, fieldExpr, fieldSort, fieldEqPred)
-  structPredTerm <- FlexM.liftFlex $ transRefinement structureRefinement
+  structPredTerm <- lift $ transRefinement structureRefinement
   structPred <- lift $ reflTerm structPredTerm
   tell
     [ foldr

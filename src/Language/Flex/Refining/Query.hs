@@ -90,7 +90,7 @@ makeQuery cstr = FlexM.markSection [FlexM.FlexMarkStep "makeQuery" Nothing] do
     -- intro constants (as equations)
     asks (^. ctxConstants . to Map.toList) >>= traverse_ \(tmId, tm) -> do
       let sym = F.symbol tmId
-      tm' <- FlexM.liftFlex $ transTerm tm
+      tm' <- lift $ transTerm tm
       ex <- lift $ reflTerm tm'
       srt <- lift $ reflType (termType tm')
       modify $
