@@ -67,14 +67,38 @@ instance F.Loc RefiningError where
 instance F.PPrint RefiningError where
   pprintTidy _ = text . renderInline . pPrint
 
+throwRefiningError :: MonadError RefiningError m => Doc -> m a
+throwRefiningError doc = throwError $ RefiningError doc
+
 -- ** Query
 
 -- | The query includes all of the constraints gathered up during
 -- checking/synthesizing.
 type Query = H.Query RefiningError
 
-makeLenses ''RefiningCtx
-makeLenses ''RefiningEnv
+_qQuals :: Functor f => (_ -> f _) -> _ -> f _
+_qQuals = lens H.qQuals (\q qQuals -> q {H.qQuals = qQuals})
+
+_qVars :: Functor f => (_ -> f _) -> _ -> f _
+_qVars = lens H.qVars (\q qVars -> q {H.qVars = qVars})
+
+_qCstr :: Functor f => (_ -> f _) -> _ -> f _
+_qCstr = lens H.qCstr (\q qCstr -> q {H.qCstr = qCstr})
+
+_qCon :: Functor f => (_ -> f _) -> _ -> f _
+_qCon = lens H.qCon (\q qCon -> q {H.qCon = qCon})
+
+_qDis :: Functor f => (_ -> f _) -> _ -> f _
+_qDis = lens H.qDis (\q qDis -> q {H.qDis = qDis})
+
+_qEqns :: Functor f => (_ -> f _) -> _ -> f _
+_qEqns = lens H.qEqns (\q qEqns -> q {H.qEqns = qEqns})
+
+_qMats :: Functor f => (_ -> f _) -> _ -> f _
+_qMats = lens H.qMats (\q qMats -> q {H.qMats = qMats})
+
+_qData :: Functor f => (_ -> f _) -> _ -> f _
+_qData = lens H.qData (\q qData -> q {H.qData = qData})
 
 -- ** Result
 
@@ -98,6 +122,9 @@ type Cstr = H.Cstr RefiningError
 type Bind = H.Bind RefiningError
 
 -- ** Utilities
+
+makeLenses ''RefiningCtx
+makeLenses ''RefiningEnv
 
 lookupVariant varntId =
   asks (^. ctxVariants . at varntId) >>= \case

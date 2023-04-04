@@ -4,10 +4,10 @@ module Utility where
 
 import Control.Lens
 import Control.Monad
-import Control.Monad.Reader (MonadReader (ask, local), asks)
-import Control.Monad.State (MonadState (get, put))
+import Control.Monad.Reader
+import Control.Monad.State
 import qualified Data.Map as Map
-import Data.Maybe (fromJust)
+import Data.Maybe
 import qualified Data.Maybe as Maybe
 import qualified Language.Fixpoint.Types as F
 import qualified Text.PrettyPrint.HughesPJ.Compat as PJ
@@ -166,6 +166,12 @@ localM f m = ask >>= f >>= flip local m . const
 
 locallyM :: MonadReader r m => Lens' r r' -> (r' -> m r') -> m a -> m a
 locallyM l f = localM (l f)
+
+localExecM :: Monad m => StateT r m () -> ReaderT r m a -> ReaderT r m a
+localExecM st re = do
+  r <- ask
+  r' <- lift $ execStateT st r
+  local (const r') re
 
 ffoldr231 :: Foldable t => b -> t a -> (a -> b -> b) -> b
 ffoldr231 b ta f = foldr f b ta

@@ -31,8 +31,11 @@ trivialCstrQE =
       cqeTermExprs = mempty
     }
 
-makeForallQualifier :: FlexM.MonadFlex m => F.Symbol -> [F.QualParam] -> F.Expr -> m F.Qualifier
-makeForallQualifier qName qParams qBody = do
+makeSimpleQualifier :: FlexM.MonadFlex m => F.Symbol -> m F.Qualifier
+makeSimpleQualifier qName = makeQualifier qName [] (F.prop True)
+
+makeQualifier :: FlexM.MonadFlex m => F.Symbol -> [F.QualParam] -> F.Expr -> m F.Qualifier
+makeQualifier qName qParams qBody = do
   qPos <- FlexM.defaultSourcePos
   return
     F.Q

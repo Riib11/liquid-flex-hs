@@ -25,30 +25,6 @@ import Language.Flex.Refining.Translating
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJ hiding (first, (<>))
 
-_qQuals :: Functor f => (_ -> f _) -> _ -> f _
-_qQuals = lens H.qQuals (\q qQuals -> q {H.qQuals = qQuals})
-
-_qVars :: Functor f => (_ -> f _) -> _ -> f _
-_qVars = lens H.qVars (\q qVars -> q {H.qVars = qVars})
-
-_qCstr :: Functor f => (_ -> f _) -> _ -> f _
-_qCstr = lens H.qCstr (\q qCstr -> q {H.qCstr = qCstr})
-
-_qCon :: Functor f => (_ -> f _) -> _ -> f _
-_qCon = lens H.qCon (\q qCon -> q {H.qCon = qCon})
-
-_qDis :: Functor f => (_ -> f _) -> _ -> f _
-_qDis = lens H.qDis (\q qDis -> q {H.qDis = qDis})
-
-_qEqns :: Functor f => (_ -> f _) -> _ -> f _
-_qEqns = lens H.qEqns (\q qEqns -> q {H.qEqns = qEqns})
-
-_qMats :: Functor f => (_ -> f _) -> _ -> f _
-_qMats = lens H.qMats (\q qMats -> q {H.qMats = qMats})
-
-_qData :: Functor f => (_ -> f _) -> _ -> f _
-_qData = lens H.qData (\q qData -> q {H.qData = qData})
-
 -- - !TODO add primitives and constructor via wrapping Cstr with `H.Any
 --   (<Constr> )`
 -- - !TODO  as `qualifiers` argument, give all local bindings (?)

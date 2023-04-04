@@ -100,7 +100,7 @@ makeLenses ''FlexEnv
 
 -- | Lens for cronologically-ordered trace.
 flexTrace :: Lens' FlexEnv [FlexMark]
-flexTrace = flexTraceReversed . (. reverse)
+flexTrace = flexTraceReversed . reversed
 
 runFlexM :: FlexCtx -> FlexM a -> IO a
 runFlexM ctx@FlexCtx {..} (FlexM m) = do
