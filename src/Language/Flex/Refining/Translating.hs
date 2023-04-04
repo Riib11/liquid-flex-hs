@@ -1,6 +1,7 @@
 module Language.Flex.Refining.Translating where
 
 import Data.Functor
+import qualified Data.Map as Map
 import Data.Maybe
 import Data.Traversable
 import Language.Flex.FlexM (FlexM)
@@ -65,9 +66,27 @@ transTerm (Crude.TermMember tm fieldId ty) = do
   let pat = PatternConstructor structureId structureConstructorId fieldIds
   ty' <- FlexM.liftFlex (transType ty)
   return $ TermMatch tm' [(pat, TermNamed (Crude.fromFieldIdToTermId fieldId) ty')] ty'
-transTerm (Crude.TermNeutral (Crude.NeutralFunctionApplication ti tes m_tes) ty) = do
-  -- !TODO inline non-transform function application
-  TermApplication ti <$> (transTerm `traverse` (tes <> fromMaybe mempty m_tes)) <*> FlexM.liftFlex (transType ty)
+transTerm (Crude.TermNeutral (Crude.NeutralFunctionApplication funId args mb_cxargs) ty) = do
+  let args' = args <> fromMaybe mempty mb_cxargs
+  Function {..} <- lookupFunction funId
+  if functionIsTransform
+    then do
+      -- a transform application is treated as an uninterpreted function appliction
+      TermApplication funId <$> (transTerm `traverse` args') <*> FlexM.liftFlex (transType ty)
+    else do
+      -- a function application is inlined
+      -- freshen parameter ids
+      params' <- functionParameters <&*> FlexM.freshenTermId . fst
+      -- rename original ids to fresh ids in function body
+      let rho = Map.fromList $ (fst <$> functionParameters) `zip` params'
+      let body = Crude.renameTerm rho functionBody
+      -- wrap the body in a `TermLet` for each function parameter that now has
+      -- an assigned value
+      let body' =
+            foldr321 (params' `zip` args) body \(paramId, argTerm) body'' ->
+              Crude.TermLet paramId argTerm body'' (Crude.termAnn body'')
+      -- translate new body
+      transTerm body'
 transTerm (Crude.TermNeutral (Crude.NeutralEnumConstruction ti ti') ty) = TermConstructor ti ti' mempty <$> FlexM.liftFlex (transType ty)
 transTerm (Crude.TermNeutral (Crude.NeutralVariantConstruction ti ti' tes) ty) = TermConstructor ti ti' <$> transTerm `traverse` tes <*> FlexM.liftFlex (transType ty)
 transTerm (Crude.TermNeutral (Crude.NeutralNewtypeConstruction ti _ti te) ty) = do

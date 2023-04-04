@@ -20,6 +20,16 @@ unimplemented str = error $ "unimplemented: " <> str
 backend :: String -> a
 backend str = error $ "requires backend: " <> str
 
+(<$*>) :: (Traversable t, Applicative f) => (a -> f b) -> t a -> f (t b)
+(<$*>) = traverse
+
+infixr 0 <$*>
+
+(<&*>) :: (Traversable t, Applicative f) => t a -> (a -> f b) -> f (t b)
+(<&*>) = flip traverse
+
+infixr 0 <&*>
+
 asUncurry :: (a' -> b' -> c) -> ((a, b) -> (a', b')) -> (a -> b -> c)
 asUncurry f g = curry (uncurry f . g)
 

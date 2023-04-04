@@ -38,7 +38,7 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
       ctx = preludeRefiningCtx
 
   let introStructure structId ctorId fields = do
-        fields' <- FlexM.liftFlex $ fields `for` secondM transType
+        fields' <- FlexM.liftFlex $ fields <&*> secondM transType
         reft <- case refinedTypes Map.!? structId of
           Nothing -> FlexM.throw $ "while collecting structures/newtypes before refining, found unknown structure/newtype id:" <+> pPrint structId
           Just reft -> return reft
@@ -50,7 +50,7 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
               structureRefinement = reft
             }
   let introVariant varntId ctors = do
-        ctors' <- FlexM.liftFlex $ ctors `for` secondM (`for` transType)
+        ctors' <- FlexM.liftFlex $ ctors <&*> secondM (<&*> transType)
         modifying (ctxVariants . at varntId) . const . Just $
           Variant
             { variantId = varntId,
@@ -71,7 +71,7 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
       return ()
     (Crude.DeclarationFunction Crude.Function {..})
       | Crude.FunctionType {..} <- functionType -> do
-          params <- FlexM.liftFlex $ functionParameters `for` secondM transType
+          params <- FlexM.liftFlex $ functionParameters <&*> secondM transType
           let mb_cxparams =
                 functionContextualParameters
                   <&&> \(newtyId, paramId) -> (paramId, TypeNamed newtyId)

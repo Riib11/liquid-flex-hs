@@ -21,6 +21,7 @@ import Data.Maybe (fromMaybe)
 import Language.Fixpoint.Misc (whenM)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.PrettyPrint as F
+import Language.Flex.Syntax (TermId)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as H
 import Text.PrettyPrint.HughesPJ hiding ((<>))
@@ -132,6 +133,9 @@ freshSymbol :: MonadFlex m => String -> m F.Symbol
 freshSymbol str = do
   i <- liftFlex $ gets (^. flexFreshSymbolIndex)
   return $ F.symbol (str <> "~" <> show i)
+
+freshenTermId :: MonadFlex m => TermId -> m TermId
+freshenTermId = error "freshenTermId"
 
 -- freshSymbol :: (MonadFlex m, F.Symbolic a) => a -> m F.Symbol
 -- freshSymbol = freshenSymbol . F.symbol
