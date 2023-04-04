@@ -31,14 +31,10 @@ reflTerm (TermNamed x _) = do
 reflTerm (TermApplication f tms _ty) = do
   exs <- reflTerm `traverse` tms
   return $ F.eApps (F.eVar f) exs
-reflTerm (TermConstructor ti ti' tms _ty) = do
-  exs <- reflTerm `traverse` tms
-  return $ F.eApps (F.eVar (ti, ti')) exs
-reflTerm (TermStructure ti fields _ty) = do
-  exs <- (reflTerm . snd) `traverse` fields
-  return $ F.eApps (F.eVar ti) exs
+reflTerm (TermConstructor tyId ctorId _isStruct args _ty) = do
+  exs <- reflTerm `traverse` args
+  return $ F.eApps (F.eVar (tyId, ctorId)) exs
 -- !TODO do I need to introduce recursion principle for each datatype?
--- 
 reflTerm (TermMatch tm branches _ty) = error "reflTerm TermMatch"
 
 reflPrimitive :: Primitive -> RefiningM F.Expr

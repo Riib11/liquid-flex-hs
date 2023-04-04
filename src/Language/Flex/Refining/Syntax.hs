@@ -68,8 +68,7 @@ data Term
   | TermAssert {termTerm :: Term, termBody :: Term, termType :: Type}
   | TermNamed {termId :: Crude.TermId, termType :: Type}
   | TermApplication {termFunctionId :: Crude.TermId, termArguments :: [Term], termType :: Type}
-  | TermConstructor {termVariantId :: Crude.TypeId, termConstructorId :: Crude.TermId, termArguments :: [Term], termType :: Type}
-  | TermStructure {termStructureId :: Crude.TypeId, termFields :: [(Crude.FieldId, Term)], termType :: Type}
+  | TermConstructor {termTypeId :: Crude.TypeId, termConstructorId :: Crude.TermId, termIsStructure :: Bool, termArguments :: [Term], termType :: Type}
   | TermMatch {termTerm :: Term, termBranches :: [(Pattern, Term)], termType :: Type}
   deriving (Eq, Show)
 
