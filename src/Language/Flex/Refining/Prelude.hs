@@ -8,6 +8,5 @@ preludeRefiningCtx =
     { _ctxStructures = mempty,
       _ctxVariants = mempty,
       _ctxFunctions = mempty,
-      _ctxTransforms = mempty,
       _ctxConstants = mempty
     }

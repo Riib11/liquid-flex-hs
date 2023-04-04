@@ -32,7 +32,6 @@ data RefiningCtx = RefiningCtx
   { _ctxStructures :: Map.Map Crude.TypeId Structure,
     _ctxVariants :: Map.Map Crude.TypeId Variant,
     _ctxFunctions :: Map.Map Crude.TermId Function,
-    _ctxTransforms :: Map.Map Crude.TermId Transform,
     -- -- | This includes module-level constants.
     _ctxConstants :: Map.Map Crude.TermId (Crude.Term Crude.Type)
   }
@@ -107,5 +106,10 @@ lookupConstructorParameterTypes varntId ctorId = do
 
 lookupStructure structId =
   asks (^. ctxStructures . at structId) >>= \case
+    Nothing -> FlexM.throw $ "unknown structure id:" <+> ticks (pPrint structId)
+    Just struct -> return struct
+
+lookupFunction structId =
+  asks (^. ctxFunctions . at structId) >>= \case
     Nothing -> FlexM.throw $ "unknown structure id:" <+> ticks (pPrint structId)
     Just struct -> return struct

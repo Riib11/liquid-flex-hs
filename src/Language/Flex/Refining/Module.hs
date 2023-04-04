@@ -77,22 +77,25 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
                   <&&> \(newtyId, paramId) -> (paramId, TypeNamed newtyId)
           let params' = params <> fromMaybe [] mb_cxparams
           output <- FlexM.liftFlex $ transType functionOutput
-          if functionIsTransform
-            then
-              modifying (ctxTransforms . at functionId) . const . Just $
-                Transform
-                  { transformId = functionId,
-                    transformParameters = params',
-                    transformOutput = output,
-                    transformBody = functionBody
-                  }
-            else
-              modifying (ctxFunctions . at functionId) . const . Just $
-                Function
-                  { functionId,
-                    functionParameters = params <> fromMaybe [] mb_cxparams,
-                    functionBody
-                  }
+          modifying (ctxFunctions . at functionId) . const . Just $
+            Function
+              { functionId,
+                functionIsTransform,
+                functionParameters = params <> fromMaybe [] mb_cxparams,
+                functionOutput = output,
+                functionBody
+              }
+
+    -- if functionIsTransform
+    --   then
+    --     modifying (ctxTransforms . at functionId) . const . Just $
+    --       Function
+    --         { transformId = functionId,
+    --           transformParameters = params',
+    --           transformOutput = output,
+    --           transformBody = functionBody
+    --         }
+    --   else
     (Crude.DeclarationConstant Crude.Constant {..}) ->
       modifying (ctxConstants . at constantId) . const . Just $ constantBody
     (Crude.DeclarationRefinedType {}) -> do

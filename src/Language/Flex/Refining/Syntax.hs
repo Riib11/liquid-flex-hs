@@ -6,23 +6,13 @@ import Text.PrettyPrint.HughesPJClass hiding ((<>))
 
 -- * Refined Syntax
 
--- ** Transform
-
-data Transform = Transform
-  { transformId :: Crude.TermId,
-    transformParameters :: [(Crude.TermId, Type)],
-    transformOutput :: Type,
-    transformBody :: Crude.Term Crude.Type
-  }
-  deriving (Eq, Show)
-
-instance Pretty Transform
-
 -- ** Function
 
 data Function = Function
   { functionId :: Crude.TermId,
+    functionIsTransform :: Bool,
     functionParameters :: [(Crude.TermId, Type)],
+    functionOutput :: Type,
     functionBody :: Crude.Term Crude.Type
   }
   deriving (Eq, Show)
