@@ -4,10 +4,10 @@ import Control.Lens hiding (enum)
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
-import Control.Monad.Writer (WriterT (WriterT, runWriterT), tell)
-import Data.Bifunctor (Bifunctor (second))
+import Control.Monad.Writer
+import Data.Bifunctor
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.Maybe
 import Language.Flex.FlexM (MonadFlex)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Syntax as Syntax

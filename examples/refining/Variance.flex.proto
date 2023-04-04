@@ -1,0 +1,32 @@
+module Variant where
+
+// EXAMPLE 1
+
+message Positive {
+    px: int32;
+    assert 0 <= px;
+}
+
+transform idPositive(p: Positive) -> Positive { p }
+
+const test1: bit {
+    let p = makePositive(Positive { x = 1 });
+    assert 0 <= p.px; // should be implied by p: Positive
+    true
+}
+
+// EXAMPLE 2
+
+message OrderedPair {
+    x: int32;
+    y: int32;
+    assert x <= y;
+}
+
+transform idOrderedPair(op: OrderedPair) -> OrderedPair { op }
+
+const test2: bit {
+    let op = idOrderedPair(OrderedPair { x = 1; y = 2 });
+    assert op.x <= op.y;
+    true
+}

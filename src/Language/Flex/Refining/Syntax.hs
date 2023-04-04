@@ -13,7 +13,7 @@ data Function = Function
     functionIsTransform :: Bool,
     functionParameters :: [(Crude.TermId, Type)],
     functionOutput :: Type,
-    functionBody :: Crude.Term Crude.Type
+    functionBody :: Crude.Term Type
   }
   deriving (Eq, Show)
 
@@ -25,7 +25,7 @@ data Structure = Structure
   { structureId :: Crude.TypeId,
     structureConstructorId :: Crude.TermId,
     structureFields :: [(Crude.FieldId, Type)],
-    structureRefinement :: Crude.Refinement Crude.Type
+    structureRefinement :: Crude.Refinement Type
   }
   deriving (Eq, Show)
 

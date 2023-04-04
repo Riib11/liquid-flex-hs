@@ -22,10 +22,13 @@ makePrimitiveSymbols label typeLabel ctorLabels = do
   fmap concat . sequence . concat $
     [ [ do
           let thisTypeSymbol_Name = mkName (label <> "_" <> typeLabel <> "TypeSymbol")
+              thisTypeRecSymbol_Name = mkName (label <> "_" <> typeLabel <> "RecSymbol")
               thisTypeLocatedSymbol_Name = mkName (label <> "_" <> typeLabel <> "TypeLocatedSymbol")
               thisTypeFTycon_Name = mkName (label <> "_" <> typeLabel <> "FTycon")
           [d|
             $(varP thisTypeSymbol_Name) = F.symbol @String $(litE (StringL typeLabel))
+
+            $(varP thisTypeRecSymbol_Name) = F.symbol @String $(litE (StringL ("rec" <> typeLabel)))
 
             $(varP thisTypeLocatedSymbol_Name) = primitiveLocated $(varE thisTypeSymbol_Name)
 

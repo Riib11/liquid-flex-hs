@@ -26,6 +26,12 @@ import Prelude hiding (Enum)
 
 type RefiningM = StateT RefiningEnv (ReaderT RefiningCtx (ExceptT RefiningError FlexM))
 
+runRefiningM :: (MonadError RefiningError m, MonadFlex m) => RefiningEnv -> RefiningCtx -> RefiningM a -> m a
+runRefiningM env ctx m =
+  liftFlex (runExceptT (runReaderT (evalStateT m env) ctx)) >>= \case
+    Left err -> throwError err
+    Right a -> return a
+
 -- ** Refining Context
 
 data RefiningCtx = RefiningCtx
@@ -33,7 +39,7 @@ data RefiningCtx = RefiningCtx
     _ctxVariants :: Map.Map Crude.TypeId Variant,
     _ctxFunctions :: Map.Map Crude.TermId Function,
     -- -- | This includes module-level constants.
-    _ctxConstants :: Map.Map Crude.TermId (Crude.Term Crude.Type)
+    _ctxConstants :: Map.Map Crude.TermId (Crude.Term Type)
   }
 
 -- ** Refining Environment

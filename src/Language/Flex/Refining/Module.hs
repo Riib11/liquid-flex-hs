@@ -24,7 +24,7 @@ import Utility hiding (for)
 
 moduleRefiningCtx ::
   (MonadError RefiningError m, MonadFlex m) =>
-  Crude.Module Crude.Type Crude.Type ->
+  Crude.Module Type Type ->
   m RefiningCtx
 moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "moduleRefiningCtx" Nothing] do
   -- collect all type refinements, which will be used to annotate
@@ -38,7 +38,6 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
       ctx = preludeRefiningCtx
 
   let introStructure structId ctorId fields = do
-        fields' <- FlexM.liftFlex $ fields <&*> secondM transType
         reft <- case refinedTypes Map.!? structId of
           Nothing -> FlexM.throw $ "while collecting structures/newtypes before refining, found unknown structure/newtype id:" <+> pPrint structId
           Just reft -> return reft
@@ -46,15 +45,14 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
           Structure
             { structureId = structId,
               structureConstructorId = ctorId,
-              structureFields = fields',
+              structureFields = fields,
               structureRefinement = reft
             }
   let introVariant varntId ctors = do
-        ctors' <- FlexM.liftFlex $ ctors <&*> secondM (<&*> transType)
         modifying (ctxVariants . at varntId) . const . Just $
           Variant
             { variantId = varntId,
-              variantConstructors = ctors'
+              variantConstructors = ctors
             }
 
   flip execStateT ctx . forM_ moduleDeclarations $ \case
@@ -71,18 +69,16 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
       return ()
     (Crude.DeclarationFunction Crude.Function {..})
       | Crude.FunctionType {..} <- functionType -> do
-          params <- FlexM.liftFlex $ functionParameters <&*> secondM transType
           let mb_cxparams =
                 functionContextualParameters
                   <&&> \(newtyId, paramId) -> (paramId, TypeNamed newtyId)
-          let params' = params <> fromMaybe [] mb_cxparams
-          output' <- FlexM.liftFlex $ transType functionOutput
+          let params = functionParameters <> fromMaybe [] mb_cxparams
           modifying (ctxFunctions . at functionId) . const . Just $
             Function
               { functionId,
                 functionIsTransform,
-                functionParameters = params',
-                functionOutput = output',
+                functionParameters = params,
+                functionOutput = functionOutput,
                 functionBody
               }
     (Crude.DeclarationConstant Crude.Constant {..}) ->
