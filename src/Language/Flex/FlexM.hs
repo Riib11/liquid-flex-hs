@@ -21,7 +21,7 @@ import Data.Maybe (fromMaybe)
 import Language.Fixpoint.Misc (whenM)
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Fixpoint.Types.PrettyPrint as F
-import Language.Flex.Syntax (TermId)
+import Language.Flex.Syntax (TermId (TermId))
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as H
 import Text.PrettyPrint.HughesPJ hiding ((<>))
@@ -51,8 +51,12 @@ data FlexCtx = FlexCtx
   }
 
 data FlexEnv = FlexEnv
-  { _flexFreshSymbolIndex :: Int,
-    _flexTrace' :: [FlexMark],
+  { _flexFreshIndex :: Int,
+    -- | Since the trace is conceptualized as in cronological order, new items
+    -- are appended to the end. So, for efficient appending, the trace is stored
+    -- in reversed cronological order. For cronologically-ordered trace, use the
+    -- `flexTrace` lens.
+    _flexTraceReversed :: [FlexMark],
     _flexStack :: FlexMark
   }
 
@@ -94,6 +98,10 @@ type MonadFlex m = (Monad m, MonadFlex' m)
 makeLenses ''FlexCtx
 makeLenses ''FlexEnv
 
+-- | Lens for cronologically-ordered trace.
+flexTrace :: Lens' FlexEnv [FlexMark]
+flexTrace = flexTraceReversed . (. reverse)
+
 runFlexM :: FlexCtx -> FlexM a -> IO a
 runFlexM ctx@FlexCtx {..} (FlexM m) = do
   env <- initFlexEnv
@@ -123,39 +131,37 @@ initFlexEnv :: IO FlexEnv
 initFlexEnv =
   return
     ( FlexEnv
-        { _flexFreshSymbolIndex = 0,
-          _flexTrace' = mempty,
+        { _flexFreshIndex = 0,
+          _flexTraceReversed = mempty,
           _flexStack = mempty
         }
     )
 
+freshenString :: MonadFlex m => String -> m String
+freshenString str = do
+  i <- freshInt
+  return $ str <> "~" <> show i
+
 freshSymbol :: MonadFlex m => String -> m F.Symbol
-freshSymbol str = do
-  i <- liftFlex $ gets (^. flexFreshSymbolIndex)
-  return $ F.symbol (str <> "~" <> show i)
+freshSymbol str = F.symbol <$> freshenString str
 
 freshenTermId :: MonadFlex m => TermId -> m TermId
-freshenTermId = error "freshenTermId"
+freshenTermId (TermId str) = TermId <$> freshenString str
 
 -- freshSymbol :: (MonadFlex m, F.Symbolic a) => a -> m F.Symbol
 -- freshSymbol = freshenSymbol . F.symbol
 
 -- freshenSymbol :: MonadFlex m => F.Symbol -> m F.Symbol
 -- freshenSymbol x = do
---   i <- liftFlex $ gets (^. flexFreshSymbolIndex)
---   liftFlex $ modifying flexFreshSymbolIndex (1 +)
+--   i <- liftFlex $ gets (^. flexFreshIndex)
+--   liftFlex $ modifying flexFreshIndex (1 +)
 --   return $ F.symbol (render (F.pprint x) <> "~" <> show i)
 
 freshInt :: MonadFlex m => m Int
 freshInt = do
-  i <- liftFlex $ gets (^. flexFreshSymbolIndex)
-  liftFlex $ modifying flexFreshSymbolIndex (1 +)
+  i <- liftFlex $ gets (^. flexFreshIndex)
+  liftFlex $ modifying flexFreshIndex (1 +)
   return i
-
--- | Implicitly use flexTrace' by reversing it, since it is built up with most
--- recent stacks at the beginning of the trace list
-flexTrace :: Lens' FlexEnv [FlexMark]
-flexTrace = flexTrace' . (. reverse)
 
 -- | This has to be FlexM because that's the only way to use Reader effect
 -- properly.

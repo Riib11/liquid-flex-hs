@@ -76,13 +76,13 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
                 functionContextualParameters
                   <&&> \(newtyId, paramId) -> (paramId, TypeNamed newtyId)
           let params' = params <> fromMaybe [] mb_cxparams
-          output <- FlexM.liftFlex $ transType functionOutput
+          output' <- FlexM.liftFlex $ transType functionOutput
           modifying (ctxFunctions . at functionId) . const . Just $
             Function
               { functionId,
                 functionIsTransform,
-                functionParameters = params <> fromMaybe [] mb_cxparams,
-                functionOutput = output,
+                functionParameters = params',
+                functionOutput = output',
                 functionBody
               }
     (Crude.DeclarationConstant Crude.Constant {..}) ->
