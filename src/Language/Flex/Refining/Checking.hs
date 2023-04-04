@@ -36,9 +36,6 @@ import Utility hiding (for)
 
 -- ** CheckingM
 
--- !TODO rather than emmitting constraints, could have context of constraints,
--- and then check query locally
-
 type CheckingM a = ReaderT CheckingCtx RefiningM a
 
 data CheckingCtx = CheckingCtx
