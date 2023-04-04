@@ -147,33 +147,67 @@ introCase isStruct tm tyId ctorId paramIds paramTypes = localExecM do
 
   return ()
 
+assume :: Term -> CheckingM a -> CheckingM a
+assume propTerm = localExecM do
+  propPred <- lift $ reflTerm propTerm
+  ctxAssumptionsReversed %= (TermExpr propTerm propPred :)
+
 assert :: Doc -> Term -> CheckingM ()
 assert sourceDoc tm = flip localExecM checkQuery do
   ex <- lift $ reflTerm tm
   -- modify: ctxAssertion
   ctxAssertion .= tm
+
+  -- assumptions are accounted by as implications in front of the asserted
+  -- expression
+
   -- modify: ctxQuery._qCstr
   asmpExprs <- gets (^.. ctxAssumptions . traverse . to getExpr)
+  let ex' = foldr F.PImp ex asmpExprs
   (ctxQuery . _qCstr)
     .= H.Head
-      (H.Reft $ foldr F.PImp ex asmpExprs)
+      (H.Reft ex')
       (RefiningError $ "unable to prove predicate" <+> ticks (pPrint tm) <+> "arising from" <+> sourceDoc)
 
 -- ** Asserting
 
 checkQuery :: CheckingM ()
 checkQuery = do
+  asrtTerm <- asks (^. ctxAssertion)
+  asmpTerms <- asks (^. ctxAssumptions)
+  FlexM.print . vcat $
+    [ "checking:",
+      nest 4 . vcat $
+        [ vcat $ asmpTerms <&> pPrint . getTerm,
+          text $ replicate 40 '-',
+          pPrint asrtTerm
+        ]
+    ]
   query <- asks (^. ctxQuery)
   result <- lift $ submitQuery query
   case result of
-    (F.Crash errs msg) ->
-      throwRefiningError . vcat $
-        [ text $ replicate 2 '-' <> "[crash]" <> replicate 40 '-',
-          "refining error:" <+> text msg,
-          nest 4 $ vcat (pPrint <$> errs)
-        ]
-    (F.Unsafe _st _res) -> throwRefiningError "refining error:"
-    (F.Safe _st) -> return () -- !TODO log successful check
+    (F.Crash errs msg) -> do
+      let doc =
+            vcat
+              [ "checked: crash",
+                "refining error:" <+> text msg,
+                nest 4 $ vcat (pPrint <$> errs)
+              ]
+      FlexM.print doc
+      throwRefiningError doc
+    (F.Unsafe st res) -> do
+      let doc =
+            vcat
+              [ "checked: unsafe",
+                "refining errors:",
+                nest 4 (vcat $ pPrint <$> res),
+                "stats:",
+                nest 4 (text $ show st)
+              ]
+      FlexM.print doc
+      throwRefiningError doc
+    (F.Safe _st) -> do
+      FlexM.print "checked: safe"
 
 -- ** Checking
 
@@ -227,7 +261,12 @@ checkPrimitive :: Type -> Primitive -> CheckingM ()
 checkPrimitive _ (PrimitiveTry tm) = checkTerm `traverse_` [tm]
 checkPrimitive _ (PrimitiveTuple tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveArray tms) = checkTerm `traverse_` tms
-checkPrimitive _ (PrimitiveIf tm1 tm2 tm3) = checkTerm `traverse_` [tm1, tm2, tm3]
+checkPrimitive _ (PrimitiveIf tm1 tm2 tm3) = do
+  checkTerm tm1
+  -- tm1 == true ==> ...
+  assume (eqTerm tm1 trueTerm) $ checkTerm tm2
+  -- tm2 == false ==> ...
+  assume (eqTerm tm2 falseTerm) $ checkTerm tm3
 checkPrimitive _ (PrimitiveAnd tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveOr tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveNot tm) = checkTerm `traverse_` [tm]

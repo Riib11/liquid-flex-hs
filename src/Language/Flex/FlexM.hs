@@ -230,6 +230,9 @@ debug isActive doc = whenM ((isActive &&) <$> liftFlex (asks flexDebug)) do
 debugMark :: MonadFlex m => Bool -> FlexMarkStep -> m ()
 debugMark isActive = debug isActive . pPrint . Dynamic
 
+print :: MonadFlex m => Doc -> m ()
+print = liftFlex . liftIO . putStrLn . render
+
 -- prints the message and trace
 throw :: MonadFlex m => Doc -> m a
 throw doc = liftFlex do
