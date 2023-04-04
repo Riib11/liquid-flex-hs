@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
 module Language.Flex.Refining.Checking where
@@ -91,7 +92,8 @@ introForall tmId = localExecM do
   (ctxQuery . _qQuals) %= (qual :)
 
 -- introCase :: Term -> Crude.TermId -> [Crude.TermId] -> CheckingM a -> CheckingM a
-introCase tm tyId ctorId paramIds paramTypes = localExecM do
+introCase :: Bool -> Term -> Crude.TypeId -> Crude.TermId -> [Crude.TermId] -> [Type] -> CheckingM a -> CheckingM a
+introCase isStruct tm tyId ctorId paramIds paramTypes = localExecM do
   -- modify: ctxScopeReversed
   ctxScopeReversed %= ((ScopeForall <$> paramIds) <>)
 
@@ -111,6 +113,7 @@ introCase tm tyId ctorId paramIds paramTypes = localExecM do
           ( TermConstructor
               tyId
               ctorId
+              isStruct
               (paramIds `zip` paramTypes <&> uncurry TermNamed)
               (TypeNamed tyId)
           )
@@ -161,7 +164,7 @@ checkQuery = do
           "refining error:" <+> text msg,
           nest 4 $ vcat (pPrint <$> errs)
         ]
-    (F.Unsafe _st _res) -> throwRefiningError $ "refining error:"
+    (F.Unsafe _st _res) -> throwRefiningError "refining error:"
     (F.Safe _st) -> return () -- !TODO log successful check
 
 -- ** Checking
@@ -184,24 +187,25 @@ checkTerm (TermNamed _tmId _) =
   return ()
 checkTerm (TermApplication _tmId tms _) =
   checkTerm `traverse_` tms
-checkTerm (TermConstructor _varntId _ctorId tms _) =
+checkTerm (TermConstructor _varntId _ctorId _isVarnt@False tms _) =
   checkTerm `traverse_` tms
-checkTerm term0@(TermStructure structId fields _) = do
+checkTerm term0@(TermConstructor structId _ctorId _isStruct@True fields _) = do
   -- check fields
-  checkTerm `traverse_` (snd <$> fields)
+  checkTerm `traverse_` fields
 
   -- check that fields satisfy the structure's refinement; for each field, intro
   -- binding, then assert structure predicate
   Structure {..} <- lift $ lookupStructure structId
   structPredTerm <- lift $ transRefinement structureRefinement
   foldr
-    ( \(fieldId, fieldTerm) ->
+    ( \(fieldTerm, (fieldId, _)) ->
         introBinding (Crude.fromFieldIdToTermId fieldId) fieldTerm
     )
     (assert ("refined structure construction" <+> ticks (pPrint term0)) structPredTerm)
-    fields
+    (fields `zip` structureFields)
 checkTerm (TermMatch tm branches _) = do
-  forM_ branches (uncurry (checkBranch tm))
+  isStruct <- lift $ typeIsStructure (termType tm)
+  forM_ branches (uncurry (checkBranch isStruct tm))
 
 -- !TODO it might be possible here to use `Rewrite`s that get put into the
 -- `Query`'s `qMats`, but there's no example of doing this in SPRITE, so I'm not
@@ -218,68 +222,11 @@ checkTerm (TermMatch tm branches _) = do
 -- > branchPat  = `C x y z`
 -- > branchTerm = `b`
 -- > constraint = `forall x y z . (C x y z == a)  ==>  checkTerm b`
-checkBranch :: Term -> Pattern -> Term -> CheckingM ()
-checkBranch matchTerm (PatternConstructor varntId ctorId ctorParamIds) branchTerm = do
-  ctorParamTypes <- lift $ lookupConstructorParameterTypes varntId ctorId
-  ctorParamSorts <- lift $ reflType `traverse` ctorParamTypes
-
-  -- ctorTerm = ctorId ctorParamId_1 ... ctorParamId_n
-  let ctorTerm =
-        TermConstructor
-          varntId
-          ctorId
-          (ctorParamIds `zip` ctorParamTypes <&> uncurry TermNamed)
-          (TypeNamed varntId)
-
-  -- ctorPropTerm = { matchTerm == ctorTerm }
-  let ctorPropTerm = eqTerm matchTerm ctorTerm
-  ctorPropPred <- lift $ reflTerm ctorPropTerm
-
-  introCase matchTerm _ _ _ $
+checkBranch :: Bool -> Term -> Pattern -> Term -> CheckingM ()
+checkBranch isStruct matchTerm (PatternConstructor tyId ctorId ctorParamIds) branchTerm = do
+  ctorParamTypes <- lift $ lookupConstructorParameterTypes tyId ctorId
+  introCase isStruct matchTerm tyId ctorId ctorParamIds ctorParamTypes $
     checkTerm branchTerm
-
-  error "TODO"
-
-{-}
-  -- !TODO is it necessary to phrase it in this weird way, or does it work to
-  -- phrase it more directly as { wit | True == (match == ctor) }?
-
-  -- witPred = { wit | wit == True && wit == (match == ctor) }
-  witSymbol <- FlexM.freshSymbol (render $ "witness of " <+> ticks (pPrint ctorPropTerm))
-  let witPred = F.PAtom F.Eq (F.eVar witSymbol) ctorPropPred
-
-  -- censor
-  --   ( \cs ->
-  --       [ foldr
-  --           ( \((ctorParamId, ctorParamSort), ctorParamType) ->
-  --               -- forall { ctorParam : ctorParamType } . ...
-  --               H.All
-  --                 H.Bind
-  --                   { bSym = F.symbol ctorParamId,
-  --                     bSort = ctorParamSort,
-  --                     bPred = H.Reft (F.prop True),
-  --                     bMeta = RefiningError $ "introduction via match branch;" <+> ticks (pPrint ctorParamId <+> ":" <+> pPrint ctorParamType)
-  --                   }
-  --           )
-  --           ( -- exists { wit : bool | witPred } . ...
-  --             H.Any
-  --               H.Bind
-  --                 { bSym = dummySymbol,
-  --                   bSort = F.boolSort,
-  --                   bPred = H.Reft witPred,
-  --                   bMeta =
-  --                     RefiningError $
-  --                       "assumption via match branch;"
-  --                         <+> ticks (pPrint matchTerm <+> "==" <+> pPrint ctorTerm)
-  --                 }
-  --               $ H.CAnd cs
-  --           )
-  --           (ctorParamIds `zip` ctorParamSorts `zip` ctorParamTypes)
-  --       ]
-  --   )
-  --   $ checkTerm branchTerm
-  _
--}
 
 checkPrimitive :: Type -> Primitive -> CheckingM ()
 checkPrimitive _ (PrimitiveTry tm) = checkTerm `traverse_` [tm]

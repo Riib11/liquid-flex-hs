@@ -35,7 +35,7 @@ reflTerm (TermConstructor tyId ctorId _isStruct args _ty) = do
   exs <- reflTerm `traverse` args
   return $ F.eApps (F.eVar (tyId, ctorId)) exs
 -- !TODO do I need to introduce recursion principle for each datatype?
-reflTerm (TermMatch tm branches _ty) = error "reflTerm TermMatch"
+reflTerm (TermMatch _tm _branches _ty) = error "reflTerm TermMatch"
 
 reflPrimitive :: Primitive -> RefiningM F.Expr
 reflPrimitive (PrimitiveTry {}) = error "!TODO reflect PrimitiveTry"

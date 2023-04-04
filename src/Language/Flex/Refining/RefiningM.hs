@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 
 module Language.Flex.Refining.RefiningM where
 
@@ -146,3 +147,9 @@ lookupFunction funId =
   asks (^. ctxFunctions . at funId) >>= \case
     Nothing -> FlexM.throw $ "unknown function id:" <+> ticks (pPrint funId)
     Just fun -> return fun
+
+typeIsStructure (TypeNamed tyId) =
+  asks (^. ctxStructures . at tyId) >>= \case
+    Nothing -> return False
+    Just _ -> return True
+typeIsStructure _ = return False
