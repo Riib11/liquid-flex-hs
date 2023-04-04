@@ -11,10 +11,6 @@ import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility hiding (for)
 
--- !TODO some of these need to be RefiningM because, for example, translating
--- non-transform function applications requires looking up the function and
--- inlining it
-
 -- - checks for bad forms
 transType :: Crude.Type -> FlexM Type
 transType (Crude.TypeNumber nt n) = return $ TypeNumber nt n

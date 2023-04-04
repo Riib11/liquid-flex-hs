@@ -30,6 +30,9 @@ import Utility
 
 -- ** CheckingM
 
+-- !TODO rather than emmitting constraints, could have context of constraints,
+-- and then check query locally
+
 -- | Emits a list of constraints that should be conjoined together for checking.
 type CheckingM a = WriterT [Cstr] RefiningM a
 
