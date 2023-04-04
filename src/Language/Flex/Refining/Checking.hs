@@ -217,21 +217,6 @@ checkTerm (TermMatch tm branches _) = do
   isStruct <- lift $ typeIsStructure (termType tm)
   forM_ branches (uncurry (checkBranch isStruct tm))
 
--- !TODO it might be possible here to use `Rewrite`s that get put into the
--- `Query`'s `qMats`, but there's no example of doing this in SPRITE, so I'm not
--- sure if it actually works. If I _was_ to try this, I'd have to:
--- - augment the Writer type to also accumulate `Rewrite`s
--- - instead of using a witness, just tell a `Rewrite`
--- - potential problem: the `Rewrite` will refer to some variables that are
---   bound deeply inside the `Cstr`... so will the `Query` have a problem with
---   that? The `Query` can also accept `Qualifier`s, but the way I've set up my
---   building-up of the `Cstr`, its useful to introduce qualfiers exactly where
---   they are needed rather than pulling them all out to the top.
-
--- > matchTerm  = `a`
--- > branchPat  = `C x y z`
--- > branchTerm = `b`
--- > constraint = `forall x y z . (C x y z == a)  ==>  checkTerm b`
 checkBranch :: Bool -> Term -> Pattern -> Term -> CheckingM ()
 checkBranch isStruct matchTerm (PatternConstructor tyId ctorId ctorParamIds) branchTerm = do
   ctorParamTypes <- lift $ lookupConstructorParameterTypes tyId ctorId
