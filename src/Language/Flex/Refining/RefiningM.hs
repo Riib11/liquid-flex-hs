@@ -39,7 +39,7 @@ data RefiningCtx = RefiningCtx
   { _ctxStructures :: Map.Map Crude.TypeId Structure,
     _ctxVariants :: Map.Map Crude.TypeId Variant,
     _ctxFunctions :: Map.Map Crude.TermId Function,
-    -- -- | This includes module-level constants.
+    -- | This includes module-level constants.
     _ctxConstants :: Map.Map Crude.TermId (Crude.Term Type)
   }
 

@@ -169,7 +169,7 @@ assert sourceDoc tm = flip localExecM checkQuery do
       (H.Reft ex')
       (RefiningError $ "unable to prove predicate" <+> ticks (pPrint tm) <+> "arising from" <+> sourceDoc)
 
--- ** Asserting
+-- ** Check Query
 
 checkQuery :: CheckingM ()
 checkQuery = do
@@ -211,7 +211,17 @@ checkQuery = do
 
 -- ** Checking
 
--- checkTransform ::
+checkTransform :: Function -> CheckingM ()
+checkTransform Function {..} = do
+  -- introduce parameters
+  body <- lift $ transTerm functionBody
+  foldr
+    (\(paramId, _paramType) -> introForall paramId)
+    (checkTerm body)
+    functionParameters
+
+checkConstant :: Crude.Term Type -> CheckingM ()
+checkConstant = undefined
 
 -- | Check all refinement constraints that arise within a term.
 checkTerm :: Term -> CheckingM ()

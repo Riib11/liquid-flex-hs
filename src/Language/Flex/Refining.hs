@@ -3,10 +3,15 @@
 
 module Language.Flex.Refining where
 
+import Control.Lens
 import Control.Monad.Except
+import Control.Monad.Reader
 import Control.Monad.State
+import Data.Foldable (traverse_)
+import qualified Data.Map as Map
 import Language.Flex.FlexM (MonadFlex)
 import qualified Language.Flex.FlexM as FlexM
+import Language.Flex.Refining.Checking
 import Language.Flex.Refining.Module
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
@@ -20,28 +25,16 @@ refineModule ::
   Crude.Module Crude.Type Crude.Type ->
   m RefiningEnv
 refineModule mdl = do
-  mdl'@Crude.Module {..} <-
+  mdl' <-
     FlexM.liftFlex $
       (Crude.traverseTm transType >=> Crude.traverseTy transType) mdl
   env <- moduleRefiningEnv
   ctx <- moduleRefiningCtx mdl'
-  runRefiningM env ctx do
-    moduleDeclarations <&*> \case
-      (Crude.DeclarationFunction fun@Crude.Function {..})
-        | Crude.functionIsTransform functionType ->
-            checkTransform fun
-      (Crude.DeclarationConstant con) ->
-        checkConstant con
-      (Crude.DeclarationRefinedType rt) ->
-        checkRefinedType rt
-      _ -> return ()
+  runRefiningM env ctx . runCheckingM $ do
+    -- check transforms
+    lift (asks (^. ctxFunctions . to Map.elems . to (filter \Function {..} -> functionIsTransform)))
+      >>= traverse_ checkTransform
+    -- check constants
+    lift (asks (^. ctxConstants . to Map.elems))
+      >>= traverse_ checkConstant
     get
-
-checkTransform :: Crude.Function Type Type -> RefiningM ()
-checkTransform = error "checkTransform"
-
-checkConstant :: Crude.Constant Type Type -> RefiningM ()
-checkConstant = error "checkConstant"
-
-checkRefinedType :: Crude.RefinedType Type -> RefiningM ()
-checkRefinedType = error "checkRefinedType"
