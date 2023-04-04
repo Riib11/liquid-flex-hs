@@ -109,7 +109,7 @@ lookupStructure structId =
     Nothing -> FlexM.throw $ "unknown structure id:" <+> ticks (pPrint structId)
     Just struct -> return struct
 
-lookupFunction structId =
-  asks (^. ctxFunctions . at structId) >>= \case
-    Nothing -> FlexM.throw $ "unknown function id:" <+> ticks (pPrint structId)
-    Just struct -> return struct
+lookupFunction funId =
+  asks (^. ctxFunctions . at funId) >>= \case
+    Nothing -> FlexM.throw $ "unknown function id:" <+> ticks (pPrint funId)
+    Just fun -> return fun
