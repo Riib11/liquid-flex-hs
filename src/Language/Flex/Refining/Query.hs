@@ -1,4 +1,3 @@
-{-# HLINT ignore "Use ++" #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 
 module Language.Flex.Refining.Query where
@@ -25,20 +24,16 @@ import Language.Flex.Refining.Translating
 import qualified Language.Flex.Syntax as Base
 import Text.PrettyPrint.HughesPJ hiding (first, (<>))
 
--- - !TODO add primitives and constructor via wrapping Cstr with `H.Any
---   (<Constr> )`
--- - !TODO  as `qualifiers` argument, give all local bindings (?)
--- - !TODO can move definition of datatypes and other top-level stuff to be
---   computed at top level instead of here (which is called every time something
---   is checked)
-makeQuery :: Cstr -> RefiningM Query
--- WARNING: this is _very_ long debug if you turn on printing result
-makeQuery cstr = FlexM.markSection [FlexM.FlexMarkStep "makeQuery" Nothing] do
-  let protoQuery =
+-- ** Initializing Query
+
+initQuery :: RefiningM Query
+initQuery = do
+  let query =
         H.Query
           { qQuals = mempty,
             qVars = mempty,
-            qCstr = cstr,
+            -- !TODO this is trivially true right?
+            qCstr = H.CAnd [], -- will be overwritten during checking
             qCon = mempty,
             qDis = mempty,
             qEqns = mempty,
@@ -46,14 +41,7 @@ makeQuery cstr = FlexM.markSection [FlexM.FlexMarkStep "makeQuery" Nothing] do
             qData = mempty
           }
 
-  flip execStateT protoQuery do
-    -- !TODO add prelude signature (via @applicantTypes@); this will have to
-    -- introduce (prelude) functions, but they'll have totally unrefined function types so
-    -- don't worry
-
-    -- !TODO things are introduced in @applicantTypes@ now, and all neutral
-    -- forms are reflected
-
+  flip execStateT query do
     -- intro datatypes
     -- - intro primitive datatypes
     -- - intro user datatypes
@@ -64,26 +52,7 @@ makeQuery cstr = FlexM.markSection [FlexM.FlexMarkStep "makeQuery" Nothing] do
     introTransforms
 
     -- intro constants (as equations)
-    asks (^. ctxConstants . to Map.toList) >>= traverse_ \(tmId, tm) -> do
-      let sym = F.symbol tmId
-      tm' <- lift $ transTerm tm
-      ex <- lift $ reflTerm tm'
-      srt <- lift $ reflType (termType tm')
-      modify $
-        _qEqns
-          %~ ( F.Equ
-                 { eqName = sym,
-                   eqArgs = [],
-                   eqBody = ex,
-                   eqSort = srt,
-                   eqRec = False
-                 }
-                 :
-             )
-
-    -- - !TODO handle qualifiers (??)
-    -- - !TODO have to do anything special with qMats (rewrites) for pattern
-    --   matching?
+    introConstants
 
     return ()
 
@@ -94,7 +63,6 @@ introUserDatatypes = do
   forM_ (Map.elems structs) \struct -> do
     dd <- lift $ reflStructure struct
     modify $ _qData %~ (dd :)
-  -- TODO: add member accessor functions
 
   -- intro variants
   varnts <- asks (^. ctxVariants)
@@ -111,6 +79,27 @@ introTransforms = do
       funOutputSort <- lift $ reflType functionOutput
       funSort <- lift $ foldr F.FFunc funOutputSort <$> ((reflType . snd) `traverse` functionParameters)
       modify $ _qCon . at (F.symbol functionId) ?~ funSort
+
+introConstants :: StateT Query RefiningM ()
+introConstants =
+  asks (^. ctxConstants . to Map.toList) >>= traverse_ \(tmId, tm) -> do
+    let sym = F.symbol tmId
+    tm' <- lift $ transTerm tm
+    ex <- lift $ reflTerm tm'
+    srt <- lift $ reflType (termType tm')
+    modify $
+      _qEqns
+        %~ ( F.Equ
+               { eqName = sym,
+                 eqArgs = [],
+                 eqBody = ex,
+                 eqSort = srt,
+                 eqRec = False
+               }
+               :
+           )
+
+-- ** Submitting Query
 
 -- | Submit query to LH backend, which checks for validity
 submitQuery :: Query -> RefiningM Result
@@ -129,9 +118,9 @@ checkValidWithConfig fp config query = do
   dumpQuery fp query
   fmap snd . F.resStatus <$> HS.solve config query
 
+-- !TODO what does this do exactly??
 dumpQuery :: FilePath -> Query -> IO ()
 dumpQuery fp query = when True do
   let smtFile = Files.extFileName Files.Smt2 fp
   Misc.ensurePath smtFile
-  -- this is not presented to the user, so can use PJ.render
   writeFile smtFile (render . F.pprint $ query)

@@ -14,11 +14,11 @@ import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
-import Language.Flex.Refining.Query (submitQuery)
+import Language.Flex.Refining.Query
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Reflecting
 import Language.Flex.Refining.Syntax
-import Language.Flex.Refining.Translating (transRefinement, transTerm)
+import Language.Flex.Refining.Translating
 import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility hiding (for)
@@ -50,6 +50,17 @@ data ScopeItem
   | ScopeLet Crude.TermId Term
 
 makeLenses ''CheckingCtx
+
+runCheckingM :: CheckingM a -> RefiningM a
+runCheckingM m = do
+  query <- initQuery
+  runReaderT m $
+    CheckingCtx
+      { _ctxQuery = query,
+        _ctxScopeReversed = mempty,
+        _ctxAssumptionsReversed = mempty,
+        _ctxAssertion = trueTerm -- will be overwritten
+      }
 
 ctxScope :: Functor f => ([_] -> f [_]) -> CheckingCtx -> f CheckingCtx
 ctxScope = ctxScopeReversed . reversed
@@ -165,6 +176,8 @@ checkQuery = do
     (F.Safe _st) -> return () -- !TODO log successful check
 
 -- ** Checking
+
+-- checkTransform ::
 
 -- | Check all refinement constraints that arise within a term.
 checkTerm :: Term -> CheckingM ()

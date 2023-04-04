@@ -95,8 +95,3 @@ moduleRefiningEnv =
     RefiningEnv
       { _envXXX = "is there anything needed in the environment?"
       }
-
--- ** Module Refining Query
-
-moduleQuery :: MonadFlex m => m Query
-moduleQuery = error "moduleQuery" -- !TODO bring some stuff over from Query.hs
