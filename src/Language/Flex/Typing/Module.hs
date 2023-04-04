@@ -19,7 +19,10 @@ import Prelude hiding (Enum)
 -- ** Module Typing Context
 
 -- | Constructs the module-level typing context.
-moduleTypingCtx :: (MonadError TypingError m, MonadFlex m) => Module Type () -> m TypingCtx
+moduleTypingCtx ::
+  (MonadError TypingError m, MonadFlex m) =>
+  Module Type () ->
+  m TypingCtx
 moduleTypingCtx Module {..} = FlexM.markSection [FlexM.FlexMarkStep "moduleTypingCtx" Nothing] do
   -- collect all structures
   let structs :: Map.Map TypeId (Structure Type)

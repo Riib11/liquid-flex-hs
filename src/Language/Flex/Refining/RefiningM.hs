@@ -32,14 +32,16 @@ data RefiningCtx = RefiningCtx
   { _ctxStructures :: Map.Map Crude.TypeId Structure,
     _ctxVariants :: Map.Map Crude.TypeId Variant,
     _ctxFunctions :: Map.Map Crude.TermId Function,
+    _ctxTransforms :: Map.Map Crude.TermId Transform,
     -- -- | This includes module-level constants.
-    -- _ctxBindings :: Map.Map Crude.TermId TermExpr
-    _ctxConstants :: Map.Map Crude.TermId Term
+    _ctxConstants :: Map.Map Crude.TermId (Crude.Term Crude.Type)
   }
 
 -- ** Refining Environment
 
-data RefiningEnv = RefiningEnv {}
+data RefiningEnv = RefiningEnv
+  { _envXXX :: String
+  }
 
 -- ** RefiningError
 

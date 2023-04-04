@@ -90,8 +90,9 @@ makeQuery cstr = FlexM.markSection [FlexM.FlexMarkStep "makeQuery" Nothing] do
     -- intro constants (as equations)
     asks (^. ctxConstants . to Map.toList) >>= traverse_ \(tmId, tm) -> do
       let sym = F.symbol tmId
-      ex <- lift $ reflTerm tm
-      srt <- lift $ reflType (termType tm)
+      tm' <- FlexM.liftFlex $ transTerm tm
+      ex <- lift $ reflTerm tm'
+      srt <- lift $ reflType (termType tm')
       modify $
         _qEqns
           %~ ( F.Equ
@@ -104,7 +105,7 @@ makeQuery cstr = FlexM.markSection [FlexM.FlexMarkStep "makeQuery" Nothing] do
                  :
              )
 
-    -- - !TODO handle qualifiers
+    -- - !TODO handle qualifiers (??)
     -- - !TODO have to do anything special with qMats (rewrites) for pattern
     --   matching?
 
@@ -112,14 +113,14 @@ makeQuery cstr = FlexM.markSection [FlexM.FlexMarkStep "makeQuery" Nothing] do
 
 introUserDatatypes :: StateT Query RefiningM ()
 introUserDatatypes = do
-  -- add structures
+  -- intro structures
   structs <- asks (^. ctxStructures)
   forM_ (Map.elems structs) \struct -> do
     dd <- lift $ reflStructure struct
     modify $ _qData %~ (dd :)
   -- TODO: add member accessor functions
 
-  -- add variants
+  -- intro variants
   varnts <- asks (^. ctxVariants)
   forM_ (Map.elems varnts) \varnt -> do
     dd <- lift $ reflVariant varnt
@@ -127,8 +128,12 @@ introUserDatatypes = do
 
 introTransforms :: StateT Query RefiningM ()
 introTransforms = do
-  -- !TODO add transforms as uninterpreted functions
-  return ()
+  -- intro transforms as uninterpreted functions (in Query.qCon)
+  tforms <- asks (^. ctxTransforms)
+  forM_ (Map.elems tforms) \Transform {..} -> do
+    tformOutputSort <- lift $ reflType transformOutput
+    tformSort <- lift $ foldr F.FFunc tformOutputSort <$> ((reflType . snd) `traverse` transformParameters)
+    modify $ _qCon . at (F.symbol transformId) ?~ tformSort
 
 -- | Submit query to LH backend, which checks for validity
 submitQuery :: Query -> RefiningM Result

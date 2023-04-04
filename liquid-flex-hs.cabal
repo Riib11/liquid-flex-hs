@@ -33,6 +33,8 @@ library
       Language.Flex.Refining
       Language.Flex.Refining.Checking
       Language.Flex.Refining.Constraint
+      Language.Flex.Refining.Module
+      Language.Flex.Refining.Prelude
       Language.Flex.Refining.Primitive
       Language.Flex.Refining.PrimitiveTH
       Language.Flex.Refining.Query

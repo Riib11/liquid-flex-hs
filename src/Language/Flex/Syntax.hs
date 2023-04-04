@@ -78,6 +78,9 @@ fromFieldIdToTermId (FieldId x) = TermId x
 fromNewtypeIdToTermId :: TypeId -> TermId
 fromNewtypeIdToTermId (TypeId x) = TermId x
 
+fromStructureIdToTermId :: TypeId -> TermId
+fromStructureIdToTermId (TypeId x) = TermId x
+
 -- *** F.Symbolic instances
 
 instance F.Symbolic TypeId where

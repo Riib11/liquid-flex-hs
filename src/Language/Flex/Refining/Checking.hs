@@ -12,6 +12,7 @@ import Language.Flex.Refining.Constraint
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Reflecting
 import Language.Flex.Refining.Syntax
+import Language.Flex.Refining.Translating (transRefinement, transTerm)
 import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
@@ -80,6 +81,7 @@ checkTerm (TermApplication _tmId tms _) =
 checkTerm (TermConstructor _varntId _ctorId tms _) =
   checkTerm `traverse_` tms
 checkTerm term0@(TermStructure structId fields _) = do
+  -- check fields
   checkTerm `traverse_` (snd <$> fields)
 
   -- check that fields satisfy the structure's refinement
@@ -89,7 +91,8 @@ checkTerm term0@(TermStructure structId fields _) = do
     fieldSort <- reflType fieldType
     fieldEqPred <- reflTerm $ eqTerm (TermNamed (Crude.fromFieldIdToTermId fieldId) fieldType) fieldTerm
     return (fieldId, fieldTerm, fieldType, fieldExpr, fieldSort, fieldEqPred)
-  structPred <- lift $ reflTerm structureRefinement
+  structPredTerm <- FlexM.liftFlex $ transRefinement structureRefinement
+  structPred <- lift $ reflTerm structPredTerm
   tell
     [ foldr
         ( \(fieldId, fieldTerm, fieldType, _fieldExpr, fieldSort, fieldEqPred) ->
@@ -118,6 +121,17 @@ checkTerm term0@(TermStructure structId fields _) = do
     ]
 checkTerm (TermMatch tm branches _) = do
   forM_ branches (uncurry (checkBranch tm))
+
+-- !TODO it might be possible here to use `Rewrite`s that get put into the
+-- `Query`'s `qMats`, but there's no example of doing this in SPRITE, so I'm not
+-- sure if it actually works. If I _was_ to try this, I'd have to:
+-- - augment the Writer type to also accumulate `Rewrite`s
+-- - instead of using a witness, just tell a `Rewrite`
+-- - potential problem: the `Rewrite` will refer to some variables that are
+--   bound deeply inside the `Cstr`... so will the `Query` have a problem with
+--   that? The `Query` can also accept `Qualifier`s, but the way I've set up my
+--   building-up of the `Cstr`, its useful to introduce qualfiers exactly where
+--   they are needed rather than pulling them all out to the top.
 
 -- > matchTerm  = `a`
 -- > branchPat  = `C x y z`

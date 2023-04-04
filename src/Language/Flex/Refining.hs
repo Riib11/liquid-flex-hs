@@ -7,7 +7,10 @@ import Language.Flex.FlexM (MonadFlex)
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Syntax as Crude
 
-refineModule :: (MonadError RefiningError m, MonadFlex m) => Crude.Module Crude.Type Crude.Type -> m (RefiningEnv, Crude.Module Type Type)
+refineModule ::
+  (MonadError RefiningError m, MonadFlex m) =>
+  Crude.Module Crude.Type Crude.Type ->
+  m (RefiningEnv, Crude.Module Type Type)
 refineModule = error "refineModule"
 
 checkFunction :: Crude.Function Type Type -> RefiningM ()

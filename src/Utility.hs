@@ -33,6 +33,16 @@ infixr 0 <$$>
 
 infixr 0 <$$$>
 
+(<&&>) :: (Functor f1, Functor f2) => f1 (f2 a) -> (a -> b) -> f1 (f2 b)
+(<&&>) = flip (<$$>)
+
+infixr 0 <&&>
+
+(<&&&>) :: (Functor f1, Functor f2, Functor f3) => f1 (f2 (f3 a)) -> (a -> b) -> f1 (f2 (f3 b))
+(<&&&>) = flip (<$$$>)
+
+infixr 0 <&&&>
+
 (=<<<) :: Monad m => (a -> m b) -> m (m a) -> m b
 k =<<< mma = do
   ma <- mma
@@ -116,6 +126,7 @@ liftM2' k ma mb = do
 foldr2 :: (a -> a -> a) -> [a] -> Maybe a
 foldr2 f as = foldl2 (flip f) (reverse as)
 
+-- | Requires the list to have at least 2 elements.
 foldl2 :: (a -> a -> a) -> [a] -> Maybe a
 foldl2 _f [] = Nothing
 foldl2 _f [_a] = Nothing
@@ -238,8 +249,15 @@ angles doc = "<" <> doc <> ">"
 foldr' :: Foldable t => (a -> b -> b) -> t a -> b -> b
 foldr' f ta b = foldr f b ta
 
+-- !TODO replace all uses of this with foldr321
 for :: Foldable t => t a -> b -> (a -> b -> b) -> b
 for ta b f = foldr f b ta
+
+foldr321 :: Foldable t => t a -> b -> (a -> b -> b) -> b
+foldr321 ta b f = foldr f b ta
+
+foldrM321 :: (Monad m, Foldable t) => t a -> b -> (a -> b -> m b) -> m b
+foldrM321 ta b f = foldrM f b ta
 
 -- | Zips two associative lists, where the first list is considered
 -- authoritative for the set of keys and order of keys. Throws error with both
