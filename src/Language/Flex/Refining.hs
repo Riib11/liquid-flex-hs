@@ -34,7 +34,7 @@ refineModule mdl@Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("ref
   ctx <- moduleRefiningCtx mdl'
   runRefiningM env ctx . runCheckingM $ do
     -- check transforms
-    lift (asks (^. ctxFunctions . to Map.elems))
+    lift (asks (^. ctxFunctions . to Map.elems . to (filter functionIsTransform)))
       >>= traverse_ checkTransform
     -- check constants
     lift (asks (^. ctxConstants . to Map.elems))
