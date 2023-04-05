@@ -379,8 +379,8 @@ checkPrimitive _ (PrimitiveIf tm1 tm2 tm3) = do
   checkTerm tm1
   -- tm1 == true ==> ...
   assume (eqTerm tm1 trueTerm) $ checkTerm tm2
-  -- tm2 == false ==> ...
-  assume (eqTerm tm2 falseTerm) $ checkTerm tm3
+  -- tm1 == false ==> ...
+  assume (eqTerm tm1 falseTerm) $ checkTerm tm3
 checkPrimitive _ (PrimitiveAnd tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveOr tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveNot tm) = checkTerm `traverse_` [tm]
