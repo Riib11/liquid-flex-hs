@@ -48,3 +48,24 @@ transform test4(o : Optional<bit>) -> bit {
         Some(b) => b;
     }
 }
+
+variant Coin {
+    Heads;
+    Tails;
+}
+
+transform test5(c : Coin) -> bit {
+    match c with {
+        Coin#Heads => true;
+        Coin#Tails => false;
+    }
+}
+
+transform test6(c : Coin) -> bit {
+    let b = 
+        match c with {
+            Coin#Heads => true;
+            Coin#Tails => false;
+        };
+    b
+}
