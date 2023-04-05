@@ -106,53 +106,12 @@ introBinding tmId tm = localExecM do
   -- modify: ctxScopeReversed
   ctxScopeReversed %= (ScopeLet tmId (TermExpr tm ex) (TypeSort (termType tm) srt) :)
 
-  -- !TODO instead, try adding to `Cstr` as `H.All`s
-
-  -- if False
-  --   then do
-  --     -- qualifier with equality refinement
-
-  --     -- modify: ctxQuery._qQuals
-  --     qual <- makeSimpleQualifier (F.symbol tmId)
-  --     (ctxQuery . _qQuals) %= (qual :)
-
-  --     -- modify: ctxAssumptionsReversed
-  --     let propTerm = eqTerm (TermNamed tmId (termType tm)) tm
-  --     propExpr <- lift $ reflTerm propTerm
-  --     ctxAssumptionsReversed %= (TermExpr propTerm propExpr :)
-
-  --     return ()
-  --   else do
-  --     -- constant + equation
-
-  --     -- modify: ctxQuery._qCons
-  --     (ctxQuery . _qCon . at (F.symbol tmId)) ?= srt
-
-  --     -- modify: ctxQuery._qEqns
-  --     (ctxQuery . _qEqns)
-  --       %= ( F.Equ
-  --              { eqName = F.symbol tmId,
-  --                eqArgs = [],
-  --                eqBody = ex,
-  --                eqSort = srt,
-  --                eqRec = False
-  --              }
-  --              :
-  --          )
-
-  return ()
-
 introForall :: Crude.TermId -> TypeSort -> CheckingM a -> CheckingM a
 introForall tmId tysrt = localExecM do
   -- modify: ctxScopeReversed
   ctxScopeReversed %= (ScopeForall tmId tysrt :)
 
-  -- !TODO instead, try adding to `Cstr` as `H.All`s
-
-  -- -- modify: ctxQuery._qQuals
-  -- qual <- makeSimpleQualifier (F.symbol tmId)
-  -- (ctxQuery . _qQuals) %= (qual :)
-
+  -- TODO: intro all assumptions about subterms, wherever we have refined types
   return ()
 
 introCase :: Term -> Crude.TypeId -> Crude.TermId -> [Crude.TermId] -> [Type] -> CheckingM a -> CheckingM a
@@ -164,29 +123,6 @@ introCase tm tyId ctorId paramIds paramTypes = localExecM do
 
   -- modify: ctxScopeReversed
   ctxScopeReversed %= ((uncurry ScopeForall <$> (paramIds `zip` paramTypeSorts)) <>)
-
-  -- !TODO instead, try adding to `Cstr` as `H.All`s
-
-  -- -- modify: ctxQuery._qQuals
-  -- paramQuals <-
-  --   paramIds <&*> \paramId ->
-  --     makeSimpleQualifier (F.symbol paramId)
-  -- (ctxQuery . _qQuals) %= (paramQuals <>)
-
-  -- ex <- lift $ reflTerm tm
-
-  -- !TODO figure out how Rewrites work first
-  -- -- modify: ctxQuery._qMats
-  -- -- > ?measure (ctorId [paramIds]) = tm
-  -- (ctxQuery . _qMats)
-  --   %= ( F.SMeasure
-  --          { smName = F.symbol @String "?measure", -- !TODO
-  --            smDC = F.symbol ctorId,
-  --            smArgs = F.symbol <$> paramIds,
-  --            smBody = ex
-  --          }
-  --          :
-  --      )
 
   -- modify: ctxAssumptionsReversed
   -- > assume tm == ctorId [paramIds]
