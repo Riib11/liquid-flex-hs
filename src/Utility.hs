@@ -331,4 +331,7 @@ subheader :: Doc -> Doc
 subheader doc = "──┤ " <> doc <> " ├" <> text (replicate 40 '─')
 
 commaList :: [Doc] -> Doc
-commaList = hcat . punctuate (space <> comma <> space)
+commaList = hcat . punctuate (comma <> space)
+
+semiList :: [Doc] -> Doc
+semiList = hcat . punctuate (semi <> space)

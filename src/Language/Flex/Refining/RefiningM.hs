@@ -60,13 +60,13 @@ instance Pretty RefiningError where
   pPrint (RefiningError msg) = msg
 
 instance F.Fixpoint RefiningError where
-  toFix = text . renderInline . pPrint
+  toFix = pPrint
 
 instance F.Loc RefiningError where
   srcSpan _ = F.dummySpan
 
 instance F.PPrint RefiningError where
-  pprintTidy _ = text . renderInline . pPrint
+  pprintTidy _ = pPrint
 
 throwRefiningError :: MonadError RefiningError m => Doc -> m a
 throwRefiningError doc = throwError $ RefiningError doc

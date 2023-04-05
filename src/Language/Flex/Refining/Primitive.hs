@@ -11,7 +11,8 @@ import Language.Flex.Refining.PrimitiveTH
 
 $(makePrimitiveSymbols "tuple" "Tuple" ["Tuple"])
 $(makePrimitiveSymbols "optional" "Optional" ["Some", "None"])
-$(makePrimitiveSymbols "array" "Array" ["Nil", "Cons"])
+
+-- $(makePrimitiveSymbols "array" "Array" ["Nil", "Cons"])
 
 primitiveDataDecls :: [F.DataDecl]
 primitiveDataDecls =
@@ -58,33 +59,38 @@ primitiveDataDecls =
                     ]
                 }
             ]
-        },
-      -- data Array a
-      F.DDecl
-        { ddTyCon = array_ArrayFTycon,
-          ddVars = 1,
-          ddCtors =
-            [ -- Nil : Array a
-              F.DCtor
-                { dcName = array_NilConstructorLocatedSymbol,
-                  dcFields = []
-                },
-              -- Cons : (head : a) (tail : Array a) -> Array a
-              F.DCtor
-                { dcName = array_ConsConstructorLocatedSymbol,
-                  dcFields =
-                    [ F.DField
-                        { dfName = primitiveLocated $ F.symbol @String "head",
-                          dfSort = F.FVar 0
-                        },
-                      F.DField
-                        { dfName = primitiveLocated $ F.symbol @String "tail",
-                          dfSort = F.fAppTC array_ArrayFTycon [F.FVar 0]
-                        }
-                    ]
-                }
-            ]
         }
+        {-
+        -- !TODO there is already a sort called "Array", so just use that rather
+        -- than re-inventing arrays
+        ,
+        -- data Array a
+        F.DDecl
+          { ddTyCon = array_ArrayFTycon,
+            ddVars = 1,
+            ddCtors =
+              [ -- Nil : Array a
+                F.DCtor
+                  { dcName = array_NilConstructorLocatedSymbol,
+                    dcFields = []
+                  },
+                -- Cons : (head : a) (tail : Array a) -> Array a
+                F.DCtor
+                  { dcName = array_ConsConstructorLocatedSymbol,
+                    dcFields =
+                      [ F.DField
+                          { dfName = primitiveLocated $ F.symbol @String "head",
+                            dfSort = F.FVar 0
+                          },
+                        F.DField
+                          { dfName = primitiveLocated $ F.symbol @String "tail",
+                            dfSort = F.fAppTC array_ArrayFTycon [F.FVar 0]
+                          }
+                      ]
+                  }
+              ]
+          }
+        -}
     ]
 
 {-

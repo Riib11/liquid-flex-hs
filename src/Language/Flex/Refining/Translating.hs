@@ -34,8 +34,15 @@ transType ty@(Crude.TypeUnifyVar _uv _m_uc) = FlexM.throw $ "transType should no
 -- - translates PrimitiveTuple to TermConstructor
 -- - checks for bad forms
 transTerm :: Crude.Term Type -> RefiningM Term
-transTerm (Crude.TermLiteral lit ty) = return $ TermLiteral lit ty
-transTerm term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
+transTerm term = FlexM.markSectionResult (FlexM.FlexMarkStep ("transTerm:" <+> pPrint term) Nothing) pPrint term pPrint do
+  transTerm' term
+
+transTerm' :: Crude.Term Type -> RefiningM Term
+transTerm' (Crude.TermLiteral lit ty) = do
+  FlexM.debug True $ "lit =" <+> pPrint lit
+  FlexM.debug True $ "ty  =" <+> pPrint ty
+  return $ TermLiteral lit ty
+transTerm' term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
   where
     transPrimitive ((Crude.PrimitiveTry te)) = TermPrimitive <$> (PrimitiveTry <$> transTerm te) <*> return ty
     transPrimitive ((Crude.PrimitiveTuple tes)) = do
@@ -55,12 +62,12 @@ transTerm term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
     -- or something about extension relations?
     transPrimitive ((Crude.PrimitiveExtends te ti)) = TermPrimitive <$> (PrimitiveExtends <$> transTerm te <*> return ti) <*> return ty
     transPrimitive ((Crude.PrimitiveCast {})) = FlexM.throw $ "transPrimitive should not encounter this form:" <+> pPrint prim
-transTerm (Crude.TermLet mb_tmId te' te2 ty) = TermLet mb_tmId <$> transTerm te' <*> transTerm te2 <*> return ty
-transTerm (Crude.TermAssert te' te2 ty) = TermAssert <$> transTerm te' <*> transTerm te2 <*> return ty
-transTerm (Crude.TermStructure structId fields ty) = do
+transTerm' (Crude.TermLet mb_tmId te' te2 ty) = TermLet mb_tmId <$> transTerm te' <*> transTerm te2 <*> return ty
+transTerm' (Crude.TermAssert te' te2 ty) = TermAssert <$> transTerm te' <*> transTerm te2 <*> return ty
+transTerm' (Crude.TermStructure structId fields ty) = do
   Structure {..} <- lookupStructure structId
   TermConstructor structId structureConstructorId True <$> (transTerm . snd <$*> fields) <*> return ty
-transTerm (Crude.TermMember tm fieldId ty) = do
+transTerm' (Crude.TermMember tm fieldId ty) = do
   -- s.x_i ~~> (match s with S x_1 ... x_n => x_i)
   tm' <- transTerm tm
   Structure {..} <- case termType tm' of
@@ -69,7 +76,7 @@ transTerm (Crude.TermMember tm fieldId ty) = do
   let fieldIds = structureFields <&> Crude.fromFieldIdToTermId . fst
   let pat = PatternConstructor structureId structureConstructorId fieldIds
   return $ TermMatch tm' [(pat, TermNamed (Crude.fromFieldIdToTermId fieldId) ty)] ty
-transTerm (Crude.TermNeutral (Crude.NeutralFunctionApplication funId args mb_cxargs) ty) = do
+transTerm' (Crude.TermNeutral (Crude.NeutralFunctionApplication funId args mb_cxargs) ty) = do
   let args' = args <> fromMaybe mempty mb_cxargs
   Function {..} <- lookupFunction funId
   if functionIsTransform
@@ -90,13 +97,13 @@ transTerm (Crude.TermNeutral (Crude.NeutralFunctionApplication funId args mb_cxa
               Crude.TermLet (Just paramId) argTerm body'' (Crude.termAnn body'')
       -- translate new body
       transTerm body'
-transTerm (Crude.TermNeutral (Crude.NeutralEnumConstruction newtyId ctorId) ty) = return $ TermConstructor newtyId ctorId False mempty ty
-transTerm (Crude.TermNeutral (Crude.NeutralVariantConstruction varntId ctorId tes) ty) = TermConstructor varntId ctorId False <$> transTerm `traverse` tes <*> return ty
-transTerm (Crude.TermNeutral (Crude.NeutralNewtypeConstruction newtyId ctorId te) ty) = TermConstructor newtyId ctorId True <$> (transTerm <$*> [te]) <*> return ty
-transTerm (Crude.TermNeutral (Crude.Neutral ti) ty) = return $ TermNamed ti ty
-transTerm (Crude.TermMatch te' _branches ty) = TermMatch <$> transTerm te' <*> error "!TODO interpolate into nested matches and lets" <*> return ty
-transTerm term0@Crude.TermProtoNeutral {} = FlexM.throw $ "transTerm should not encounter this form:" <+> pPrint term0
-transTerm term0@Crude.TermAscribe {} = FlexM.throw $ "transTerm should not encounter this form:" <+> pPrint term0
+transTerm' (Crude.TermNeutral (Crude.NeutralEnumConstruction newtyId ctorId) ty) = return $ TermConstructor newtyId ctorId False mempty ty
+transTerm' (Crude.TermNeutral (Crude.NeutralVariantConstruction varntId ctorId tes) ty) = TermConstructor varntId ctorId False <$> transTerm `traverse` tes <*> return ty
+transTerm' (Crude.TermNeutral (Crude.NeutralNewtypeConstruction newtyId ctorId te) ty) = TermConstructor newtyId ctorId True <$> (transTerm <$*> [te]) <*> return ty
+transTerm' (Crude.TermNeutral (Crude.Neutral ti) ty) = return $ TermNamed ti ty
+transTerm' (Crude.TermMatch te' _branches ty) = TermMatch <$> transTerm te' <*> error "!TODO interpolate into nested matches and lets" <*> return ty
+transTerm' term0@Crude.TermProtoNeutral {} = FlexM.throw $ "transTerm should not encounter this form:" <+> pPrint term0
+transTerm' term0@Crude.TermAscribe {} = FlexM.throw $ "transTerm should not encounter this form:" <+> pPrint term0
 
 transPattern :: Crude.Pattern Crude.Type -> Term -> Term -> Type -> FlexM Term
 transPattern (Crude.PatternNamed ti _ty) tm1 tm2 ty = return (TermLet (Just ti) tm1 tm2 ty)

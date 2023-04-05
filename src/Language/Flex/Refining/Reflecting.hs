@@ -43,18 +43,19 @@ reflPrimitive (PrimitiveTuple tm1 tm2) = do
   exs <- reflTerm `traverse` [tm1, tm2]
   return $ F.eApps (F.eVar tuple_TupleConstructorSymbol) exs
 reflPrimitive (PrimitiveArray tms) = do
-  exs <- reflTerm `traverse` tms
-  case exs of
-    -- Nil
-    [] -> return $ F.eVar array_ConsConstructorSymbol
-    -- Cons _ _
-    firstExpr : restExprs -> return $
-      for restExprs firstExpr \headExpr tailExpr ->
-        F.eApps (F.eVar array_ConsConstructorSymbol) [headExpr, tailExpr]
+  -- exs <- reflTerm `traverse` tms
+  -- case exs of
+  --   -- Nil
+  --   [] -> return $ F.eVar array_ConsConstructorSymbol
+  --   -- Cons _ _
+  --   firstExpr : restExprs -> return $
+  --     for restExprs firstExpr \headExpr tailExpr ->
+  --       F.eApps (F.eVar array_ConsConstructorSymbol) [headExpr, tailExpr]
+  error "use LH's built-in arrays"
 reflPrimitive (PrimitiveIf tm1 tm2 tm3) = F.EIte <$> reflTerm tm1 <*> reflTerm tm2 <*> reflTerm tm3
 reflPrimitive (PrimitiveAnd tm1 tm2) = F.pAnd <$> reflTerm `traverse` [tm1, tm2]
 reflPrimitive (PrimitiveOr tm1 tm2) = F.pOr <$> reflTerm `traverse` [tm1, tm2]
-reflPrimitive (PrimitiveNot tm) = F.ENeg <$> reflTerm tm
+reflPrimitive (PrimitiveNot tm) = F.PNot <$> reflTerm tm
 reflPrimitive (PrimitiveEq tm1 tm2) = F.PAtom F.Eq <$> reflTerm tm1 <*> reflTerm tm2
 reflPrimitive (PrimitiveAdd tm1 tm2) = F.EBin F.Plus <$> reflTerm tm1 <*> reflTerm tm2
 reflPrimitive (PrimitiveExtends {}) = error "!TODO reflect PrimitiveExtends"
@@ -76,7 +77,9 @@ reflType (TypeNumber Crude.TypeFloat _) = return F.realSort
 reflType TypeBit = return F.boolSort
 reflType TypeChar = return F.charSort
 reflType (TypeArray TypeChar) = return F.strSort
-reflType (TypeArray ty) = F.fAppTC array_ArrayFTycon <$> reflType `traverse` [ty]
+reflType (TypeArray ty) =
+  -- F.fAppTC array_ArrayFTycon <$> reflType `traverse` [ty]
+  error "user LH's built-in arrays"
 reflType (TypeTuple ty1 ty2) = F.fAppTC tuple_TupleFTycon <$> reflType `traverse` [ty1, ty2]
 reflType (TypeOptional ty) = F.fAppTC optional_OptionalFTycon <$> reflType `traverse` [ty]
 reflType (TypeNamed tyId) = return $ F.FObj $ F.symbol tyId

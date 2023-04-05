@@ -25,21 +25,19 @@ refineModule ::
   (MonadError RefiningError m, MonadFlex m) =>
   Crude.Module Crude.Type Crude.Type ->
   m RefiningEnv
-refineModule mdl@Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep {flexMarkStepLabel = "refineModule:" <+> pPrint moduleId, flexmarkStepIndex = Just $ pPrint mdl}] do
+refineModule mdl@Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep ("refineModule:" <+> pPrint moduleId) Nothing] do
   FlexM.debug True "constructive refining context and environment"
   mdl' <-
     FlexM.liftFlex $
       (Crude.traverseTm transType >=> Crude.traverseTy transType) mdl
   env <- moduleRefiningEnv
   ctx <- moduleRefiningCtx mdl'
-  FlexM.debug True "about to check module"
   runRefiningM env ctx . runCheckingM $ do
     -- check transforms
-    FlexM.debug True "checking transforms..."
-    lift (asks (^. ctxFunctions . to Map.elems . to (filter \Function {..} -> functionIsTransform)))
+    lift (asks (^. ctxFunctions . to Map.elems))
       >>= traverse_ checkTransform
     -- check constants
-    FlexM.debug True "checking constants..."
     lift (asks (^. ctxConstants . to Map.elems))
       >>= traverse_ checkConstant
+    -- return environment
     get

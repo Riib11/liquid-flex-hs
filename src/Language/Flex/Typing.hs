@@ -129,8 +129,6 @@ synthRefinedType rt@(RefinedType {..}) = do
 synthRefinement :: Refinement () -> TypingM (Refinement MType)
 synthRefinement (Refinement tm) = Refinement <$> synthCheckTerm TypeBit tm
 
--- FlexM.markSection [FlexM.FlexMarkStep "synthDeclaration" . Just $ pPrint decl]
-
 synthTerm :: Term () -> TypingM (Term MType)
 synthTerm term0 = FlexM.markSection
   [FlexM.FlexMarkStep ("synthTerm:" <+> pPrint term0) Nothing]
@@ -139,9 +137,10 @@ synthTerm term0 = FlexM.markSection
     (TermPrimitive prim ()) -> synthPrimitive prim
     (TermLet mb_tmId te1 te2 ()) -> do
       te1' <- synthTerm te1
-      case mb_tmId of
+      te2' <- case mb_tmId of
         Nothing -> introPattern (PatternDiscard (termAnn te1')) $ synthTerm te2
         Just tmId -> introPattern (PatternNamed tmId (termAnn te1')) $ synthTerm te2
+      return $ TermLet mb_tmId te1' te2' (termAnn te2')
     (TermAssert tm1 tm2 ()) -> do
       tm1' <- synthCheckTerm TypeBit tm1
       tm2' <- synthTerm tm2
@@ -502,7 +501,7 @@ satisfiesUnifyConstraint ty = \case
     -- (TypeTuple tys1, TypeTuple tys2) -> all (\(ty1, ty2) -> satisfiesUnifyConstraint ty1 (UnifyConstraintCasted ty2)) $ tys1 `zip` tys2
     -- (TypeOptional ty1, TypeOptional ty2) -> satisfiesUnifyConstraint ty1 (UnifyConstraintCasted ty2)
     (TypeUnifyVar _ mb_uc, _) -> maybe True (satisfiesUnifyConstraint ty') mb_uc
-    -- !TODO FlexM.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
+    -- !TODO FlexM.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 2 ("type =" <+> pPrint ty) $$ nest 2 ("unifyConstraint =" <+> pPrint uc)
     _uc -> False
   UnifyConstraintNumeric -> case ty of
     TypeNumber _ _ -> True

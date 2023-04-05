@@ -617,7 +617,7 @@ satisfiesUnifyConstraint ty = \case
       | all (`elem` [TypeInt, TypeUInt]) [numty1, numty2] -> True
       | all (`elem` [TypeFloat]) [numty1, numty2] -> True
     (TypeUnifyVar _ mb_uc, _) -> maybe True (satisfiesUnifyConstraint ty') mb_uc
-    -- !TODO FlexM.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 4 ("type =" <+> pPrint ty) $$ nest 4 ("unifyConstraint =" <+> pPrint uc)
+    -- !TODO FlexM.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 2 ("type =" <+> pPrint ty) $$ nest 2 ("unifyConstraint =" <+> pPrint uc)
     _uc -> False
   UnifyConstraintNumeric -> case ty of
     TypeNumber _ _ -> True

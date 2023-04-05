@@ -558,7 +558,7 @@ instance Pretty (Term ann) where
     TermLiteral {..} -> pPrint termLiteral
     TermPrimitive {..} -> pPrint termPrimitive
     TermLet {..} ->
-      text "let" <+> pPrint termId <+> equals <+> pPrint termTerm <+> semi <+> pPrint termBody
+      text "let" <+> maybe "_" pPrint termId <+> equals <+> pPrint termTerm <+> semi <+> pPrint termBody
     TermAssert {termTerm, termBody} ->
       text "assert" <+> pPrint termTerm <+> semi <+> pPrint termBody
     TermStructure {termStructureId, termFields} ->

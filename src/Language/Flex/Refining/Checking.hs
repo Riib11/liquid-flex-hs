@@ -42,12 +42,41 @@ data CheckingCtx = CheckingCtx
   { _ctxQuery :: Query,
     _ctxScopeReversed :: [ScopeItem],
     _ctxAssumptionsReversed :: [TermExpr],
-    _ctxAssertion :: Term
+    _ctxAssertion :: TermExpr
   }
+
+instance Pretty CheckingCtx where
+  pPrint CheckingCtx {..} =
+    vcat
+      [ "query:",
+        nest 2 . vcat $
+          [ "qQuals:",
+            nest 2 . vcat $ F.pprint <$> _ctxQuery ^. _qQuals,
+            "qCon:",
+            nest 2 $ text . show $ _ctxQuery ^. _qCon,
+            "qEqns:",
+            nest 2 . vcat $ F.pprint <$> _ctxQuery ^. _qEqns,
+            "qMats:",
+            nest 2 . vcat $ F.pprint <$> _ctxQuery ^. _qMats,
+            "qData:",
+            nest 2 . vcat $ F.pprint <$> _ctxQuery ^. _qData
+          ],
+        "scope:",
+        nest 2 . vcat $ pPrint <$> reverse _ctxScopeReversed,
+        "assumptions:",
+        nest 2 . vcat $ pPrint <$> reverse _ctxAssumptionsReversed,
+        "assertion:",
+        nest 2 $ pPrint _ctxAssertion
+      ]
 
 data ScopeItem
   = ScopeForall Crude.TermId
   | ScopeLet Crude.TermId Term
+  deriving (Show)
+
+instance Pretty ScopeItem where
+  pPrint (ScopeForall ti) = "forall" <+> pPrint ti
+  pPrint (ScopeLet ti te) = "let" <+> pPrint ti <+> "=" <+> pPrint te
 
 makeLenses ''CheckingCtx
 
@@ -59,7 +88,7 @@ runCheckingM m = do
       { _ctxQuery = query,
         _ctxScopeReversed = mempty,
         _ctxAssumptionsReversed = mempty,
-        _ctxAssertion = trueTerm -- will be overwritten
+        _ctxAssertion = TermExpr trueTerm (F.prop True) -- will be overwritten
       }
 
 ctxScope :: Functor f => ([_] -> f [_]) -> CheckingCtx -> f CheckingCtx
@@ -70,16 +99,23 @@ ctxAssumptions = ctxAssumptionsReversed . reversed
 
 introBinding :: Crude.TermId -> Term -> CheckingM a -> CheckingM a
 introBinding tmId tm = localExecM do
+  ex <- lift $ reflTerm tm
+  srt <- lift $ reflType $ termType tm
+
   -- modify: ctxScopeReversed
   ctxScopeReversed %= (ScopeLet tmId tm :)
 
-  -- modify: ctxQuery._qQuals
-  qual <- makeSimpleQualifier (F.symbol tmId)
-  (ctxQuery . _qQuals) %= (qual :)
+  -- !TODO maybe i just put into qEqns?
+  -- -- modify: ctxQuery._qQuals
+  -- qual <- makeSimpleQualifier (F.symbol tmId)
+  -- (ctxQuery . _qQuals) %= (qual :)
+
+  -- !TODO maybe i put it into qCons rather than qQuals?
+  -- !TODO YES!! this seems to work
+  -- modify: ctxQuery._qCons
+  (ctxQuery . _qCon . at (F.symbol tmId)) ?= srt
 
   -- modify: ctxQuery._qEqns
-  ex <- lift $ reflTerm tm
-  srt <- lift $ reflType $ termType tm
   (ctxQuery . _qEqns)
     %= ( F.Equ
            { eqName = F.symbol tmId,
@@ -156,7 +192,7 @@ assert :: Doc -> Term -> CheckingM ()
 assert sourceDoc tm = flip localExecM checkQuery do
   ex <- lift $ reflTerm tm
   -- modify: ctxAssertion
-  ctxAssertion .= tm
+  ctxAssertion .= TermExpr tm ex
 
   -- assumptions are accounted by as implications in front of the asserted
   -- expression
@@ -173,16 +209,8 @@ assert sourceDoc tm = flip localExecM checkQuery do
 
 checkQuery :: CheckingM ()
 checkQuery = do
-  asrtTerm <- asks (^. ctxAssertion)
-  asmpTerms <- asks (^. ctxAssumptions)
-  FlexM.print . vcat $
-    [ "checking:",
-      nest 4 . vcat $
-        [ vcat $ asmpTerms <&> pPrint . getTerm,
-          text $ replicate 40 '-',
-          pPrint asrtTerm
-        ]
-    ]
+  ctx <- ask
+  FlexM.print . vcat $ ["checking:", nest 2 $ pPrint ctx]
   query <- asks (^. ctxQuery)
   result <- lift $ submitQuery query
   case result of
@@ -191,7 +219,16 @@ checkQuery = do
             vcat
               [ "checked: crash",
                 "refining error:" <+> text msg,
-                nest 4 $ vcat (pPrint <$> errs)
+                nest 2 $
+                  vcat
+                    ( errs <&> \(err, mb_str) ->
+                        vcat
+                          [ pPrint err,
+                            maybe mempty (vcat . fmap text . lines) mb_str
+                          ]
+                    ),
+                "refinement checking context:",
+                nest 2 $ pPrint ctx
               ]
       FlexM.print doc
       throwRefiningError doc
@@ -200,9 +237,9 @@ checkQuery = do
             vcat
               [ "checked: unsafe",
                 "refining errors:",
-                nest 4 (vcat $ pPrint <$> res),
+                nest 2 (vcat $ pPrint <$> res),
                 "stats:",
-                nest 4 (text $ show st)
+                nest 2 (text $ show st)
               ]
       FlexM.print doc
       throwRefiningError doc
@@ -212,38 +249,47 @@ checkQuery = do
 -- ** Checking
 
 checkTransform :: Function -> CheckingM ()
-checkTransform Function {..} = do
+checkTransform Function {..} = FlexM.markSection [FlexM.FlexMarkStep ("checkTransform:" <+> pPrint functionId) Nothing] do
   -- introduce parameters
   body <- lift $ transTerm functionBody
+  FlexM.debug True $ "checkTransform: body =" <+> pPrint body
   foldr
     (\(paramId, _paramType) -> introForall paramId)
+    -- check body
     (checkTerm body)
     functionParameters
 
 checkConstant :: Crude.Term Type -> CheckingM ()
-checkConstant = undefined
+checkConstant tm = do
+  tm' <- lift $ transTerm tm
+  checkTerm tm'
 
 -- | Check all refinement constraints that arise within a term.
 checkTerm :: Term -> CheckingM ()
-checkTerm (TermLiteral _lit _) =
+checkTerm term =
+  FlexM.markSection [FlexM.FlexMarkStep ("checkTerm:" <+> pPrintShallowTerm term) Nothing] $
+    checkTerm' term
+
+checkTerm' :: Term -> CheckingM ()
+checkTerm' (TermLiteral _lit _) =
   return ()
-checkTerm (TermPrimitive prim ty) =
+checkTerm' (TermPrimitive prim ty) =
   checkPrimitive ty prim
-checkTerm (TermLet mb_tmId tm1 tm2 _) = do
+checkTerm' (TermLet mb_tmId tm1 tm2 _) = do
   checkTerm tm1
   case mb_tmId of
     Nothing -> checkTerm tm2
     Just tmId -> introBinding tmId tm1 $ checkTerm tm2
-checkTerm term0@(TermAssert tm1 tm2 _) = do
-  assert ("assertion" <+> ticks (pPrint term0)) tm1
+checkTerm' term0@(TermAssert tm1 tm2 _) = do
+  assert ("assertion" <+> ticks (pPrintShallowTerm term0)) tm1
   checkTerm tm2
-checkTerm (TermNamed _tmId _) =
+checkTerm' (TermNamed _tmId _) =
   return ()
-checkTerm (TermApplication _tmId tms _) =
+checkTerm' (TermApplication _tmId tms _) =
   checkTerm `traverse_` tms
-checkTerm (TermConstructor _varntId _ctorId _isVarnt@False tms _) =
+checkTerm' (TermConstructor _varntId _ctorId _isVarnt@False tms _) =
   checkTerm `traverse_` tms
-checkTerm term0@(TermConstructor structId _ctorId _isStruct@True fields _) = do
+checkTerm' term0@(TermConstructor structId _ctorId _isStruct@True fields _) = do
   -- check fields
   checkTerm `traverse_` fields
 
@@ -255,9 +301,9 @@ checkTerm term0@(TermConstructor structId _ctorId _isStruct@True fields _) = do
     ( \(fieldTerm, (fieldId, _)) ->
         introBinding (Crude.fromFieldIdToTermId fieldId) fieldTerm
     )
-    (assert ("refined structure construction" <+> ticks (pPrint term0)) structPredTerm)
+    (assert ("refined structure construction" <+> ticks (pPrintShallowTerm term0)) structPredTerm)
     (fields `zip` structureFields)
-checkTerm (TermMatch tm branches _) = do
+checkTerm' (TermMatch tm branches _) = do
   isStruct <- lift $ typeIsStructure (termType tm)
   forM_ branches (uncurry (checkBranch isStruct tm))
 

@@ -1,8 +1,10 @@
 module Language.Flex.Refining.Syntax where
 
+import Data.Functor
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
+import Utility
 
 -- * Refined Syntax
 
@@ -17,7 +19,8 @@ data Function = Function
   }
   deriving (Eq, Show)
 
-instance Pretty Function
+instance Pretty Function where
+  pPrint Function {..} = (if functionIsTransform then "transform" else mempty) <+> "function" <+> pPrint functionId <+> parens (commaList $ functionParameters <&> \(tmId, ty) -> pPrint tmId <+> ":" <+> pPrint ty) <+> "->" <+> pPrint functionOutput <+> braces (pPrint functionBody)
 
 -- ** Structure
 
@@ -31,7 +34,8 @@ data Structure = Structure
 
 type Fields = (Crude.FieldId, Type)
 
-instance Pretty Structure
+instance Pretty Structure where
+  pPrint Structure {..} = "struct" <+> pPrint structureId <+> pPrint structureConstructorId <+> braces (semiList (structureFields <&> \(fieldId, ty) -> pPrint fieldId <+> ":" <+> pPrint ty) <+> semi <+> pPrint structureRefinement)
 
 -- ** Variant
 
@@ -43,38 +47,70 @@ data Variant = Variant
 
 type Constructor = (Crude.TermId, [Type])
 
-instance Pretty Variant
+instance Pretty Variant where
+  pPrint Variant {variantId, variantConstructors} = "variant" <+> pPrint variantId <+> braces (semiList $ variantConstructors <&> (\(ti, tys) -> pPrint ti <+> parens (commaList $ tys <&> pPrint)))
 
 -- ** Type
 
 data Type
-  = TypeNumber Crude.NumberType Integer
+  = TypeNumber !Crude.NumberType !Integer
   | TypeBit
   | TypeChar
-  | TypeArray Type
-  | TypeTuple Type Type
-  | TypeOptional Type
-  | TypeNamed Crude.TypeId
+  | TypeArray !Type
+  | TypeTuple !Type !Type
+  | TypeOptional !Type
+  | TypeNamed !Crude.TypeId
   deriving (Eq, Show)
 
-instance Pretty Type
+instance Pretty Type where
+  pPrint (TypeNumber nt n) = pPrint nt <> pPrint n
+  pPrint TypeBit = "bit"
+  pPrint TypeChar = "char"
+  pPrint (TypeArray ty) = "Array" <> angles (pPrint ty)
+  pPrint (TypeTuple ty1 ty2) = "Tuple" <> angles (commaList $ pPrint <$> [ty1, ty2])
+  pPrint (TypeOptional ty) = "Optional" <> angles (pPrint ty)
+  pPrint (TypeNamed tyId) = pPrint tyId
 
 -- ** Term
 
 data Term
-  = TermLiteral {termLiteral :: Crude.Literal, termType :: Type}
-  | TermPrimitive {termPrimitive :: Primitive, termType :: Type}
-  | TermLet {termMaybeTermId :: Maybe Crude.TermId, termTerm :: Term, termBody :: Term, termType :: Type}
-  | TermAssert {termTerm :: Term, termBody :: Term, termType :: Type}
-  | TermNamed {termId :: Crude.TermId, termType :: Type}
-  | TermApplication {termFunctionId :: Crude.TermId, termArguments :: [Term], termType :: Type}
-  | TermConstructor {termTypeId :: Crude.TypeId, termConstructorId :: Crude.TermId, termIsStructure :: Bool, termArguments :: [Term], termType :: Type}
-  | TermMatch {termTerm :: Term, termBranches :: [(Pattern, Term)], termType :: Type}
+  = TermLiteral {termLiteral :: !Crude.Literal, termType :: !Type}
+  | TermPrimitive {termPrimitive :: !Primitive, termType :: !Type}
+  | TermLet {termMaybeTermId :: !(Maybe Crude.TermId), termTerm :: !Term, termBody :: !Term, termType :: !Type}
+  | TermAssert {termTerm :: !Term, termBody :: !Term, termType :: !Type}
+  | TermNamed {termId :: !Crude.TermId, termType :: !Type}
+  | TermApplication {termFunctionId :: !Crude.TermId, termArguments :: ![Term], termType :: !Type}
+  | TermConstructor {termTypeId :: !Crude.TypeId, termConstructorId :: !Crude.TermId, termIsStructure :: !Bool, termArguments :: ![Term], termType :: !Type}
+  | TermMatch {termTerm :: !Term, termBranches :: ![(Pattern, Term)], termType :: !Type}
   deriving (Eq, Show)
 
-instance Pretty Term
+instance Pretty Term where
+  pPrint (TermLiteral lit _ty) = pPrint lit
+  pPrint (TermPrimitive prim _ty) = pPrint prim
+  pPrint (TermLet mb_tmId tm1 tm2 _ty) = "let" <+> maybe "_" pPrint mb_tmId <+> "=" <+> pPrint tm1 <+> ";" <+> pPrint tm2
+  pPrint (TermAssert tm1 tm2 _ty) = "assert" <+> pPrint tm1 <+> ";" <+> pPrint tm2
+  pPrint (TermNamed tmId _ty) = pPrint tmId
+  pPrint (TermApplication funId tms _ty) = pPrint funId <> parens (commaList $ pPrint <$> tms)
+  pPrint (TermConstructor tyId ctorId False tms _ty) = pPrint tyId <> "#" <> pPrint ctorId <> parens (commaList $ pPrint <$> tms)
+  pPrint (TermConstructor tyId ctorId True tms _ty) = pPrint tyId <> "#" <> pPrint ctorId <> braces (commaList $ pPrint <$> tms)
+  pPrint (TermMatch tm branches _ty) = "match" <+> pPrint tm <+> "with" <+> braces (semiList $ branches <&> \(pat, body) -> pPrint pat <+> "=>" <+> pPrint body)
 
-data TermExpr = TermExpr {getTerm :: Term, getExpr :: F.Expr}
+pPrintShallowTerm :: Term -> Doc
+pPrintShallowTerm (TermPrimitive prim _ty) = pPrintShallowPrimitive prim
+pPrintShallowTerm (TermLet mb_tmId tm1 _tm2 _ty) = "let" <+> maybe "_" pPrint mb_tmId <+> "=" <+> pPrint tm1 <+> ";" <+> "..."
+pPrintShallowTerm (TermAssert tm1 _tm2 _ty) = "assert" <+> pPrint tm1 <+> ";" <+> "..."
+pPrintShallowTerm (TermMatch tm _branches _ty) = "match" <+> pPrint tm <+> "with" <+> braces "..."
+pPrintShallowTerm term = pPrint term
+
+pPrintShallowPrimitive :: Primitive -> Doc
+pPrintShallowPrimitive (PrimitiveTry tm) = "try" <+> pPrintShallowTerm tm
+pPrintShallowPrimitive (PrimitiveIf tm1 _tm2 _tm3) = "if" <+> pPrint tm1 <+> "then" <+> "..." <+> "else" <+> "..."
+pPrintShallowPrimitive prim = pPrint prim
+
+data TermExpr = TermExpr {getTerm :: !Term, getExpr :: !F.Expr}
+
+instance Pretty TermExpr where
+  pPrint TermExpr {..} = pPrint getTerm <+> parens ("reflected as:" <+> F.pprint getExpr)
 
 trueTerm :: Term
 trueTerm = TermLiteral (Crude.LiteralBit True) TypeBit
@@ -85,27 +121,38 @@ falseTerm = TermLiteral (Crude.LiteralBit False) TypeBit
 -- *** Pattern
 
 data Pattern
-  = PatternConstructor Crude.TypeId Crude.TermId [Crude.TermId]
+  = PatternConstructor !Crude.TypeId !Crude.TermId ![Crude.TermId]
   deriving (Eq, Show)
 
-instance Pretty Pattern
+instance Pretty Pattern where
+  pPrint (PatternConstructor tyId ctorId tmIds) = pPrint tyId <> "#" <> pPrint ctorId <> parens (commaList $ pPrint <$> tmIds)
 
 -- *** Primitive
 
 data Primitive
-  = PrimitiveTry Term
-  | PrimitiveTuple Term Term
-  | PrimitiveArray [Term]
-  | PrimitiveIf Term Term Term
-  | PrimitiveAnd Term Term
-  | PrimitiveOr Term Term
-  | PrimitiveNot Term
-  | PrimitiveEq Term Term
-  | PrimitiveAdd Term Term
-  | PrimitiveExtends Term Crude.TypeId
+  = PrimitiveTry !Term
+  | PrimitiveTuple !Term !Term
+  | PrimitiveArray ![Term]
+  | PrimitiveIf !Term !Term !Term
+  | PrimitiveAnd !Term !Term
+  | PrimitiveOr !Term !Term
+  | PrimitiveNot !Term
+  | PrimitiveEq !Term !Term
+  | PrimitiveAdd !Term !Term
+  | PrimitiveExtends !Term !Crude.TypeId
   deriving (Eq, Show)
 
-instance Pretty Primitive
+instance Pretty Primitive where
+  pPrint (PrimitiveTry te) = parens $ "try" <+> pPrint te
+  pPrint (PrimitiveTuple te te') = parens $ commaList $ pPrint <$> [te, te']
+  pPrint (PrimitiveArray tes) = brackets $ commaList $ pPrint <$> tes
+  pPrint (PrimitiveIf te te' te2) = parens $ "if" <+> pPrint te <+> "then" <+> pPrint te' <+> pPrint te2
+  pPrint (PrimitiveAnd te te') = parens $ pPrint te <+> "&&" <+> pPrint te'
+  pPrint (PrimitiveOr te te') = parens $ pPrint te <+> "||" <+> pPrint te'
+  pPrint (PrimitiveNot te) = parens $ "!" <+> pPrint te
+  pPrint (PrimitiveEq te te') = parens $ pPrint te <+> "==" <+> pPrint te'
+  pPrint (PrimitiveAdd te te') = parens $ pPrint te <+> "+" <+> pPrint te'
+  pPrint (PrimitiveExtends te structId) = parens $ pPrint te <+> "extends" <+> pPrint structId
 
 eqTerm :: Term -> Term -> Term
 eqTerm tm1 tm2 = TermPrimitive (PrimitiveEq tm1 tm2) TypeBit

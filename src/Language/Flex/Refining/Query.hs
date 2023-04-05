@@ -110,7 +110,8 @@ submitQuery q = do
 fpConfig :: FC.Config
 fpConfig =
   FC.defConfig
-    { FC.eliminate = FC.Some
+    { FC.eliminate = FC.Some,
+      FC.oldPLE = True
     }
 
 checkValidWithConfig :: FilePath -> FC.Config -> Query -> IO Result
