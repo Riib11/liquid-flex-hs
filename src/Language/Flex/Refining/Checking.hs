@@ -224,15 +224,40 @@ assert sourceDoc tm = flip localExecM checkQuery do
   -- assumptions are accounted by as implications in front of the asserted
   -- expression
 
-  -- wrap in assumptions
-  asmpExprs <- gets (^.. ctxAssumptions . traverse . to getExpr)
-  let ex1 = foldr F.PImp ex0 asmpExprs
-  FlexM.debug True $ "ex' =" <+> F.pprint ex1
+  cstr0 <-
+    if False
+      then do
+        -- wrap in assumptions using F.PImp
+        asmpExprs <- gets (^.. ctxAssumptions . traverse . to getExpr)
+        let ex1 = foldr F.PImp ex0 asmpExprs
+        FlexM.debug True $ "ex' =" <+> F.pprint ex1
 
-  let cstr0 =
-        H.Head
-          (H.Reft ex1)
-          (RefiningError $ "unable to prove predicate" <+> ticks (pPrint tm) <+> "arising from" <+> sourceDoc)
+        return $
+          H.Head
+            (H.Reft ex1)
+            (RefiningError $ "unable to prove predicate" <+> ticks (pPrint tm) <+> "arising from" <+> sourceDoc)
+      else do
+        -- !TODO this _actually_ works!
+        -- wrap in assumptions using existentially-quantified witnesses
+        let cstr =
+              H.Head
+                (H.Reft ex0)
+                (RefiningError $ "unable to prove predicate" <+> ticks (pPrint tm) <+> "arising from" <+> sourceDoc)
+        asmps <- gets (^. ctxAssumptions)
+        let cstr' =
+              foldr
+                ( \tmex ->
+                    H.Any
+                      H.Bind
+                        { bSym = F.symbol . render $ "wittness to assumption:" <+> ticks (pPrint tmex),
+                          bSort = F.boolSort,
+                          bPred = H.Reft $ getExpr tmex,
+                          bMeta = RefiningError $ "assumption:" <+> ticks (pPrint tmex)
+                        }
+                )
+                cstr
+                asmps
+        return cstr'
 
   -- wrap in scope
   scope <- gets (^. ctxScope)
