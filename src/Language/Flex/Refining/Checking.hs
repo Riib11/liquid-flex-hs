@@ -8,7 +8,8 @@ import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
-import Data.Foldable
+import Data.Foldable hiding (toList)
+import Data.HashMap.Strict (toList)
 import Data.Maybe
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
@@ -53,7 +54,7 @@ instance Pretty CheckingCtx where
           [ "qQuals:",
             nest 2 . vcat $ F.pprint <$> _ctxQuery ^. _qQuals,
             "qCon:",
-            nest 2 $ text . show $ _ctxQuery ^. _qCon,
+            nest 2 $ vcat $ (\(x, srt) -> F.pprint x <+> ":" <+> F.pprint srt) <$> _ctxQuery ^. _qCon . to toList,
             "qEqns:",
             nest 2 . vcat $ F.pprint <$> _ctxQuery ^. _qEqns,
             "qMats:",
@@ -70,13 +71,13 @@ instance Pretty CheckingCtx where
       ]
 
 data ScopeItem
-  = ScopeForall Crude.TermId
-  | ScopeLet Crude.TermId Term
+  = ScopeForall Crude.TermId TypeSort
+  | ScopeLet Crude.TermId TermExpr TypeSort
   deriving (Show)
 
 instance Pretty ScopeItem where
-  pPrint (ScopeForall ti) = "forall" <+> pPrint ti
-  pPrint (ScopeLet ti te) = "let" <+> pPrint ti <+> "=" <+> pPrint te
+  pPrint (ScopeForall ti tysrt) = "forall" <+> pPrint ti <+> ":" <+> pPrint tysrt
+  pPrint (ScopeLet ti tmex tysrt) = "let" <+> pPrint ti <+> "=" <+> pPrint tmex <+> ":" <+> pPrint tysrt
 
 makeLenses ''CheckingCtx
 
@@ -103,49 +104,75 @@ introBinding tmId tm = localExecM do
   srt <- lift $ reflType $ termType tm
 
   -- modify: ctxScopeReversed
-  ctxScopeReversed %= (ScopeLet tmId tm :)
+  ctxScopeReversed %= (ScopeLet tmId (TermExpr tm ex) (TypeSort (termType tm) srt) :)
 
-  -- !TODO maybe i just put into qEqns?
+  -- !TODO instead, try adding to `Cstr` as `H.All`s
+
+  -- if False
+  --   then do
+  --     -- qualifier with equality refinement
+
+  --     -- modify: ctxQuery._qQuals
+  --     qual <- makeSimpleQualifier (F.symbol tmId)
+  --     (ctxQuery . _qQuals) %= (qual :)
+
+  --     -- modify: ctxAssumptionsReversed
+  --     let propTerm = eqTerm (TermNamed tmId (termType tm)) tm
+  --     propExpr <- lift $ reflTerm propTerm
+  --     ctxAssumptionsReversed %= (TermExpr propTerm propExpr :)
+
+  --     return ()
+  --   else do
+  --     -- constant + equation
+
+  --     -- modify: ctxQuery._qCons
+  --     (ctxQuery . _qCon . at (F.symbol tmId)) ?= srt
+
+  --     -- modify: ctxQuery._qEqns
+  --     (ctxQuery . _qEqns)
+  --       %= ( F.Equ
+  --              { eqName = F.symbol tmId,
+  --                eqArgs = [],
+  --                eqBody = ex,
+  --                eqSort = srt,
+  --                eqRec = False
+  --              }
+  --              :
+  --          )
+
+  return ()
+
+introForall :: Crude.TermId -> TypeSort -> CheckingM a -> CheckingM a
+introForall tmId tysrt = localExecM do
+  -- modify: ctxScopeReversed
+  ctxScopeReversed %= (ScopeForall tmId tysrt :)
+
+  -- !TODO instead, try adding to `Cstr` as `H.All`s
+
   -- -- modify: ctxQuery._qQuals
   -- qual <- makeSimpleQualifier (F.symbol tmId)
   -- (ctxQuery . _qQuals) %= (qual :)
 
-  -- !TODO maybe i put it into qCons rather than qQuals?
-  -- !TODO YES!! this seems to work
-  -- modify: ctxQuery._qCons
-  (ctxQuery . _qCon . at (F.symbol tmId)) ?= srt
-
-  -- modify: ctxQuery._qEqns
-  (ctxQuery . _qEqns)
-    %= ( F.Equ
-           { eqName = F.symbol tmId,
-             eqArgs = [],
-             eqBody = ex,
-             eqSort = srt,
-             eqRec = False
-           }
-           :
-       )
-
-introForall :: Crude.TermId -> CheckingM a -> CheckingM a
-introForall tmId = localExecM do
-  -- modify: ctxScopeReversed
-  ctxScopeReversed %= (ScopeForall tmId :)
-  -- modify: ctxQuery._qQuals
-  qual <- makeSimpleQualifier (F.symbol tmId)
-  (ctxQuery . _qQuals) %= (qual :)
+  return ()
 
 -- introCase :: Term -> Crude.TermId -> [Crude.TermId] -> CheckingM a -> CheckingM a
 introCase :: Bool -> Term -> Crude.TypeId -> Crude.TermId -> [Crude.TermId] -> [Type] -> CheckingM a -> CheckingM a
 introCase isStruct tm tyId ctorId paramIds paramTypes = localExecM do
-  -- modify: ctxScopeReversed
-  ctxScopeReversed %= ((ScopeForall <$> paramIds) <>)
+  paramTypeSorts <-
+    lift $
+      paramTypes <&*> \ty ->
+        TypeSort ty <$> reflType ty
 
-  -- modify: ctxQuery._qQuals
-  paramQuals <-
-    paramIds <&*> \paramId ->
-      makeSimpleQualifier (F.symbol paramId)
-  (ctxQuery . _qQuals) %= (paramQuals <>)
+  -- modify: ctxScopeReversed
+  ctxScopeReversed %= ((uncurry ScopeForall <$> (paramIds `zip` paramTypeSorts)) <>)
+
+  -- !TODO instead, try adding to `Cstr` as `H.All`s
+
+  -- -- modify: ctxQuery._qQuals
+  -- paramQuals <-
+  --   paramIds <&*> \paramId ->
+  --     makeSimpleQualifier (F.symbol paramId)
+  -- (ctxQuery . _qQuals) %= (paramQuals <>)
 
   ex <- lift $ reflTerm tm
 
@@ -190,20 +217,50 @@ assume propTerm = localExecM do
 
 assert :: Doc -> Term -> CheckingM ()
 assert sourceDoc tm = flip localExecM checkQuery do
-  ex <- lift $ reflTerm tm
+  ex0 <- lift $ reflTerm tm
   -- modify: ctxAssertion
-  ctxAssertion .= TermExpr tm ex
+  ctxAssertion .= TermExpr tm ex0
 
   -- assumptions are accounted by as implications in front of the asserted
   -- expression
 
-  -- modify: ctxQuery._qCstr
+  -- wrap in assumptions
   asmpExprs <- gets (^.. ctxAssumptions . traverse . to getExpr)
-  let ex' = foldr F.PImp ex asmpExprs
-  (ctxQuery . _qCstr)
-    .= H.Head
-      (H.Reft ex')
-      (RefiningError $ "unable to prove predicate" <+> ticks (pPrint tm) <+> "arising from" <+> sourceDoc)
+  let ex1 = foldr F.PImp ex0 asmpExprs
+  FlexM.debug True $ "ex' =" <+> F.pprint ex1
+
+  let cstr0 =
+        H.Head
+          (H.Reft ex1)
+          (RefiningError $ "unable to prove predicate" <+> ticks (pPrint tm) <+> "arising from" <+> sourceDoc)
+
+  -- wrap in scope
+  scope <- gets (^. ctxScope)
+  let cstr1 =
+        foldr
+          ( \case
+              (ScopeForall tmId tysrt) ->
+                H.All
+                  H.Bind
+                    { bSym = F.symbol tmId,
+                      bSort = getSort tysrt,
+                      bPred = H.Reft (F.prop True),
+                      bMeta = RefiningError $ "intro" <+> pPrint tmId <+> ":" <+> pPrint tysrt
+                    }
+              (ScopeLet tmId tmex tysrt) ->
+                H.All
+                  H.Bind
+                    { bSym = F.symbol tmId,
+                      bSort = getSort tysrt,
+                      bPred = H.Reft $ F.PAtom F.Eq (F.eVar tmId) (getExpr tmex),
+                      bMeta = RefiningError $ "intro" <+> pPrint tmId <+> ":" <+> pPrint tysrt
+                    }
+          )
+          cstr0
+          scope
+
+  -- modify: ctxQuery._qCstr
+  (ctxQuery . _qCstr) .= cstr1
 
 -- ** Check Query
 
@@ -252,12 +309,13 @@ checkTransform :: Function -> CheckingM ()
 checkTransform Function {..} = FlexM.markSection [FlexM.FlexMarkStep ("checkTransform:" <+> pPrint functionId) Nothing] do
   -- introduce parameters
   body <- lift $ transTerm functionBody
+  paramIdTypeSorts <- lift $ functionParameters <&*> \(tmId, ty) -> (tmId,) . TypeSort ty <$> reflType ty
   FlexM.debug True $ "checkTransform: body =" <+> pPrint body
   foldr
-    (\(paramId, _paramType) -> introForall paramId)
+    (uncurry introForall)
     -- check body
     (checkTerm body)
-    functionParameters
+    paramIdTypeSorts
 
 checkConstant :: Crude.Term Type -> CheckingM ()
 checkConstant tm = do

@@ -3,6 +3,7 @@ module Language.Flex.Refining.Reflecting where
 import Control.Category hiding ((.))
 import Control.Monad (forM)
 import Data.Functor
+import Data.Text (pack)
 import qualified Data.Text as Text
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexM as FlexM

@@ -31,8 +31,14 @@ trivialCstrQE =
       cqeTermExprs = mempty
     }
 
+-- intro { x | True }
 makeSimpleQualifier :: FlexM.MonadFlex m => F.Symbol -> m F.Qualifier
-makeSimpleQualifier qName = makeQualifier qName [] (F.prop True)
+makeSimpleQualifier x = makeQualifier x [] (F.prop True)
+
+-- !TODO this doesn't work -- leaving it here as a reminder
+-- -- intro { x | x == ex }
+-- makeReflectedQualifier :: FlexM.MonadFlex m => F.Symbol -> F.Expr -> m F.Qualifier
+-- makeReflectedQualifier x ex = makeQualifier x [] (F.PAtom F.Eq (F.eVar x) ex)
 
 makeQualifier :: FlexM.MonadFlex m => F.Symbol -> [F.QualParam] -> F.Expr -> m F.Qualifier
 makeQualifier qName qParams qBody = do

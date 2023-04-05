@@ -36,6 +36,7 @@ dependencies:
 - pretty
 - directory
 - template-haskell
+- unordered-containers
 
 ghc-options:
 - -Wall

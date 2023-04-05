@@ -71,6 +71,12 @@ instance Pretty Type where
   pPrint (TypeOptional ty) = "Optional" <> angles (pPrint ty)
   pPrint (TypeNamed tyId) = pPrint tyId
 
+data TypeSort = TypeSort {getType :: Type, getSort :: F.Sort}
+  deriving (Show)
+
+instance Pretty TypeSort where
+  pPrint (TypeSort ty srt) = pPrint ty <+> parens ("reflected as:" <+> F.pprint srt)
+
 -- ** Term
 
 data Term
@@ -108,6 +114,7 @@ pPrintShallowPrimitive (PrimitiveIf tm1 _tm2 _tm3) = "if" <+> pPrint tm1 <+> "th
 pPrintShallowPrimitive prim = pPrint prim
 
 data TermExpr = TermExpr {getTerm :: !Term, getExpr :: !F.Expr}
+  deriving (Show)
 
 instance Pretty TermExpr where
   pPrint TermExpr {..} = pPrint getTerm <+> parens ("reflected as:" <+> F.pprint getExpr)
