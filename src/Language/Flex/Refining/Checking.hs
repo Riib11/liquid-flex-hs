@@ -174,7 +174,20 @@ introCase isStruct tm tyId ctorId paramIds paramTypes = localExecM do
   --     makeSimpleQualifier (F.symbol paramId)
   -- (ctxQuery . _qQuals) %= (paramQuals <>)
 
-  ex <- lift $ reflTerm tm
+  -- ex <- lift $ reflTerm tm
+
+  -- !TODO figure out how Rewrites work first
+  -- -- modify: ctxQuery._qMats
+  -- -- > ?measure (ctorId [paramIds]) = tm
+  -- (ctxQuery . _qMats)
+  --   %= ( F.SMeasure
+  --          { smName = F.symbol @String "?measure", -- !TODO
+  --            smDC = F.symbol ctorId,
+  --            smArgs = F.symbol <$> paramIds,
+  --            smBody = ex
+  --          }
+  --          :
+  --      )
 
   -- modify: ctxAssumptionsReversed
   -- > assume tm == ctorId [paramIds]
@@ -190,23 +203,6 @@ introCase isStruct tm tyId ctorId paramIds paramTypes = localExecM do
           )
   propPred <- lift $ reflTerm propTerm
   ctxAssumptionsReversed %= (TermExpr propTerm propPred :)
-
-  -- !TODO figure out how Rewrites work
-  -- modify: ctxQuery._qMats
-  -- > ?measure (ctorId [paramIds]) = tm
-  (ctxQuery . _qMats)
-    %= ( F.SMeasure
-           { smName = F.symbol @String "?measure", -- !TODO
-             smDC = F.symbol ctorId,
-             smArgs = F.symbol <$> paramIds,
-             smBody = ex
-           }
-           :
-       )
-
-  -- !TODO use this if _qMats doesn't work that way I think
-  -- -- modify: _ctxQuery._qCstr
-  -- (ctxQuery . _qCstr) %= ...
 
   return ()
 
