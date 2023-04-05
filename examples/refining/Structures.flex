@@ -17,14 +17,7 @@ const abs2: bit = {
     true
 }
 
-// FAIL
-// const abs3: EqualBits = EqualBits{ b1 = true; b2 = false }
-
-// struct A {
-//     x: int32;
-//     y: int32;
-//     assert (x < y); // !TODO implement primitive `<`
-// }
+// const abs3: EqualBits = EqualBits{ b1 = true; b2 = false } // FAIL
 
 struct NonemptyString {
     content: string;
@@ -32,11 +25,7 @@ struct NonemptyString {
 }
 
 function equalInt32(x: int32, y: int32) -> bit {
-    // !TODO: causes error because renaming is not properly performed in
-    // sequence with embedding 
-
-    // assert !(x == y); 
-    
+    assert !(x == y); 
     x == y
 }
 
@@ -46,8 +35,21 @@ struct EqualInt32s {
     assert equalInt32(x1, x2);
 }
 
-transform EqualInt32s(ei: EqualInt32s) -> bit {
-    assert ei.x1 == ei.x2;
-
+transform test1(ei: EqualInt32s) -> bit {
+    // assert ei.x1 == ei.x2; // FAIL !TODO assume refinements (nested) on inputs
     true
+}
+
+transform idEqualInt32s(ie: EqualInt32s) -> EqualInt32s { ... }
+
+// forall e . (e : EqualInt32s) => equalInt32(e.x1, e.x2)
+
+
+transform test2(a1: int32, a2: int32) -> bit {
+    if (a1 == a2) then {
+        // let ei  = EqualInt32s { x1 = a2; x2 = a2 }; // FAIL !TODO don't reflect `let` as lambda-app, instead follow same solution as reflecting `match`
+        // let ei' = idEqualInt32s(ei);
+        // assert ei'.x1 == ei'.x2; // FAIL !TODO assume refinements (nested) on outputs of transforms
+        true
+    } else true
 }

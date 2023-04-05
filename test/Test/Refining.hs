@@ -18,7 +18,7 @@ import Text.PrettyPrint.HughesPJ (render, text, ($$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 
 -- whether to do FULL test suite or just the specified tests
-_FULL = False
+_FULL = True
 
 _DEBUG = not _FULL
 
@@ -43,9 +43,9 @@ test =
                 -- makeTest_refineModule True "examples/refining/Locals.flex",
                 -- makeTest_refineModule True "examples/refining/Parameters.flex",
                 -- makeTest_refineModule True "examples/refining/StructureConstructors.flex",
-                -- makeTest_refineModule True "examples/refining/Structures.flex" -- !TODO get introducing refined structures to work
+                makeTest_refineModule True "examples/refining/Structures.flex" -- !TODO get introducing refined structures to work
                 -- makeTest_refineModule True "examples/refining/Functions.flex"
-                makeTest_refineModule True "examples/refining/Matches.flex"
+                -- makeTest_refineModule True "examples/refining/Matches.flex"
               ]
               --  [makeTest_refineModule True "examples/refining/Structures.flex"]
               -- [makeTest_refineModule True "examples/refining/Variants.flex"]

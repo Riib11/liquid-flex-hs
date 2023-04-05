@@ -49,24 +49,43 @@ transform test4(o : Optional<bit>) -> bit {
     }
 }
 
-variant Coin {
-    Heads;
-    Tails;
+enum Coin bit {
+    Heads = true;
+    Tails = false;
 }
 
+// newtype Coin {
+//     b : bit;
+//     assert(b == true || b == false)
+// }
+
 transform test5(c : Coin) -> bit {
+    // if c.b == true  then .. else
+    // if c.b == false then ..
+    // else assert(false)
+
+    let c = Coin.Heads;
+
     match c with {
         Coin#Heads => true;
         Coin#Tails => false;
     }
 }
 
+transform test6(c : Coin) -> bit {
+    let c' = c;
+    match c with {
+        Coin#Heads => { assert c  == Coin#Heads; true };
+        Coin#Tails => { assert c' == Coin#Tails; true };
+    }
+}
+
 // !TODO requires reflecting `match`
-// transform test6(c : Coin) -> bit {
-//     let b = 
+// transform test7(c : Coin) -> bit {
+//     assert 
 //         match c with {
 //             Coin#Heads => true;
-//             Coin#Tails => false;
+//             Coin#Tails => true
 //         };
-//     b
+//     true
 // }
