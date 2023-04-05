@@ -9,6 +9,9 @@ module Language.Flex.Refining.Primitive where
 import qualified Language.Fixpoint.Types as F
 import Language.Flex.Refining.PrimitiveTH
 
+-- IMPORTANTLY note that these should match the `*TypeId`s defined in
+-- `Language.Flex.Syntax`. I should make them programmatically match, but
+-- haven't gotten around to it yet.
 $(makePrimitiveSymbols "tuple" "Tuple" ["Tuple"])
 $(makePrimitiveSymbols "optional" "Optional" ["Some", "None"])
 

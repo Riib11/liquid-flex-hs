@@ -57,6 +57,15 @@ instance Pretty ModuleId where
 newtype TypeId = TypeId String
   deriving (Eq, Ord, Show)
 
+tupleTypeId :: TypeId
+tupleTypeId = TypeId "Tuple"
+
+optionalTypeId :: TypeId
+optionalTypeId = TypeId "Optional"
+
+arrayTypeId :: TypeId
+arrayTypeId = TypeId "Array"
+
 instance Pretty TypeId where
   pPrint (TypeId x) = text x
 

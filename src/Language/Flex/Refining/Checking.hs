@@ -2,6 +2,8 @@
 {-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
+{-# HLINT ignore "Redundant flip" #-}
+
 module Language.Flex.Refining.Checking where
 
 import Control.Lens
@@ -111,8 +113,25 @@ introForall tmId tysrt = localExecM do
   -- modify: ctxScopeReversed
   ctxScopeReversed %= (ScopeForall tmId tysrt :)
 
-  -- TODO: intro all assumptions about subterms, wherever we have refined types
-  return ()
+-- !TODO intro all assumptions about subterms, wherever we have refined types
+
+-- !TODO this it not the right way since there can be recursive types, and in
+-- principle its wrong also -- shoud be propogating refinements with refinement types rather htan
+
+-- -- according to the term's type, assume all refinements on its type of
+-- -- nested fields' types
+-- assumedTypeRefinements :: Term -> TypeSort -> CheckingM a -> CheckingM a
+-- assumedTypeRefinements tm tysrt m = do
+--   ex <- lift $ reflTerm tm
+--   case getType tysrt of
+--     (TypeArray ty) -> _wt -- !TODO assume refinement on each element of array
+--     (TypeTuple ty1 ty2) ->
+--       flip comps m $
+--         [ assumedTypeRefinements (TermMember _ _ _ _) _
+--         ]
+--     (TypeOptional ty') -> _wv
+--     (TypeNamed ti) -> _ww
+--     _ -> m
 
 introCase :: Term -> Crude.TypeId -> Crude.TermId -> [Crude.TermId] -> [Type] -> CheckingM a -> CheckingM a
 introCase tm tyId ctorId paramIds paramTypes = localExecM do
