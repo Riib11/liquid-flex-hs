@@ -27,11 +27,11 @@ primitiveDataDecls =
                 { dcName = tuple_TupleConstructorLocatedSymbol,
                   dcFields =
                     [ F.DField
-                        { dfName = primitiveLocated $ F.symbol @String "tupleField1",
+                        { dfName = primitiveLocated $ F.symbol @String "getTupleTuple1",
                           dfSort = F.FVar 0
                         },
                       F.DField
-                        { dfName = primitiveLocated $ F.symbol @String "tupleField2",
+                        { dfName = primitiveLocated $ F.symbol @String "getTupleTuple2",
                           dfSort = F.FVar 1
                         }
                     ]
@@ -53,7 +53,7 @@ primitiveDataDecls =
                 { dcName = optional_SomeConstructorLocatedSymbol,
                   dcFields =
                     [ F.DField
-                        { dfName = primitiveLocated $ F.symbol @String "OptionalSomeField1",
+                        { dfName = primitiveLocated $ F.symbol @String "getOptionalSome1",
                           dfSort = F.FVar 0
                         }
                     ]

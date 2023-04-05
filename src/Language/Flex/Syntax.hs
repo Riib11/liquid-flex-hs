@@ -9,7 +9,7 @@ import Data.List (intercalate)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import qualified Language.Fixpoint.Types as F
-import Text.PrettyPrint.HughesPJClass (Doc, Pretty (pPrint), braces, brackets, colon, comma, doubleQuotes, equals, hcat, hsep, nest, parens, punctuate, quotes, semi, space, text, vcat, ($$), (<+>))
+import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
 import Prelude hiding (Enum)
 
@@ -80,38 +80,6 @@ fromNewtypeIdToTermId (TypeId x) = TermId x
 
 fromStructureIdToTermId :: TypeId -> TermId
 fromStructureIdToTermId (TypeId x) = TermId x
-
--- *** F.Symbolic instances
-
-instance F.Symbolic TypeId where
-  symbol (TypeId x) = F.symbol x
-
--- | The term-level constructor for a value of a type. Relevant for Structures
--- and Newtypes in particular.
-newtype ConstructorSymbol = ConstructorSymbol TypeId
-
--- !TODO is this used anywhere?
-instance F.Symbolic ConstructorSymbol where
-  symbol (ConstructorSymbol (TypeId x)) = F.symbol $ "make" <> x
-
-instance F.Symbolic TermId where
-  symbol (TermId x) = F.symbol x
-
--- raw field as referenced in the refinement of a type refinement
-instance F.Symbolic FieldId where
-  symbol (FieldId y) = F.symbol y
-
--- structure/newtype member accessor function
-instance F.Symbolic (TypeId, FieldId) where
-  symbol (TypeId x, FieldId y) = F.symbol $ x <> "." <> y
-
--- !TODO where should this get used?
-instance F.Symbolic (TypeId, TermId, Int) where
-  symbol (TypeId x, TermId y, fieldIx) = F.symbol $ x <> "#" <> y <> show fieldIx
-
--- variant/enum constructor
-instance F.Symbolic (TypeId, TermId) where
-  symbol (TypeId x, TermId y) = F.symbol $ x <> "#" <> y
 
 -- ** Ty, Tm
 

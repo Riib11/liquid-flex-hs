@@ -171,3 +171,26 @@ instance Pretty Primitive where
 
 eqTerm :: Term -> Term -> Term
 eqTerm tm1 tm2 = TermPrimitive (PrimitiveEq tm1 tm2) TypeBit
+
+-- ** Converting to Symbols
+
+makeTypeIdSymbol :: Crude.TypeId -> F.Symbol
+makeTypeIdSymbol (Crude.TypeId x) = F.symbol x
+
+makeTermIdSymbol :: Crude.TermId -> F.Symbol
+makeTermIdSymbol (Crude.TermId x) = F.symbol x
+
+makeFieldIdSymbol :: Crude.FieldId -> F.Symbol
+makeFieldIdSymbol (Crude.FieldId x) = F.symbol x
+
+makeStructureConstructorSymbol :: Crude.TypeId -> F.Symbol
+makeStructureConstructorSymbol (Crude.TypeId x) = F.symbol ("make" <> x)
+
+makeStructureFieldAccessorSymbol :: (Crude.TypeId, Crude.FieldId) -> F.Symbol
+makeStructureFieldAccessorSymbol (Crude.TypeId x, Crude.FieldId y) = F.symbol ("get" <> x <> y)
+
+makeVariantConstructorSymbol :: (Crude.TypeId, Crude.TermId) -> F.Symbol
+makeVariantConstructorSymbol (Crude.TypeId x, Crude.TermId y) = F.symbol ("make" <> x <> y)
+
+makeVariantFieldAccessorSymbol :: (Crude.TypeId, Crude.TermId, Int) -> F.Symbol
+makeVariantFieldAccessorSymbol (Crude.TypeId x, Crude.TermId y, i) = F.symbol ("get" <> x <> y <> show i)

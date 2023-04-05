@@ -23,25 +23,25 @@ reflTerm (TermLet (Just x) tm1 tm2 _ty) = do
   ex1 <- reflTerm tm1
   srt <- reflType (termType tm1)
   ex2 <- reflTerm tm2
-  return $ F.eApps (F.ELam (F.symbol x, srt) ex2) [ex1]
+  return $ F.eApps (F.ELam (F.symbol (makeTermIdSymbol x), srt) ex2) [ex1]
 reflTerm (TermAssert _te tm _ty) = do
   -- assert is unwrapped
   reflTerm tm
 reflTerm (TermNamed x _) = do
-  return $ F.eVar x
+  return $ F.eVar (makeTermIdSymbol x)
 reflTerm (TermApplication f tms _ty) = do
   exs <- reflTerm `traverse` tms
-  return $ F.eApps (F.eVar f) exs
+  return $ F.eApps (F.eVar (makeTermIdSymbol f)) exs
 reflTerm (TermStructure structId fields _ty) = do
   exs <- reflTerm <$*> fields
-  return $ F.eApps (F.eVar structId) exs
+  return $ F.eApps (F.eVar (makeStructureConstructorSymbol structId)) exs
 reflTerm (TermMember structId tm fieldId _ty) = do
   ex <- reflTerm tm
   -- use the field accessor defined by the datatype
-  return $ F.eApps (F.eVar (F.symbol (structId, fieldId))) [ex]
+  return $ F.eApps (F.eVar (makeStructureFieldAccessorSymbol (structId, fieldId))) [ex]
 reflTerm (TermConstructor varntId ctorId args _ty) = do
   exs <- reflTerm `traverse` args
-  return $ F.eApps (F.eVar (varntId, ctorId)) exs
+  return $ F.eApps (F.eVar (makeVariantConstructorSymbol (varntId, ctorId))) exs
 -- !TODO use field accessors
 reflTerm (TermMatch _tm _branches _ty) = error "reflTerm TermMatch"
 
@@ -90,7 +90,9 @@ reflType (TypeArray ty) =
   error "user LH's built-in arrays"
 reflType (TypeTuple ty1 ty2) = F.fAppTC tuple_TupleFTycon <$> reflType `traverse` [ty1, ty2]
 reflType (TypeOptional ty) = F.fAppTC optional_OptionalFTycon <$> reflType `traverse` [ty]
-reflType (TypeNamed tyId) = return $ F.FObj $ F.symbol tyId
+reflType (TypeNamed tyId) = do
+  locSym <- FlexM.defaultLocated $ makeTypeIdSymbol tyId
+  return $ F.FTC (F.symbolFTycon locSym)
 
 -- Defines symbols:
 -- - type contructor: F.symbol structId
@@ -98,12 +100,12 @@ reflType (TypeNamed tyId) = return $ F.FObj $ F.symbol tyId
 -- - field accessor: F.symbol (structId, fieldId)
 reflStructure :: Structure -> RefiningM F.DataDecl
 reflStructure Structure {..} = do
-  structureTypeLocatedSymbol <- FlexM.defaultLocated $ F.symbol structureId
-  structureConstructorLocatedSymbol <- FlexM.defaultLocated $ F.symbol structureConstructorId
+  structureTypeLocatedSymbol <- FlexM.defaultLocated $ makeTypeIdSymbol structureId
+  structureConstructorLocatedSymbol <- FlexM.defaultLocated $ makeStructureConstructorSymbol structureId
   fields <-
     forM structureFields $
       bimapM
-        (FlexM.defaultLocated . F.symbol . (structureId,))
+        (FlexM.defaultLocated . makeStructureFieldAccessorSymbol . (structureId,))
         reflType
 
   FlexM.debug True $
@@ -147,14 +149,14 @@ reflStructure Structure {..} = do
 -- - field accessors: F.symbol (varntId, ctorId, fieldIx)
 reflVariant :: Variant -> RefiningM F.DataDecl
 reflVariant Variant {..} = do
-  variantTypeLocatedSymbol <- FlexM.defaultLocated $ F.symbol variantId
+  variantTypeLocatedSymbol <- FlexM.defaultLocated $ makeTypeIdSymbol variantId
   ctors <-
     forM variantConstructors $
       \(ctorId, fieldTypes) -> do
-        ctor <- FlexM.defaultLocated (F.symbol (variantId, ctorId))
+        ctor <- FlexM.defaultLocated (makeVariantConstructorSymbol (variantId, ctorId))
         fields <-
           (fieldTypes `zip` [0 :: Int ..]) <&*> \(fieldType, i) -> do
-            fieldSymbol <- FlexM.defaultLocated $ F.symbol (variantId, ctorId, i)
+            fieldSymbol <- FlexM.defaultLocated $ makeVariantFieldAccessorSymbol (variantId, ctorId, i)
             fieldSort <- reflType fieldType
             return (fieldSymbol, fieldSort)
 

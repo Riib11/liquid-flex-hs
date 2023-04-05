@@ -69,7 +69,7 @@ transTerm' (Crude.TermStructure structId fields ty) = do
   return $ TermStructure structId fields' ty
 -- use field accessor F.symbol (structId, fieldId)
 transTerm' term0@(Crude.TermMember tm fieldId ty) = do
-  structId <- case ty of
+  structId <- case Crude.termAnn tm of
     TypeNamed structId -> return structId
     _ -> FlexM.throw $ "expected term TermMember to have type TypeNamed, but instead have" <+> ticks (pPrint term0 <+> ":" <+> pPrint ty)
   tm' <- transTerm tm

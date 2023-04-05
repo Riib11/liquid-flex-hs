@@ -78,12 +78,12 @@ introTransforms = do
     when functionIsTransform do
       funOutputSort <- lift $ reflType functionOutput
       funSort <- lift $ foldr F.FFunc funOutputSort <$> ((reflType . snd) `traverse` functionParameters)
-      modify $ _qCon . at (F.symbol functionId) ?~ funSort
+      modify $ _qCon . at (makeTermIdSymbol functionId) ?~ funSort
 
 introConstants :: StateT Query RefiningM ()
 introConstants =
   asks (^. ctxConstants . to Map.toList) >>= traverse_ \(tmId, tm) -> do
-    let sym = F.symbol tmId
+    let sym = makeTermIdSymbol tmId
     tm' <- lift $ transTerm tm
     ex <- lift $ reflTerm tm'
     srt <- lift $ reflType (termType tm')

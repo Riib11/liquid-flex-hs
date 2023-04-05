@@ -260,7 +260,7 @@ assert sourceDoc tm = flip localExecM checkQuery do
               (ScopeForall tmId tysrt) ->
                 H.All
                   H.Bind
-                    { bSym = F.symbol tmId,
+                    { bSym = makeTermIdSymbol tmId,
                       bSort = getSort tysrt,
                       bPred = H.Reft (F.prop True),
                       bMeta = RefiningError $ "intro" <+> pPrint tmId <+> ":" <+> pPrint tysrt
@@ -268,9 +268,9 @@ assert sourceDoc tm = flip localExecM checkQuery do
               (ScopeLet tmId tmex tysrt) ->
                 H.All
                   H.Bind
-                    { bSym = F.symbol tmId,
+                    { bSym = makeTermIdSymbol tmId,
                       bSort = getSort tysrt,
-                      bPred = H.Reft $ F.PAtom F.Eq (F.eVar tmId) (getExpr tmex),
+                      bPred = H.Reft $ F.PAtom F.Eq (F.eVar (makeTermIdSymbol tmId)) (getExpr tmex),
                       bMeta = RefiningError $ "intro" <+> pPrint tmId <+> ":" <+> pPrint tysrt
                     }
           )
