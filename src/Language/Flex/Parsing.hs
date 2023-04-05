@@ -323,10 +323,10 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
     -- «Term#1» ::=
     -- - «TermLiteral»
     -- - «TermPrimitive» (special cases)
+    -- - «TermMatch»
     -- - «TermBlock»
     -- - «TermStructure»
     -- - «TermNeutral»
-    -- - «TermMatch»
     -- - («Term»)
     term1 :: Parser (Term ())
     term1 =
@@ -391,7 +391,35 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
                 { termPrimitive = PrimitiveIf tm1 tm2 tm3,
                   termAnn = ()
                 },
-          -- starts with special string
+          -- starts with "None"
+          do
+            try $ reserved "None"
+            return $ TermPrimitive PrimitiveNone (),
+          -- starts with "Some"
+          do
+            try $ reserved "Some"
+            tm <- parens parseTerm
+            return $ TermPrimitive (PrimitiveSome tm) (),
+          -- starts with "match"
+          do
+            try $ reserved "match"
+            tm <- parseTerm
+            reserved "with"
+            branches <-
+              braces . many $ do
+                pat <- parsePattern
+                symbol_ "=>"
+                body <- parseTerm
+                semi
+                return (pat, body)
+
+            return
+              TermMatch
+                { termTerm = tm,
+                  termBranches = branches,
+                  termAnn = ()
+                },
+          -- starts with other special string
           do
             termLiteral <- try parseLiteral
             return $
@@ -517,15 +545,37 @@ parseTermBlock = braces go
 
 -- ** Pattern
 
+-- parsePattern :: Parser (Pattern ())
+-- parsePattern =
+--   choice
+--     [ do
+--         reserved "_"
+--         return $ PatternDiscard (),
+--       do
+--         tmId <- parseTermId
+--         return $ PatternNamed tmId ()
+--     ]
+
 parsePattern :: Parser (Pattern ())
 parsePattern =
   choice
     [ do
-        reserved "_"
-        return $ PatternDiscard (),
+        try $ reserved "None"
+        return $ PatternNone (),
       do
+        try $ reserved "Some"
+        tmId <- parens parseTermId
+        return $ PatternSome tmId (),
+      do
+        tyId <- try parseTypeId
+        symbol_ "#"
         tmId <- parseTermId
-        return $ PatternNamed tmId ()
+        params <-
+          choice
+            [ parens $ sepBy parseTermId comma,
+              return []
+            ]
+        return $ PatternConstructor tyId tmId params ()
     ]
 
 -- ** Literal

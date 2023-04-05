@@ -12,6 +12,9 @@ import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility hiding (for)
 
+-- !TODO never need to look up local information during translation, so no need
+-- to put things into context (e.g. bindings at matches and lets)
+
 -- - checks for bad forms
 transType :: Crude.Type -> FlexM Type
 transType (Crude.TypeNumber nt n) = return $ TypeNumber nt n
@@ -45,6 +48,8 @@ transTerm' (Crude.TermLiteral lit ty) = do
 transTerm' term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
   where
     transPrimitive ((Crude.PrimitiveTry te)) = TermPrimitive <$> (PrimitiveTry <$> transTerm te) <*> return ty
+    transPrimitive (Crude.PrimitiveNone) = return $ TermPrimitive PrimitiveNone ty
+    transPrimitive (Crude.PrimitiveSome tm) = TermPrimitive <$> (PrimitiveSome <$> transTerm tm) <*> return ty
     transPrimitive ((Crude.PrimitiveTuple tes)) = do
       tes' <- transTerm `traverse` tes
       let f te1 te2 = TermPrimitive (PrimitiveTuple te1 te2) (TypeTuple (termType te1) (termType te2))
@@ -105,10 +110,19 @@ transTerm' (Crude.TermMatch te' _branches ty) = TermMatch <$> transTerm te' <*> 
 transTerm' term0@Crude.TermProtoNeutral {} = FlexM.throw $ "transTerm should not encounter this form:" <+> pPrint term0
 transTerm' term0@Crude.TermAscribe {} = FlexM.throw $ "transTerm should not encounter this form:" <+> pPrint term0
 
-transPattern :: Crude.Pattern Crude.Type -> Term -> Term -> Type -> FlexM Term
-transPattern (Crude.PatternNamed ti _ty) tm1 tm2 ty = return (TermLet (Just ti) tm1 tm2 ty)
-transPattern (Crude.PatternDiscard _ty) tm1 tm2 ty = return (TermLet Nothing tm1 tm2 ty)
-transPattern (Crude.PatternConstructor {}) _tm1 _tm2 _ty = error "transPattern Crude.PatternConstructor"
+transBranch :: Term -> Crude.Branch Type -> RefiningM Branch
+transBranch _tm (Crude.PatternConstructor ti ti' tis _ty, body) = do
+  let pat' = PatternConstructor ti ti' tis
+  body' <- transTerm body
+  return (pat', body')
+transBranch _tm (Crude.PatternSome ti _ty, body) = do
+  let pat' = PatternSome ti
+  body' <- transTerm body
+  return (pat', body')
+transBranch _tm (Crude.PatternNone _ty, body) = do
+  let pat' = PatternNone
+  body' <- transTerm body
+  return (pat', body')
 
 transRefinement :: Crude.Refinement Type -> RefiningM Term
 transRefinement (Crude.Refinement tm) = transTerm tm

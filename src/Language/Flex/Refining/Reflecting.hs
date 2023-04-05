@@ -47,6 +47,10 @@ reflTerm (TermMatch _tm _branches _ty) = error "reflTerm TermMatch"
 
 reflPrimitive :: Primitive -> RefiningM F.Expr
 reflPrimitive (PrimitiveTry {}) = error "!TODO reflect PrimitiveTry"
+reflPrimitive PrimitiveNone = return $ F.eVar optional_NoneConstructorSymbol
+reflPrimitive (PrimitiveSome tm) = do
+  ex <- reflTerm tm
+  return $ F.eApps (F.eVar optional_SomeConstructorSymbol) [ex]
 reflPrimitive (PrimitiveTuple tm1 tm2) = do
   exs <- reflTerm `traverse` [tm1, tm2]
   return $ F.eApps (F.eVar tuple_TupleConstructorSymbol) exs

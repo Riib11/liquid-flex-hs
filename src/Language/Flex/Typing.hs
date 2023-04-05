@@ -138,8 +138,8 @@ synthTerm term0 = FlexM.markSection
     (TermLet mb_tmId te1 te2 ()) -> do
       te1' <- synthTerm te1
       te2' <- case mb_tmId of
-        Nothing -> introPattern (PatternDiscard (termAnn te1')) $ synthTerm te2
-        Just tmId -> introPattern (PatternNamed tmId (termAnn te1')) $ synthTerm te2
+        Nothing -> synthTerm te2
+        Just tmId -> introTermId tmId (termAnn te1') $ synthTerm te2
       return $ TermLet mb_tmId te1' te2' (termAnn te2')
     (TermAssert tm1 tm2 ()) -> do
       tm1' <- synthCheckTerm TypeBit tm1
@@ -348,6 +348,11 @@ synthPrimitive :: Primitive () -> TypingM (Term MType)
 synthPrimitive (PrimitiveTry te) = do
   te' <- synthTerm te
   return $ TermPrimitive (PrimitiveTry te') (TypeOptional <$> termAnn te')
+synthPrimitive PrimitiveNone = do
+  TermPrimitive PrimitiveNone <$> freshTypeUnifyVar' "None" Nothing
+synthPrimitive (PrimitiveSome tm) = do
+  tm' <- synthTerm tm
+  return $ TermPrimitive (PrimitiveSome tm') (TypeOptional <$> termAnn tm')
 synthPrimitive (PrimitiveCast te) = do
   -- PrimitiveCase is unwrapped during typing, so should not appear in typed
   -- result
@@ -429,12 +434,21 @@ checkTerm' mExpectType term = do
   checkTerm expectType term
 
 synthCheckPattern' :: MType -> Pattern () -> TypingM (Pattern MType)
-synthCheckPattern' mtype (PatternNamed ti ()) = return $ PatternNamed ti mtype
-synthCheckPattern' mtype (PatternDiscard ()) = return $ PatternDiscard mtype
-synthCheckPattern' _mtype (PatternConstructor _mb_tyId _tmId _pats ()) = error "TODO: synthCheckPattern PatternConstructor"
+synthCheckPattern' mtype pat@(PatternConstructor tyId' ctorId tmIds ()) =
+  mtype >>= \case
+    TypeNamed tyId | tyId == tyId' -> return $ PatternConstructor tyId ctorId tmIds mtype
+    ty -> throwTypingError ("can't match on term of type" <+> ticks (pPrint ty)) (Just $ SyntaxPattern pat)
+synthCheckPattern' mtype pat@(PatternNone ()) =
+  mtype >>= \case
+    (TypeOptional _ty) -> return $ PatternNone mtype
+    ty -> throwTypingError ("can't match on term of type" <+> ticks (pPrint ty)) (Just $ SyntaxPattern pat)
+synthCheckPattern' mtype pat@(PatternSome tmId ()) =
+  mtype >>= \case
+    (TypeOptional ty) -> return $ PatternSome tmId mtype
+    ty -> throwTypingError ("can't match on term of type" <+> ticks (pPrint ty)) (Just $ SyntaxPattern pat)
 
-introPattern :: Pattern MType -> TypingM a -> TypingM a
-introPattern pat@(PatternNamed tmId mty) = do
+introTermId :: TermId -> MType -> TypingM a -> TypingM a
+introTermId tmId mty = do
   let app =
         Applicant
           { applicantTermId = tmId,
@@ -442,9 +456,26 @@ introPattern pat@(PatternNamed tmId mty) = do
           }
   let protoapp = fromApplicantToProtoApplicant app
   localM . execStateT $
-    modifyInsertUnique (Just $ SyntaxPattern (void pat)) app (ctxApplicants . at protoapp) app
-introPattern (PatternDiscard _) = id
-introPattern (PatternConstructor _tyId _ctorId pats _) = comps (pats <&> introPattern)
+    modifyInsertUnique Nothing app (ctxApplicants . at protoapp) app
+
+introPattern :: Pattern MType -> TypingM a -> TypingM a
+introPattern (PatternConstructor tyId ctorId tmIds _) m = do
+  lookupType tyId >>= \case
+    CtxVariant Variant {..} -> do
+      tys <- case ctorId `lookup` variantConstructors of
+        Nothing -> FlexM.throw $ "variant" <+> ticks (pPrint variantId) <+> "does not have constructor" <+> ticks (pPrint ctorId)
+        Just tys -> return tys
+      let tmIds_tys = tmIds `zip` tys
+      comps (tmIds_tys <&> uncurry introTermId) m
+    CtxEnum _enum -> do
+      -- enum constructor doesn't have parameters, so can't introduce anything
+      m
+    _ -> FlexM.throw $ "attempted to match on a term of type:" <+> ticks (pPrint tyId)
+introPattern (PatternNone _) m = m
+introPattern (PatternSome tmId mty) m =
+  mty >>= \case
+    TypeOptional ty -> introTermId tmId (normalizeType ty) m
+    ty -> FlexM.throw $ "PatternSome should not have been typed with type" <+> ticks (pPrint ty)
 
 -- ** Unification
 

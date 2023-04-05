@@ -669,6 +669,8 @@ fromApplicantToProtoApplicant (Applicant ti _at) = ProtoApplicant {protoApplican
 data Primitive ann
   = PrimitiveTry (Term ann)
   | PrimitiveCast (Term ann)
+  | PrimitiveNone
+  | PrimitiveSome (Term ann)
   | PrimitiveTuple [Term ann]
   | PrimitiveArray [Term ann]
   | PrimitiveIf (Term ann) (Term ann) (Term ann)
@@ -684,6 +686,8 @@ instance Pretty (Primitive ann) where
   pPrint = \case
     PrimitiveTry tm -> "try" <> parens (pPrint tm)
     PrimitiveCast tm -> "cast" <> parens (pPrint tm)
+    PrimitiveNone -> "None"
+    PrimitiveSome tm -> "Some" <> parens (pPrint tm)
     PrimitiveTuple tms -> parens . hcat . punctuate (comma <> space) . fmap pPrint $ tms
     PrimitiveArray tms -> braces . hcat . punctuate (comma <> space) . fmap pPrint $ tms
     PrimitiveIf tm1 tm2 tm3 -> parens $ hsep ["if", pPrint tm1, "then", pPrint tm2, "else", pPrint tm3]
@@ -696,17 +700,29 @@ instance Pretty (Primitive ann) where
 
 -- ** Pattern
 
+-- data Pattern ann
+--   = PatternNamed TermId ann
+--   | PatternDiscard ann
+--   | PatternConstructor (Maybe TypeId) TermId [Pattern ann] ann
+--   deriving (Eq, Show, Functor, Foldable, Traversable)
+
+-- instance Pretty (Pattern ann) where
+--   pPrint = \case
+--     PatternNamed tmId _ -> pPrint tmId
+--     PatternDiscard _ -> "_"
+--     PatternConstructor tyId tmId pat _ -> (pPrint tyId <> "#" <> pPrint tmId) <+> parens (pPrint pat)
+
 data Pattern ann
-  = PatternNamed TermId ann
-  | PatternDiscard ann
-  | PatternConstructor (Maybe TypeId) TermId [Pattern ann] ann
+  = PatternConstructor TypeId TermId [TermId] ann
+  | PatternSome TermId ann
+  | PatternNone ann
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 instance Pretty (Pattern ann) where
   pPrint = \case
-    PatternNamed tmId _ -> pPrint tmId
-    PatternDiscard _ -> "_"
-    PatternConstructor tyId tmId pat _ -> (pPrint tyId <> "#" <> pPrint tmId) <+> parens (pPrint pat)
+    PatternConstructor tyId tmId tmIds _ -> (pPrint tyId <> "#" <> pPrint tmId) <+> parens (commaList $ pPrint <$> tmIds)
+    PatternSome tmId _ -> "Some" <+> parens (pPrint tmId)
+    PatternNone _ -> "None"
 
 -- ** Type
 
@@ -830,6 +846,8 @@ renamePrimitive :: Map.Map TermId TermId -> Primitive r -> Primitive r
 renamePrimitive tmIds prim = case prim of
   PrimitiveTry te -> PrimitiveTry (renameTerm tmIds te)
   PrimitiveCast te -> PrimitiveCast (renameTerm tmIds te)
+  PrimitiveNone -> PrimitiveNone
+  PrimitiveSome tm -> PrimitiveSome (renameTerm tmIds tm)
   PrimitiveTuple tes -> PrimitiveTuple (renameTerm tmIds <$> tes)
   PrimitiveArray tes -> PrimitiveArray (renameTerm tmIds <$> tes)
   PrimitiveIf te te' te_r -> PrimitiveIf (renameTerm tmIds te) (renameTerm tmIds te') (renameTerm tmIds te_r)

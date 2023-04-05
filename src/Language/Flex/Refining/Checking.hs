@@ -344,9 +344,24 @@ checkBranch matchTerm (PatternConstructor tyId ctorId ctorParamIds) branchTerm =
   ctorParamTypes <- lift $ lookupConstructorParameterTypes tyId ctorId
   introCase matchTerm tyId ctorId ctorParamIds ctorParamTypes $
     checkTerm branchTerm
+checkBranch matchTerm PatternNone branchTerm = flip localExecM (checkTerm branchTerm) do
+  let propTerm = eqTerm matchTerm (TermPrimitive PrimitiveNone (termType matchTerm))
+  propPred <- lift $ reflTerm propTerm
+  ctxAssumptionsReversed
+    %= (TermExpr propTerm propPred :)
+checkBranch matchTerm (PatternSome tmId) branchTerm = flip localExecM (checkTerm branchTerm) do
+  ty <- case termType matchTerm of
+    TypeOptional ty -> return ty
+    ty -> FlexM.throw $ "PatternSome should not have matched term with type" <+> ticks (pPrint ty)
+  let propTerm = eqTerm matchTerm (TermPrimitive (PrimitiveSome (TermNamed tmId ty)) (termType matchTerm))
+  propPred <- lift $ reflTerm propTerm
+  ctxAssumptionsReversed
+    %= (TermExpr propTerm propPred :)
 
 checkPrimitive :: Type -> Primitive -> CheckingM ()
 checkPrimitive _ (PrimitiveTry tm) = checkTerm `traverse_` [tm]
+checkPrimitive _ PrimitiveNone = return ()
+checkPrimitive _ (PrimitiveSome tm) = checkTerm `traverse_` [tm]
 checkPrimitive _ (PrimitiveTuple tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveArray tms) = checkTerm `traverse_` tms
 checkPrimitive _ (PrimitiveIf tm1 tm2 tm3) = do

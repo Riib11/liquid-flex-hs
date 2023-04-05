@@ -94,8 +94,10 @@ data Term
   | TermMember {termStructId :: !Crude.TypeId, termTerm :: !Term, termFieldId :: !Crude.FieldId, termType :: !Type}
   | -- variants
     TermConstructor {termTypeId :: !Crude.TypeId, termConstructorId :: !Crude.TermId, termArguments :: ![Term], termType :: !Type}
-  | TermMatch {termTerm :: !Term, termBranches :: ![(Pattern, Term)], termType :: !Type}
+  | TermMatch {termTerm :: !Term, termBranches :: ![Branch], termType :: !Type}
   deriving (Eq, Show)
+
+type Branch = (Pattern, Term)
 
 instance Pretty Term where
   pPrint (TermLiteral lit _ty) = pPrint lit
@@ -137,15 +139,21 @@ falseTerm = TermLiteral (Crude.LiteralBit False) TypeBit
 
 data Pattern
   = PatternConstructor !Crude.TypeId !Crude.TermId ![Crude.TermId]
+  | PatternNone
+  | PatternSome !Crude.TermId
   deriving (Eq, Show)
 
 instance Pretty Pattern where
   pPrint (PatternConstructor tyId ctorId tmIds) = pPrint tyId <> "#" <> pPrint ctorId <> parens (commaList $ pPrint <$> tmIds)
+  pPrint PatternNone = "None"
+  pPrint (PatternSome ti) = "Some" <> parens (pPrint ti)
 
 -- *** Primitive
 
 data Primitive
   = PrimitiveTry !Term
+  | PrimitiveNone
+  | PrimitiveSome !Term
   | PrimitiveTuple !Term !Term
   | PrimitiveArray ![Term]
   | PrimitiveIf !Term !Term !Term
@@ -159,6 +167,8 @@ data Primitive
 
 instance Pretty Primitive where
   pPrint (PrimitiveTry te) = parens $ "try" <+> pPrint te
+  pPrint PrimitiveNone = "None"
+  pPrint (PrimitiveSome tm) = "Some" <> parens (pPrint tm)
   pPrint (PrimitiveTuple te te') = parens $ commaList $ pPrint <$> [te, te']
   pPrint (PrimitiveArray tes) = brackets $ commaList $ pPrint <$> tes
   pPrint (PrimitiveIf te te' te2) = parens $ "if" <+> pPrint te <+> "then" <+> pPrint te' <+> pPrint te2
