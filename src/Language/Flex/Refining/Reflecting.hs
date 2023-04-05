@@ -32,10 +32,17 @@ reflTerm (TermNamed x _) = do
 reflTerm (TermApplication f tms _ty) = do
   exs <- reflTerm `traverse` tms
   return $ F.eApps (F.eVar f) exs
-reflTerm (TermConstructor tyId ctorId _isStruct args _ty) = do
+reflTerm (TermStructure structId fields _ty) = do
+  exs <- reflTerm <$*> fields
+  return $ F.eApps (F.eVar structId) exs
+reflTerm (TermMember structId tm fieldId _ty) = do
+  ex <- reflTerm tm
+  -- use the field accessor defined by the datatype
+  return $ F.eApps (F.eVar (F.symbol (structId, fieldId))) [ex]
+reflTerm (TermConstructor varntId ctorId args _ty) = do
   exs <- reflTerm `traverse` args
-  return $ F.eApps (F.eVar (tyId, ctorId)) exs
--- !TODO do I need to introduce recursion principle for each datatype?
+  return $ F.eApps (F.eVar (varntId, ctorId)) exs
+-- !TODO use field accessors
 reflTerm (TermMatch _tm _branches _ty) = error "reflTerm TermMatch"
 
 reflPrimitive :: Primitive -> RefiningM F.Expr
@@ -85,6 +92,10 @@ reflType (TypeTuple ty1 ty2) = F.fAppTC tuple_TupleFTycon <$> reflType `traverse
 reflType (TypeOptional ty) = F.fAppTC optional_OptionalFTycon <$> reflType `traverse` [ty]
 reflType (TypeNamed tyId) = return $ F.FObj $ F.symbol tyId
 
+-- Defines symbols:
+-- - type contructor: F.symbol structId
+-- - term constructor: F.symbol structId
+-- - field accessor: F.symbol (structId, fieldId)
 reflStructure :: Structure -> RefiningM F.DataDecl
 reflStructure Structure {..} = do
   structureTypeLocatedSymbol <- FlexM.defaultLocated $ F.symbol structureId
@@ -130,20 +141,24 @@ reflStructure Structure {..} = do
           ]
       }
 
+-- | Defines symbols:
+-- - type constructor: F.symbol varntId
+-- - term constructors: F.symbol (varntId, ctorId)
+-- - field accessors: F.symbol (varntId, ctorId, fieldIx)
 reflVariant :: Variant -> RefiningM F.DataDecl
 reflVariant Variant {..} = do
   variantTypeLocatedSymbol <- FlexM.defaultLocated $ F.symbol variantId
   ctors <-
     forM variantConstructors $
-      bimapM
-        (FlexM.defaultLocated . F.symbol)
-        ( ([0 :: Int ..] `zip`)
-            >>> traverse
-              ( bimapM
-                  (FlexM.defaultLocated . F.symbol . ("param" <>) . show)
-                  reflType
-              )
-        )
+      \(ctorId, fieldTypes) -> do
+        ctor <- FlexM.defaultLocated (F.symbol (variantId, ctorId))
+        fields <-
+          (fieldTypes `zip` [0 :: Int ..]) <&*> \(fieldType, i) -> do
+            fieldSymbol <- FlexM.defaultLocated $ F.symbol (variantId, ctorId, i)
+            fieldSort <- reflType fieldType
+            return (fieldSymbol, fieldSort)
+
+        return (ctor, fields)
   return
     F.DDecl
       { ddTyCon = F.symbolFTycon variantTypeLocatedSymbol,

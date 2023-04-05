@@ -79,6 +79,9 @@ instance Pretty TypeSort where
 
 -- ** Term
 
+-- !TODO: separate structures and variants completely -- everywhere that i use
+-- TerConstructor as if it could be a structure, change to only handle variants
+
 data Term
   = TermLiteral {termLiteral :: !Crude.Literal, termType :: !Type}
   | TermPrimitive {termPrimitive :: !Primitive, termType :: !Type}
@@ -86,7 +89,11 @@ data Term
   | TermAssert {termTerm :: !Term, termBody :: !Term, termType :: !Type}
   | TermNamed {termId :: !Crude.TermId, termType :: !Type}
   | TermApplication {termFunctionId :: !Crude.TermId, termArguments :: ![Term], termType :: !Type}
-  | TermConstructor {termTypeId :: !Crude.TypeId, termConstructorId :: !Crude.TermId, termIsStructure :: !Bool, termArguments :: ![Term], termType :: !Type}
+  | -- structures
+    TermStructure {termStructId :: !Crude.TypeId, termFields :: ![Term], termType :: !Type}
+  | TermMember {termStructId :: !Crude.TypeId, termTerm :: !Term, termFieldId :: !Crude.FieldId, termType :: !Type}
+  | -- variants
+    TermConstructor {termTypeId :: !Crude.TypeId, termConstructorId :: !Crude.TermId, termArguments :: ![Term], termType :: !Type}
   | TermMatch {termTerm :: !Term, termBranches :: ![(Pattern, Term)], termType :: !Type}
   deriving (Eq, Show)
 
@@ -97,8 +104,9 @@ instance Pretty Term where
   pPrint (TermAssert tm1 tm2 _ty) = "assert" <+> pPrint tm1 <+> ";" <+> pPrint tm2
   pPrint (TermNamed tmId _ty) = pPrint tmId
   pPrint (TermApplication funId tms _ty) = pPrint funId <> parens (commaList $ pPrint <$> tms)
-  pPrint (TermConstructor tyId ctorId False tms _ty) = pPrint tyId <> "#" <> pPrint ctorId <> parens (commaList $ pPrint <$> tms)
-  pPrint (TermConstructor tyId ctorId True tms _ty) = pPrint tyId <> "#" <> pPrint ctorId <> braces (commaList $ pPrint <$> tms)
+  pPrint (TermStructure structId fields _ty) = pPrint structId <> braces (commaList $ pPrint <$> fields)
+  pPrint (TermMember _structId tm fieldId _ty) = pPrint tm <> "." <> pPrint fieldId
+  pPrint (TermConstructor varntId ctorId tms _ty) = pPrint varntId <> "#" <> pPrint ctorId <> parens (commaList $ pPrint <$> tms)
   pPrint (TermMatch tm branches _ty) = "match" <+> pPrint tm <+> "with" <+> braces (semiList $ branches <&> \(pat, body) -> pPrint pat <+> "=>" <+> pPrint body)
 
 pPrintShallowTerm :: Term -> Doc

@@ -30,7 +30,7 @@ transType ty@(Crude.TypeUnifyVar _uv _m_uc) = FlexM.throw $ "transType should no
 -- - inlines functions
 -- - homogenizes neutrals
 -- - translates TermMember to TermMatch
--- - translates PrimitiveArray to TermConstructor
+-- - translates PrimitiveArray to TermConstructor -- !TODO don't do this, instead use built-in array datatype
 -- - translates PrimitiveTuple to TermConstructor
 -- - checks for bad forms
 transTerm :: Crude.Term Type -> RefiningM Term
@@ -65,17 +65,15 @@ transTerm' term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
 transTerm' (Crude.TermLet mb_tmId te' te2 ty) = TermLet mb_tmId <$> transTerm te' <*> transTerm te2 <*> return ty
 transTerm' (Crude.TermAssert te' te2 ty) = TermAssert <$> transTerm te' <*> transTerm te2 <*> return ty
 transTerm' (Crude.TermStructure structId fields ty) = do
-  Structure {..} <- lookupStructure structId
-  TermConstructor structId structureConstructorId True <$> (transTerm . snd <$*> fields) <*> return ty
-transTerm' (Crude.TermMember tm fieldId ty) = do
-  -- s.x_i ~~> (match s with S x_1 ... x_n => x_i)
+  fields' <- fields <&*> \(_fieldId, fieldTerm) -> transTerm fieldTerm
+  return $ TermStructure structId fields' ty
+-- use field accessor F.symbol (structId, fieldId)
+transTerm' term0@(Crude.TermMember tm fieldId ty) = do
+  structId <- case ty of
+    TypeNamed structId -> return structId
+    _ -> FlexM.throw $ "expected term TermMember to have type TypeNamed, but instead have" <+> ticks (pPrint term0 <+> ":" <+> pPrint ty)
   tm' <- transTerm tm
-  Structure {..} <- case termType tm' of
-    TypeNamed structId -> lookupStructure structId
-    type_ -> FlexM.throw $ "expected" <+> ticks (pPrint tm') <+> "to have a structure type (TypeNamed), but instead it has type" <+> ticks (pPrint type_)
-  let fieldIds = structureFields <&> Crude.fromFieldIdToTermId . fst
-  let pat = PatternConstructor structureId structureConstructorId fieldIds
-  return $ TermMatch tm' [(pat, TermNamed (Crude.fromFieldIdToTermId fieldId) ty)] ty
+  return $ TermMember structId tm' fieldId ty
 transTerm' (Crude.TermNeutral (Crude.NeutralFunctionApplication funId args mb_cxargs) ty) = do
   let args' = args <> fromMaybe mempty mb_cxargs
   Function {..} <- lookupFunction funId
@@ -97,9 +95,11 @@ transTerm' (Crude.TermNeutral (Crude.NeutralFunctionApplication funId args mb_cx
               Crude.TermLet (Just paramId) argTerm body'' (Crude.termAnn body'')
       -- translate new body
       transTerm body'
-transTerm' (Crude.TermNeutral (Crude.NeutralEnumConstruction newtyId ctorId) ty) = return $ TermConstructor newtyId ctorId False mempty ty
-transTerm' (Crude.TermNeutral (Crude.NeutralVariantConstruction varntId ctorId tes) ty) = TermConstructor varntId ctorId False <$> transTerm `traverse` tes <*> return ty
-transTerm' (Crude.TermNeutral (Crude.NeutralNewtypeConstruction newtyId ctorId te) ty) = TermConstructor newtyId ctorId True <$> (transTerm <$*> [te]) <*> return ty
+transTerm' (Crude.TermNeutral (Crude.NeutralEnumConstruction newtyId ctorId) ty) = return $ TermConstructor newtyId ctorId mempty ty
+transTerm' (Crude.TermNeutral (Crude.NeutralVariantConstruction varntId ctorId tes) ty) = TermConstructor varntId ctorId <$> transTerm `traverse` tes <*> return ty
+transTerm' (Crude.TermNeutral (Crude.NeutralNewtypeConstruction newtyId _ctorId tm) ty) = do
+  tm' <- transTerm tm
+  return $ TermStructure newtyId [tm'] ty
 transTerm' (Crude.TermNeutral (Crude.Neutral ti) ty) = return $ TermNamed ti ty
 transTerm' (Crude.TermMatch te' _branches ty) = TermMatch <$> transTerm te' <*> error "!TODO interpolate into nested matches and lets" <*> return ty
 transTerm' term0@Crude.TermProtoNeutral {} = FlexM.throw $ "transTerm should not encounter this form:" <+> pPrint term0

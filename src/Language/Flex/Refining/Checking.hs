@@ -155,9 +155,8 @@ introForall tmId tysrt = localExecM do
 
   return ()
 
--- introCase :: Term -> Crude.TermId -> [Crude.TermId] -> CheckingM a -> CheckingM a
-introCase :: Bool -> Term -> Crude.TypeId -> Crude.TermId -> [Crude.TermId] -> [Type] -> CheckingM a -> CheckingM a
-introCase isStruct tm tyId ctorId paramIds paramTypes = localExecM do
+introCase :: Term -> Crude.TypeId -> Crude.TermId -> [Crude.TermId] -> [Type] -> CheckingM a -> CheckingM a
+introCase tm tyId ctorId paramIds paramTypes = localExecM do
   paramTypeSorts <-
     lift $
       paramTypes <&*> \ty ->
@@ -197,7 +196,6 @@ introCase isStruct tm tyId ctorId paramIds paramTypes = localExecM do
           ( TermConstructor
               tyId
               ctorId
-              isStruct
               (paramIds `zip` paramTypes <&> uncurry TermNamed)
               (TypeNamed tyId)
           )
@@ -365,9 +363,7 @@ checkTerm' (TermNamed _tmId _) =
   return ()
 checkTerm' (TermApplication _tmId tms _) =
   checkTerm `traverse_` tms
-checkTerm' (TermConstructor _varntId _ctorId _isVarnt@False tms _) =
-  checkTerm `traverse_` tms
-checkTerm' term0@(TermConstructor structId _ctorId _isStruct@True fields _) = do
+checkTerm' term0@(TermStructure structId fields _ty) = do
   -- check fields
   checkTerm `traverse_` fields
 
@@ -381,14 +377,17 @@ checkTerm' term0@(TermConstructor structId _ctorId _isStruct@True fields _) = do
     )
     (assert ("refined structure construction" <+> ticks (pPrintShallowTerm term0)) structPredTerm)
     (fields `zip` structureFields)
+checkTerm' (TermMember _structId tm _fieldId _ty) = do
+  checkTerm tm
+checkTerm' (TermConstructor _varntId _ctorId tms _) = do
+  checkTerm `traverse_` tms
 checkTerm' (TermMatch tm branches _) = do
-  isStruct <- lift $ typeIsStructure (termType tm)
-  forM_ branches (uncurry (checkBranch isStruct tm))
+  forM_ branches (uncurry (checkBranch tm))
 
-checkBranch :: Bool -> Term -> Pattern -> Term -> CheckingM ()
-checkBranch isStruct matchTerm (PatternConstructor tyId ctorId ctorParamIds) branchTerm = do
+checkBranch :: Term -> Pattern -> Term -> CheckingM ()
+checkBranch matchTerm (PatternConstructor tyId ctorId ctorParamIds) branchTerm = do
   ctorParamTypes <- lift $ lookupConstructorParameterTypes tyId ctorId
-  introCase isStruct matchTerm tyId ctorId ctorParamIds ctorParamTypes $
+  introCase matchTerm tyId ctorId ctorParamIds ctorParamTypes $
     checkTerm branchTerm
 
 checkPrimitive :: Type -> Primitive -> CheckingM ()
