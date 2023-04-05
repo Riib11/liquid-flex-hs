@@ -45,3 +45,9 @@ struct EqualInt32s {
     x2: int32;
     assert equalInt32(x1, x2);
 }
+
+transform EqualInt32s(ei: EqualInt32s) -> bit {
+    assert ei.x1 == ei.x2;
+
+    true
+}
