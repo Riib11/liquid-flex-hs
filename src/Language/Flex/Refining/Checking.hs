@@ -221,9 +221,8 @@ assert sourceDoc tm = flip localExecM checkQuery do
   -- modify: ctxAssertion
   ctxAssertion .= TermExpr tm ex0
 
-  -- assumptions are accounted by as implications in front of the asserted
-  -- expression
-
+  -- True: use implications
+  -- False: use witnesses
   cstr0 <-
     if False
       then do
