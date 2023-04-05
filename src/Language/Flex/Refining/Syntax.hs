@@ -187,6 +187,9 @@ eqTerm tm1 tm2 = TermPrimitive (PrimitiveEq tm1 tm2) TypeBit
 makeTypeIdSymbol :: Crude.TypeId -> F.Symbol
 makeTypeIdSymbol (Crude.TypeId x) = F.symbol x
 
+makeStructurePropertySymbol :: Crude.TypeId -> F.Symbol
+makeStructurePropertySymbol (Crude.TypeId x) = F.symbol ("property" <> x)
+
 makeTermIdSymbol :: Crude.TermId -> F.Symbol
 makeTermIdSymbol (Crude.TermId x) = F.symbol x
 

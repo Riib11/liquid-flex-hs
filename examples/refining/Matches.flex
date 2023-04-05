@@ -61,11 +61,12 @@ transform test5(c : Coin) -> bit {
     }
 }
 
-transform test6(c : Coin) -> bit {
-    let b = 
-        match c with {
-            Coin#Heads => true;
-            Coin#Tails => false;
-        };
-    b
-}
+// !TODO requires reflecting `match`
+// transform test6(c : Coin) -> bit {
+//     let b = 
+//         match c with {
+//             Coin#Heads => true;
+//             Coin#Tails => false;
+//         };
+//     b
+// }

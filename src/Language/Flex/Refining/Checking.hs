@@ -12,11 +12,13 @@ import Control.Monad.State
 import Control.Monad.Writer
 import Data.Foldable hiding (toList)
 import Data.HashMap.Strict (toList)
+import qualified Data.Map as Map
 import Data.Maybe
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
+import Language.Flex.Refining.Primitive (primitiveDataDecls)
 import Language.Flex.Refining.Query
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Reflecting
@@ -44,6 +46,7 @@ type CheckingM a = ReaderT CheckingCtx RefiningM a
 data CheckingCtx = CheckingCtx
   { _ctxQuery :: Query,
     _ctxScopeReversed :: [ScopeItem],
+    _ctxStructureProperties :: [H.Bind RefiningError],
     _ctxAssumptionsReversed :: [TermExpr],
     _ctxAssertion :: TermExpr
   }
@@ -85,14 +88,8 @@ makeLenses ''CheckingCtx
 
 runCheckingM :: CheckingM a -> RefiningM a
 runCheckingM m = do
-  query <- initQuery
-  runReaderT m $
-    CheckingCtx
-      { _ctxQuery = query,
-        _ctxScopeReversed = mempty,
-        _ctxAssumptionsReversed = mempty,
-        _ctxAssertion = TermExpr trueTerm (F.prop True) -- will be overwritten
-      }
+  ctx <- initCheckingContext
+  runReaderT m ctx
 
 ctxScope :: Functor f => ([_] -> f [_]) -> CheckingCtx -> f CheckingCtx
 ctxScope = ctxScopeReversed . reversed
@@ -234,6 +231,136 @@ assert sourceDoc tm = flip localExecM checkQuery do
 
   -- modify: ctxQuery._qCstr
   (ctxQuery . _qCstr) .= cstr1
+
+-- ** Initialize Context
+
+initCheckingContext :: RefiningM CheckingCtx
+initCheckingContext = do
+  let query =
+        H.Query
+          { qQuals = mempty,
+            qVars = mempty,
+            qCstr = H.CAnd [], -- will be overwritten during checking
+            qCon = mempty,
+            qDis = mempty,
+            qEqns = mempty,
+            qMats = mempty,
+            qData = mempty
+          }
+  let ctx =
+        CheckingCtx
+          { _ctxQuery = query,
+            _ctxScopeReversed = mempty,
+            _ctxAssumptionsReversed = mempty,
+            _ctxAssertion = TermExpr trueTerm (F.prop True) -- will be overwritten
+          }
+  flip execStateT ctx $ do
+    -- intro datatypes
+    -- - intro primitive datatypes
+    -- - intro user datatypes
+    modify $ ctxQuery . _qData %~ (primitiveDataDecls <>)
+    introUserDatatypes
+
+    -- intro transforms (as uninterpreted functions)
+    introTransforms
+
+    -- intro constants (as equations)
+    introConstants
+
+    return ()
+
+introUserDatatypes :: StateT CheckingCtx RefiningM ()
+introUserDatatypes = do
+  -- intro structures
+  structs <- asks (^. ctxStructures)
+  forM_ (Map.elems structs) \struct@Structure {..} -> do
+    dd <- lift $ reflStructure struct
+    modify $ ctxQuery . _qData %~ (dd :)
+
+    -- intro refinement properties
+    {-
+      struct A {
+        b: B;
+        assert P(b);
+      }
+
+      struct B {
+        y: A;
+        assert Q(y);
+      }
+
+      predicate isA(a : A)
+      axiom forall a . isA(a) ==>
+        P(a.b) && -- refinement of A
+        isB(a.b)  -- refinement of B (inherited)
+
+      predicate isB(b : B)
+      axiom forall b . isB(b) ==>
+        P(b.a) && -- refinement of B
+        isA(b.a)  -- refinement of A (inherited)
+    -}
+
+    structSort <- lift $ reflType (TypeNamed structureId)
+    let structPropSymbol = makeStructurePropertySymbol structureId
+
+    -- predicate is<Struct>(s : <Struct>)
+    (ctxQuery . _qCon . at structPropSymbol) ?= F.FFunc structSort F.boolSort
+
+    -- is<Struct>(instance) = P[x := instance.x, y := instance.y]
+    let structPropTerm = error "TODO"
+
+    ctxStructureProperties
+      %= ( H.Bind
+             { bSym = F.symbol . render $ "witness to assumption of structure property" <+> F.pprint structPropSymbol,
+               bSort = F.FFunc structSort F.boolSort,
+               bPred =
+                 H.Reft
+                   ( F.PAll
+                       [(F.symbol @String "instance", structSort)]
+                       ( F.eApps (F.eVar structPropSymbol) [F.eVar @String "instance"]
+                           `F.PImp` structPropTerm
+                       )
+                   ),
+               bMeta = RefiningError $ "intro of witness to assumption of structure property" <+> F.pprint structPropSymbol
+             }
+             :
+         )
+
+  -- intro variants
+  varnts <- asks (^. ctxVariants)
+  forM_ (Map.elems varnts) \varnt -> do
+    dd <- lift $ reflVariant varnt
+    modify $ ctxQuery . _qData %~ (dd :)
+
+introTransforms :: StateT CheckingCtx RefiningM ()
+introTransforms = do
+  -- intro transforms as uninterpreted functions (in Query.qCon)
+  funs <- asks (^. ctxFunctions)
+  forM_ (Map.elems funs) \Function {..} ->
+    when functionIsTransform do
+      funOutputSort <- lift $ reflType functionOutput
+      funSort <- lift $ foldr F.FFunc funOutputSort <$> ((reflType . snd) `traverse` functionParameters)
+      modify $ ctxQuery . _qCon . at (makeTermIdSymbol functionId) ?~ funSort
+
+introConstants :: StateT CheckingCtx RefiningM ()
+introConstants = do
+  -- intro constant as  equation
+  asks (^. ctxConstants . to Map.toList) >>= traverse_ \(tmId, tm) -> do
+    let sym = makeTermIdSymbol tmId
+    tm' <- lift $ transTerm tm
+    ex <- lift $ reflTerm tm'
+    srt <- lift $ reflType (termType tm')
+    modify $
+      (ctxQuery . _qEqns)
+        %~ ( F.Equ
+               { eqName = sym,
+                 eqArgs = [],
+                 eqBody = ex,
+                 eqSort = srt,
+                 eqRec = False
+               }
+               :
+           )
 
 -- ** Check Query
 

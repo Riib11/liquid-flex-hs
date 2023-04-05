@@ -112,24 +112,6 @@ reflStructure Structure {..} = do
         (FlexM.defaultLocated . makeStructureFieldAccessorSymbol . (structureId,))
         reflType
 
-  FlexM.debug True $
-    F.pprint
-      F.DDecl
-        { ddTyCon = F.symbolFTycon structureTypeLocatedSymbol,
-          ddVars = 0,
-          ddCtors =
-            [ F.DCtor
-                { dcName = structureConstructorLocatedSymbol,
-                  dcFields =
-                    fields <&> \(fieldLocatedSymbol, fieldSort) ->
-                      F.DField
-                        { dfName = fieldLocatedSymbol,
-                          dfSort = fieldSort
-                        }
-                }
-            ]
-        }
-
   return
     F.DDecl
       { ddTyCon = F.symbolFTycon structureTypeLocatedSymbol,
