@@ -277,54 +277,75 @@ introUserDatatypes = do
     dd <- lift $ reflStructure struct
     modify $ ctxQuery . _qData %~ (dd :)
 
-    -- intro refinement properties
-    {-
-      struct A {
-        b: B;
-        assert P(b);
-      }
+  -- intro refinement properties
+  {-
+    struct A {
+      b: B;
+      assert P(b);
+    }
 
-      struct B {
-        y: A;
-        assert Q(y);
-      }
+    struct B {
+      y: A;
+      assert Q(y);
+    }
 
-      predicate isA(a : A)
-      axiom forall a . isA(a) ==>
-        P(a.b) && -- refinement of A
-        isB(a.b)  -- refinement of B (inherited)
+    predicate isA(a : A)
+    axiom forall a . isA(a) ==>
+      P(a.b) && -- refinement of A
+      isB(a.b)  -- refinement of B (inherited)
 
-      predicate isB(b : B)
-      axiom forall b . isB(b) ==>
-        P(b.a) && -- refinement of B
-        isA(b.a)  -- refinement of A (inherited)
-    -}
+    predicate isB(b : B)
+    axiom forall b . isB(b) ==>
+      P(b.a) && -- refinement of B
+      isA(b.a)  -- refinement of A (inherited)
+  -}
 
-    structSort <- lift $ reflType (TypeNamed structureId)
-    let structPropSymbol = makeStructurePropertySymbol structureId
+  {- !TODO need to implement substTerm for Refining terms
 
-    -- predicate is<Struct>(s : <Struct>)
-    (ctxQuery . _qCon . at structPropSymbol) ?= F.FFunc structSort F.boolSort
+      structSort <- lift $ reflType (TypeNamed structureId)
+      let structPropSymbol = makeStructurePropertySymbol structureId
 
-    -- is<Struct>(instance) = P[x := instance.x, y := instance.y]
-    let structPropTerm = error "TODO"
+      -- predicate is<Struct>(s : <Struct>)
+      (ctxQuery . _qCon . at structPropSymbol) ?= F.FFunc structSort F.boolSort
 
-    ctxStructureProperties
-      %= ( H.Bind
-             { bSym = F.symbol . render $ "witness to assumption of structure property" <+> F.pprint structPropSymbol,
-               bSort = F.FFunc structSort F.boolSort,
-               bPred =
-                 H.Reft
-                   ( F.PAll
-                       [(F.symbol @String "instance", structSort)]
-                       ( F.eApps (F.eVar structPropSymbol) [F.eVar @String "instance"]
-                           `F.PImp` structPropTerm
-                       )
-                   ),
-               bMeta = RefiningError $ "intro of witness to assumption of structure property" <+> F.pprint structPropSymbol
-             }
-             :
-         )
+      -- is<Struct>(instance) = P[x := instance.x, y := instance.y]
+
+      -- let structPropTerm =
+      --       Crude.substTerm
+      --         ( Map.fromList $
+      --             structureFields <&> \(fieldId, fieldType) ->
+      --               ( Crude.fromFieldIdToTermId fieldId,
+      --                 Crude.TermMember (Crude.TermNeutral (Crude.Neutral (Crude.TermId "instance")) (TypeNamed structureId)) fieldId fieldType
+      --               )
+      --         )
+      --         (Crude.unRefinement structureRefinement)
+
+      structPropRawTerm <- lift $ transTerm (Crude.unRefinement structureRefinement)
+
+      let structPropTerm =
+            substTerm
+              _
+              structPropRawTerm
+
+      structPropPred <- lift $ reflTerm _
+
+      ctxStructureProperties
+        %= ( H.Bind
+               { bSym = F.symbol . render $ "witness to assumption of structure property" <+> F.pprint structPropSymbol,
+                 bSort = F.FFunc structSort F.boolSort,
+                 bPred =
+                   H.Reft
+                     ( F.PAll
+                         [(F.symbol @String "instance", structSort)]
+                         ( F.eApps (F.eVar structPropSymbol) [F.eVar @String "instance"]
+                             `F.PImp` structPropTerm
+                         )
+                     ),
+                 bMeta = RefiningError $ "intro of witness to assumption of structure property" <+> F.pprint structPropSymbol
+               }
+               :
+           )
+  -}
 
   -- intro variants
   varnts <- asks (^. ctxVariants)

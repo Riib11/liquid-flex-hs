@@ -858,20 +858,32 @@ renamePrimitive tmIds prim = case prim of
   PrimitiveAdd te te' -> PrimitiveAdd (renameTerm tmIds te) (renameTerm tmIds te')
   PrimitiveExtends tm tyId -> PrimitiveExtends (renameTerm tmIds tm) tyId
 
--- -- substTerm x a b = b[x := a]
--- substTerm :: TermId -> Term r -> Term r -> Term r
--- substTerm tmId tm' = go
---   where
---     go term = case term of
---       TermLiteral _lit _r -> term
---       TermPrimitive _prim _r -> term
---       TermBlock block r -> TermBlock (bimap (goStatement <$>) go block) r
---       TermStructure ti fields r -> TermStructure ti (second go <$> fields) r
---       TermMember te fi r -> TermMember (go te) fi r
---       TermNeutral (Applicant (Nothing, tmId')) Nothing Nothing _r | tmId == tmId' -> tm'
---       TermNeutral ap m_tes m_te's r -> TermNeutral ap (go <$$> m_tes) (go <$$> m_te's) r
---       TermAscribe te ty r -> TermAscribe (go te) ty r
---       TermMatch te branches r -> TermMatch (go te) (second go <$> branches) r
---     goStatement = \case
---       StatementLet pat te -> StatementLet pat (go te)
---       StatementAssert te -> StatementAssert (go te)
+-- substTerm x a b = b[x := a]
+substTerm :: Map.Map TermId (Term r) -> Term r -> Term r
+substTerm _sub term@(TermLiteral _lit _r) = term
+substTerm sub (TermPrimitive (PrimitiveTry te) r) = TermPrimitive (PrimitiveTry (substTerm sub te)) r
+substTerm sub (TermPrimitive (PrimitiveCast te) r) = TermPrimitive (PrimitiveCast (substTerm sub te)) r
+substTerm _sub (TermPrimitive PrimitiveNone r) = TermPrimitive PrimitiveNone r
+substTerm sub (TermPrimitive (PrimitiveSome te) r) = TermPrimitive (PrimitiveSome (substTerm sub te)) r
+substTerm sub (TermPrimitive (PrimitiveTuple tes) r) = TermPrimitive (PrimitiveTuple (substTerm sub <$> tes)) r
+substTerm sub (TermPrimitive (PrimitiveArray tes) r) = TermPrimitive (PrimitiveArray (substTerm sub <$> tes)) r
+substTerm sub (TermPrimitive (PrimitiveIf te te' te_r) r) = TermPrimitive (PrimitiveIf (substTerm sub te) (substTerm sub te') (substTerm sub te_r)) r
+substTerm sub (TermPrimitive (PrimitiveAnd te te') r) = TermPrimitive (PrimitiveAnd (substTerm sub te) (substTerm sub te')) r
+substTerm sub (TermPrimitive (PrimitiveOr te te') r) = TermPrimitive (PrimitiveOr (substTerm sub te) (substTerm sub te')) r
+substTerm sub (TermPrimitive (PrimitiveNot te) r) = TermPrimitive (PrimitiveNot (substTerm sub te)) r
+substTerm sub (TermPrimitive (PrimitiveEq te te') r) = TermPrimitive (PrimitiveEq (substTerm sub te) (substTerm sub te')) r
+substTerm sub (TermPrimitive (PrimitiveAdd te te') r) = TermPrimitive (PrimitiveAdd (substTerm sub te) (substTerm sub te')) r
+substTerm sub (TermPrimitive (PrimitiveExtends te ti) r) = TermPrimitive (PrimitiveExtends (substTerm sub te) ti) r
+substTerm sub (TermLet m_ti te te' r) = TermLet m_ti (substTerm sub te) (substTerm sub te') r
+substTerm sub (TermAssert te te' r) = TermAssert (substTerm sub te) (substTerm sub te') r
+substTerm sub (TermStructure ti fields r) = TermStructure ti (fields <&> second (substTerm sub)) r
+substTerm sub (TermMember te fi r) = TermMember (substTerm sub te) fi r
+substTerm sub (TermNeutral (NeutralFunctionApplication ti tes m_tes) r) = TermNeutral (NeutralFunctionApplication ti (substTerm sub <$> tes) (substTerm sub <$$> m_tes)) r
+substTerm _sub (TermNeutral (NeutralEnumConstruction ti ti') r) = TermNeutral (NeutralEnumConstruction ti ti') r
+substTerm sub (TermNeutral (NeutralVariantConstruction ti ti' tes) r) = TermNeutral (NeutralVariantConstruction ti ti' (substTerm sub <$> tes)) r
+substTerm sub (TermNeutral (NeutralNewtypeConstruction ti ti' te) r) = TermNeutral (NeutralNewtypeConstruction ti ti' (substTerm sub te)) r
+substTerm sub (TermNeutral (Neutral ti) _r) | Just tm' <- sub Map.!? ti = tm'
+substTerm _sub (TermNeutral (Neutral ti) r) = TermNeutral (Neutral ti) r
+substTerm sub (TermAscribe te ty r) = TermAscribe (substTerm sub te) ty r
+substTerm sub (TermMatch te branches r) = TermMatch (substTerm sub te) (branches <&> second (substTerm sub)) r
+substTerm _sub (TermProtoNeutral (ProtoNeutral {}) _r) = error "should never try to subst a protoneutral"
