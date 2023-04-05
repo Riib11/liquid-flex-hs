@@ -6,7 +6,7 @@ struct EqualTo1 {
 }
 
 transform foo() -> bit {
-    let _ = EqualTo1 { x = 10 };
+    let _ = EqualTo1 { x = 1 };
 
-    true 
+    true
 }

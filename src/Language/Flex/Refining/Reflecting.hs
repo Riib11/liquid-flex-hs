@@ -92,8 +92,27 @@ reflStructure Structure {..} = do
   fields <-
     forM structureFields $
       bimapM
-        (FlexM.defaultLocated . F.symbol)
+        (FlexM.defaultLocated . F.symbol . (structureId,))
         reflType
+
+  FlexM.debug True $
+    F.pprint
+      F.DDecl
+        { ddTyCon = F.symbolFTycon structureTypeLocatedSymbol,
+          ddVars = 0,
+          ddCtors =
+            [ F.DCtor
+                { dcName = structureConstructorLocatedSymbol,
+                  dcFields =
+                    fields <&> \(fieldLocatedSymbol, fieldSort) ->
+                      F.DField
+                        { dfName = fieldLocatedSymbol,
+                          dfSort = fieldSort
+                        }
+                }
+            ]
+        }
+
   return
     F.DDecl
       { ddTyCon = F.symbolFTycon structureTypeLocatedSymbol,
