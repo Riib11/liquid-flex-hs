@@ -41,7 +41,8 @@ test =
           else
             [ [ -- makeTest_refineModule True "examples/refining/Tuples.flex",
                 -- makeTest_refineModule True "examples/refining/Locals.flex",
-                makeTest_refineModule True "examples/refining/Parameters.flex"
+                -- makeTest_refineModule True "examples/refining/Parameters.flex"
+                makeTest_refineModule True "examples/refining/StructureConstructors.flex"
               ]
               --  [makeTest_refineModule True "examples/refining/Structures.flex"]
               -- [makeTest_refineModule True "examples/refining/Variants.flex"]
