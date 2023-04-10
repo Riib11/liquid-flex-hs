@@ -395,9 +395,9 @@ inferTypeRefinements _tm TypeBit = return ()
 inferTypeRefinements _tm TypeChar = return ()
 inferTypeRefinements tm (TypeArray ty) = _w1V
 inferTypeRefinements tm (TypeTuple ty1 ty2) = do
-  inferTypeRefinements (TermApplication _ _) ty1
-  inferTypeRefinements _ ty2
-inferTypeRefinements tm (TypeOptional ty') = _w1X
+  inferTypeRefinements (TermPrimitive (PrimitiveFirst tm) ty1) ty1
+  inferTypeRefinements (TermPrimitive (PrimitiveSecond tm) ty2) ty2
+inferTypeRefinements tm (TypeOptional ty) = _w1X
 inferTypeRefinements tm (TypeNamed ti) = _w1Y
 
 introConstants :: StateT CheckingCtx RefiningM ()

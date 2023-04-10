@@ -174,6 +174,8 @@ data Primitive
   | PrimitiveNone
   | PrimitiveSome !Term
   | PrimitiveTuple !Term !Term
+  | PrimitiveFirst !Term
+  | PrimitiveSecond !Term
   | PrimitiveArray ![Term]
   | PrimitiveIf !Term !Term !Term
   | PrimitiveAnd !Term !Term
