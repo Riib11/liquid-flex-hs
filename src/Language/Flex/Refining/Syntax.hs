@@ -135,6 +135,14 @@ trueTerm = TermLiteral (Crude.LiteralBit True) TypeBit
 falseTerm :: Term
 falseTerm = TermLiteral (Crude.LiteralBit False) TypeBit
 
+-- pow2Term n = 2^n
+pow2Term :: Integer -> Term
+pow2Term n = TermLiteral (Crude.LiteralInteger (2 ^ n)) (TypeNumber Crude.TypeInt 32)
+
+-- pow2Term n = -(2^n)
+negPow2Term :: Integer -> Term
+negPow2Term n = TermLiteral (Crude.LiteralInteger (-(2 ^ n))) (TypeNumber Crude.TypeInt 32)
+
 -- *** Pattern
 
 data Pattern
@@ -162,6 +170,8 @@ data Primitive
   | PrimitiveNot !Term
   | PrimitiveEq !Term !Term
   | PrimitiveAdd !Term !Term
+  | PrimitiveLe !Term !Term
+  | PrimitiveLt !Term !Term
   | PrimitiveExtends !Term !Crude.TypeId
   deriving (Eq, Show)
 
@@ -177,6 +187,8 @@ instance Pretty Primitive where
   pPrint (PrimitiveNot te) = parens $ "!" <+> pPrint te
   pPrint (PrimitiveEq te te') = parens $ pPrint te <+> "==" <+> pPrint te'
   pPrint (PrimitiveAdd te te') = parens $ pPrint te <+> "+" <+> pPrint te'
+  pPrint (PrimitiveLe te te') = parens $ pPrint te <+> "<=" <+> pPrint te'
+  pPrint (PrimitiveLt te te') = parens $ pPrint te <+> "<" <+> pPrint te'
   pPrint (PrimitiveExtends te structId) = parens $ pPrint te <+> "extends" <+> pPrint structId
 
 eqTerm :: Term -> Term -> Term
