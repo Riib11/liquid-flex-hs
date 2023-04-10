@@ -3,7 +3,8 @@
 Limitations of prototype:
 - structure fields must have unique names
 
-- [ ] assume refinements on parameteers of transforms and outputs of transform calls
+- [ ] assume refinements on parameters of transforms and outputs of transform
+  calls
 - [ ] reflecting `match`
 - [x] fix named type normalization
 - [x] Enums
