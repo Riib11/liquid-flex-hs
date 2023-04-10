@@ -129,19 +129,30 @@ data TermExpr = TermExpr {getTerm :: !Term, getExpr :: !F.Expr}
 instance Pretty TermExpr where
   pPrint TermExpr {..} = pPrint getTerm <+> parens ("reflected as:" <+> F.pprint getExpr)
 
+data QualTermExpr = QualTermExpr {getQuals :: [(Crude.TermId, Type)], getTermExpr :: TermExpr}
+
+instance Pretty QualTermExpr where
+  pPrint QualTermExpr {..} = "forall" <+> commaList (getQuals <&> \(tmId, ty) -> pPrint tmId <+> ":" <+> pPrint ty) <+> pPrint getTermExpr
+
 trueTerm :: Term
 trueTerm = TermLiteral (Crude.LiteralBit True) TypeBit
 
 falseTerm :: Term
 falseTerm = TermLiteral (Crude.LiteralBit False) TypeBit
 
--- pow2Term n = 2^n
-pow2Term :: Integer -> Term
-pow2Term n = TermLiteral (Crude.LiteralInteger (2 ^ n)) (TypeNumber Crude.TypeInt 32)
+-- -- pow2Term n = 2^n
+-- pow2Term :: Integer -> Term
+-- pow2Term n = TermLiteral (Crude.LiteralInteger (2 ^ n)) (TypeNumber Crude.TypeInt 32)
 
--- pow2Term n = -(2^n)
-negPow2Term :: Integer -> Term
-negPow2Term n = TermLiteral (Crude.LiteralInteger (-(2 ^ n))) (TypeNumber Crude.TypeInt 32)
+-- -- pow2Term n = -(2^n)
+-- negPow2Term :: Integer -> Int  Term
+-- negPow2Term n size  = TermLiteral (Crude.LiteralInteger (-(2 ^ n))) (TypeNumber Crude.TypeInt size )
+
+intTerm :: Integer -> Integer -> Term
+intTerm n size = TermLiteral (Crude.LiteralInteger n) (TypeNumber Crude.TypeInt size)
+
+floatTerm :: Double -> Integer -> Term
+floatTerm x size = TermLiteral (Crude.LiteralFloat x) (TypeNumber Crude.TypeInt size)
 
 -- *** Pattern
 

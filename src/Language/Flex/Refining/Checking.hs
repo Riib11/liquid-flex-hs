@@ -16,6 +16,7 @@ import qualified Data.Map as Map
 import Data.Maybe
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
+import Language.Flex.FlexM (freshenTermId)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
 import Language.Flex.Refining.Primitive (primitiveDataDecls)
@@ -46,7 +47,7 @@ type CheckingM a = ReaderT CheckingCtx RefiningM a
 data CheckingCtx = CheckingCtx
   { _ctxQuery :: Query,
     _ctxScopeReversed :: [ScopeItem],
-    _ctxStructureProperties :: [H.Bind RefiningError],
+    -- _ctxStructureProperties :: [H.Bind RefiningError],
     _ctxAssumptionsReversed :: [TermExpr],
     _ctxAssertion :: TermExpr
   }
@@ -101,13 +102,10 @@ introBinding :: Crude.TermId -> Term -> CheckingM a -> CheckingM a
 introBinding tmId tm = localExecM do
   ex <- lift $ reflTerm tm
   srt <- lift $ reflType $ termType tm
-
-  -- modify: ctxScopeReversed
   ctxScopeReversed %= (ScopeLet tmId (TermExpr tm ex) (TypeSort (termType tm) srt) :)
 
 introForall :: Crude.TermId -> TypeSort -> CheckingM a -> CheckingM a
 introForall tmId tysrt = localExecM do
-  -- modify: ctxScopeReversed
   ctxScopeReversed %= (ScopeForall tmId tysrt :)
 
 -- !TODO intro all assumptions about subterms, wherever we have refined types
@@ -137,10 +135,8 @@ introCase tm tyId ctorId paramIds paramTypes = localExecM do
       paramTypes <&*> \ty ->
         TypeSort ty <$> reflType ty
 
-  -- modify: ctxScopeReversed
   ctxScopeReversed %= ((uncurry ScopeForall <$> (paramIds `zip` paramTypeSorts)) <>)
 
-  -- modify: ctxAssumptionsReversed
   -- > assume tm == ctorId [paramIds]
   let propTerm =
         eqTerm
@@ -164,7 +160,6 @@ assume propTerm = localExecM do
 assert :: Doc -> Term -> CheckingM ()
 assert sourceDoc tm = flip localExecM checkQuery do
   ex0 <- lift $ reflTerm tm
-  -- modify: ctxAssertion
   ctxAssertion .= TermExpr tm ex0
 
   -- True: use implications
@@ -229,7 +224,6 @@ assert sourceDoc tm = flip localExecM checkQuery do
           cstr0
           scope
 
-  -- modify: ctxQuery._qCstr
   (ctxQuery . _qCstr) .= cstr1
 
 -- ** Initialize Context
@@ -258,7 +252,7 @@ initCheckingContext = do
     -- intro datatypes
     -- - intro primitive datatypes
     -- - intro user datatypes
-    modify $ ctxQuery . _qData %~ (primitiveDataDecls <>)
+    ctxQuery . _qData %= (primitiveDataDecls <>)
     introUserDatatypes
 
     -- intro transforms (as uninterpreted functions)
@@ -275,7 +269,7 @@ introUserDatatypes = do
   structs <- asks (^. ctxStructures)
   forM_ (Map.elems structs) \struct@Structure {..} -> do
     dd <- lift $ reflStructure struct
-    modify $ ctxQuery . _qData %~ (dd :)
+    ctxQuery . _qData %= (dd :)
 
   -- intro refinement properties
   {-
@@ -351,7 +345,7 @@ introUserDatatypes = do
   varnts <- asks (^. ctxVariants)
   forM_ (Map.elems varnts) \varnt -> do
     dd <- lift $ reflVariant varnt
-    modify $ ctxQuery . _qData %~ (dd :)
+    ctxQuery . _qData %= (dd :)
 
 introTransforms :: StateT CheckingCtx RefiningM ()
 introTransforms = do
@@ -361,7 +355,50 @@ introTransforms = do
     when functionIsTransform do
       funOutputSort <- lift $ reflType functionOutput
       funSort <- lift $ foldr F.FFunc funOutputSort <$> ((reflType . snd) `traverse` functionParameters)
-      modify $ ctxQuery . _qCon . at (makeTermIdSymbol functionId) ?~ funSort
+      ctxQuery . _qCon . at (makeTermIdSymbol functionId) ?= funSort
+
+      -- global assumption that output satisfies the refinement implied by its type
+
+      -- freshen parameter ids, to ensure no naming collisions
+      params' <- functionParameters <&*> \(paramId, paramType) -> freshenTermId paramId <&> (,paramType)
+      tmexs <-
+        lift . execWriterT $
+          inferTypeRefinements
+            (TermApplication functionId (params' <&> uncurry TermNamed) functionOutput)
+            functionOutput
+      tmexs' <- error "!TODO universally quantify over parameters in each tmex"
+
+      ctxAssumptionsReversed %= (tmexs' <>)
+
+inferTypeRefinements :: Term -> Type -> WriterT [TermExpr] RefiningM ()
+inferTypeRefinements tm (TypeNumber nt n) = do
+  case nt of
+    Crude.TypeUInt -> do
+      -- 0 <= tm
+      lowerBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe (intTerm 0 n) tm) TypeBit
+      -- tm <= 2^n - 1
+      upperBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ n - 1) n)) TypeBit
+      tell [lowerBoundExpr, upperBoundExpr]
+    Crude.TypeInt -> do
+      -- -(2^(n-1)) + 1 <= tm
+      lowerBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe (intTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
+      -- tm <= 2^(n-1) - 1
+      upperBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      tell [lowerBoundExpr, upperBoundExpr]
+    Crude.TypeFloat -> do
+      -- -(2^(n-1)) + 1 <= tm
+      lowerBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe (floatTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
+      -- tm <= 2^(n-1) - 1
+      upperBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (floatTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      tell [lowerBoundExpr, upperBoundExpr]
+inferTypeRefinements _tm TypeBit = return ()
+inferTypeRefinements _tm TypeChar = return ()
+inferTypeRefinements tm (TypeArray ty) = _w1V
+inferTypeRefinements tm (TypeTuple ty1 ty2) = do
+  inferTypeRefinements (TermApplication _ _) ty1
+  inferTypeRefinements _ ty2
+inferTypeRefinements tm (TypeOptional ty') = _w1X
+inferTypeRefinements tm (TypeNamed ti) = _w1Y
 
 introConstants :: StateT CheckingCtx RefiningM ()
 introConstants = do
@@ -371,17 +408,16 @@ introConstants = do
     tm' <- lift $ transTerm tm
     ex <- lift $ reflTerm tm'
     srt <- lift $ reflType (termType tm')
-    modify $
-      (ctxQuery . _qEqns)
-        %~ ( F.Equ
-               { eqName = sym,
-                 eqArgs = [],
-                 eqBody = ex,
-                 eqSort = srt,
-                 eqRec = False
-               }
-               :
-           )
+    (ctxQuery . _qEqns)
+      %= ( F.Equ
+             { eqName = sym,
+               eqArgs = [],
+               eqBody = ex,
+               eqSort = srt,
+               eqRec = False
+             }
+             :
+         )
 
 -- ** Check Query
 
@@ -523,4 +559,6 @@ checkPrimitive _ (PrimitiveOr tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveNot tm) = checkTerm `traverse_` [tm]
 checkPrimitive _ (PrimitiveEq tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveAdd tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
+checkPrimitive _ (PrimitiveLe tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
+checkPrimitive _ (PrimitiveLt tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveExtends tm _tyId) = checkTerm `traverse_` [tm]

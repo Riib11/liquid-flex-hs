@@ -14,6 +14,11 @@ import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
 
+reflTermExpr :: Term -> RefiningM TermExpr
+reflTermExpr tm = do
+  ex <- reflTerm tm
+  return $ TermExpr tm ex
+
 reflTerm :: Term -> RefiningM F.Expr
 reflTerm (TermLiteral lit _ty) = reflLiteral lit
 reflTerm (TermPrimitive prim _ty) = reflPrimitive prim
@@ -70,6 +75,8 @@ reflPrimitive (PrimitiveOr tm1 tm2) = F.pOr <$> reflTerm `traverse` [tm1, tm2]
 reflPrimitive (PrimitiveNot tm) = F.PNot <$> reflTerm tm
 reflPrimitive (PrimitiveEq tm1 tm2) = F.PAtom F.Eq <$> reflTerm tm1 <*> reflTerm tm2
 reflPrimitive (PrimitiveAdd tm1 tm2) = F.EBin F.Plus <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveLe tm1 tm2) = F.PAtom F.Le <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveLt tm1 tm2) = F.PAtom F.Lt <$> reflTerm tm1 <*> reflTerm tm2
 reflPrimitive (PrimitiveExtends {}) = error "!TODO reflect PrimitiveExtends"
 
 reflLiteral :: Crude.Literal -> RefiningM F.Expr
