@@ -89,6 +89,11 @@ reflLiteral (Crude.LiteralChar c) = return $ F.expr (Text.pack [c])
 -- !WARN proper way to create something of sort `strSort`?
 reflLiteral (Crude.LiteralString s) = return $ F.expr (Text.pack s)
 
+reflTypeSort :: Type -> RefiningM TypeSort
+reflTypeSort ty = do
+  srt <- reflType ty
+  return $ TypeSort ty srt
+
 reflType :: Type -> RefiningM F.Sort
 reflType (TypeNumber Crude.TypeInt _) = return F.intSort
 reflType (TypeNumber Crude.TypeUInt _) = return F.intSort

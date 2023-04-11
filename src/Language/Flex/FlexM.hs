@@ -146,16 +146,10 @@ freshSymbol :: MonadFlex m => String -> m F.Symbol
 freshSymbol str = F.symbol <$> freshenString str
 
 freshenTermId :: MonadFlex m => TermId -> m TermId
-freshenTermId (TermId str) = TermId <$> freshenString str
+freshenTermId (TermId str) = freshTermId str
 
--- freshSymbol :: (MonadFlex m, F.Symbolic a) => a -> m F.Symbol
--- freshSymbol = freshenSymbol . F.symbol
-
--- freshenSymbol :: MonadFlex m => F.Symbol -> m F.Symbol
--- freshenSymbol x = do
---   i <- liftFlex $ gets (^. flexFreshIndex)
---   liftFlex $ modifying flexFreshIndex (1 +)
---   return $ F.symbol (render (F.pprint x) <> "~" <> show i)
+freshTermId :: MonadFlex m => String -> m TermId
+freshTermId str = TermId <$> freshenString str
 
 freshInt :: MonadFlex m => m Int
 freshInt = do

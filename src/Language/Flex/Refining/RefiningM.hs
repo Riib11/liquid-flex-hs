@@ -18,7 +18,6 @@ import Language.Flex.FlexM
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Syntax
 import qualified Language.Flex.Syntax as Crude
-import Language.Flex.Typing.TypingM (CtxType (..))
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
 import Prelude hiding (Enum)
@@ -36,12 +35,17 @@ runRefiningM env ctx m =
 -- ** Refining Context
 
 data RefiningCtx = RefiningCtx
-  { _ctxStructures :: Map.Map Crude.TypeId Structure,
+  { _ctxTypes :: Map.Map Crude.TypeId CtxType,
+    _ctxStructures :: Map.Map Crude.TypeId Structure,
     _ctxVariants :: Map.Map Crude.TypeId Variant,
     _ctxFunctions :: Map.Map Crude.TermId Function,
     -- | This includes module-level constants.
     _ctxConstants :: Map.Map Crude.TermId (Crude.Term Type)
   }
+
+data CtxType
+  = CtxTypeStructure Structure
+  | CtxTypeVariant Variant
 
 -- ** Refining Environment
 
@@ -153,3 +157,8 @@ typeIsStructure (TypeNamed tyId) =
     Nothing -> return False
     Just _ -> return True
 typeIsStructure _ = return False
+
+lookupType tyId =
+  asks (^. ctxTypes . at tyId) >>= \case
+    Nothing -> FlexM.throw $ "unknown type id:" <+> ticks (pPrint tyId)
+    Just ctxty -> return ctxty

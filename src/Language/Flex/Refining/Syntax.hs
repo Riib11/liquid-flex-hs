@@ -2,6 +2,8 @@ module Language.Flex.Refining.Syntax where
 
 import Data.Functor
 import qualified Language.Fixpoint.Types as F
+import Language.Flex.FlexM (MonadFlex)
+import qualified Language.Flex.FlexM as FlexM
 import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
@@ -89,6 +91,7 @@ data Term
   | TermAssert {termTerm :: !Term, termBody :: !Term, termType :: !Type}
   | TermNamed {termId :: !Crude.TermId, termType :: !Type}
   | TermApplication {termFunctionId :: !Crude.TermId, termArguments :: ![Term], termType :: !Type}
+  | TermPredicate {termSymbol :: !F.Symbol, termArguments :: ![Term], termType :: !Type}
   | -- structures
     TermStructure {termStructId :: !Crude.TypeId, termFields :: ![Term], termType :: !Type}
   | TermMember {termStructId :: !Crude.TypeId, termTerm :: !Term, termFieldId :: !Crude.FieldId, termType :: !Type}
@@ -129,16 +132,29 @@ data TermExpr = TermExpr {getTerm :: !Term, getExpr :: !F.Expr}
 instance Pretty TermExpr where
   pPrint TermExpr {..} = pPrint getTerm <+> parens ("reflected as:" <+> F.pprint getExpr)
 
-data QualTermExpr = QualTermExpr {getQuals :: [(Crude.TermId, Type)], getTermExpr :: TermExpr}
+data QualTermExpr = QualTermExpr {getQuals :: [(Crude.TermId, TypeSort)], getTermExpr :: TermExpr}
 
 instance Pretty QualTermExpr where
-  pPrint QualTermExpr {..} = "forall" <+> commaList (getQuals <&> \(tmId, ty) -> pPrint tmId <+> ":" <+> pPrint ty) <+> pPrint getTermExpr
+  pPrint QualTermExpr {..} = "forall" <+> commaList (getQuals <&> \(tmId, tysrt) -> pPrint tmId <+> ":" <+> pPrint tysrt) <+> pPrint getTermExpr
+
+-- data TermIdSymbol = TermIdSymbol {getTermId :: Crude.TermId, getSymbol :: F.Symbol}
+
+-- instance Pretty TermIdSymbol where
+--   pPrint TermIdSymbol {..} = pPrint getTermId <+> parens ("reflected as:" <+> F.pprint getSymbol)
+
+-- freshTermIdSymbol :: MonadFlex m => String -> m TermIdSymbol
+-- freshTermIdSymbol str = do
+--   sym <- FlexM.freshSymbol str
+--   return $ TermIdSymbol (Crude.TermId str) sym
 
 trueTerm :: Term
 trueTerm = TermLiteral (Crude.LiteralBit True) TypeBit
 
 falseTerm :: Term
 falseTerm = TermLiteral (Crude.LiteralBit False) TypeBit
+
+letTerm :: Crude.TermId -> Term -> Term -> Term
+letTerm tmId tm1 tm2 = TermLet (Just tmId) tm1 tm2 (termType tm2)
 
 -- -- pow2Term n = 2^n
 -- pow2Term :: Integer -> Term

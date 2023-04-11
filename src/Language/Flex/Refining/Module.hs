@@ -41,19 +41,23 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
         reft <- case refinedTypes Map.!? structId of
           Nothing -> FlexM.throw $ "while collecting structures/newtypes before refining, found unknown structure/newtype id:" <+> pPrint structId
           Just reft -> return reft
-        modifying (ctxStructures . at structId) . const . Just $
-          Structure
-            { structureId = structId,
-              structureConstructorId = ctorId,
-              structureFields = fields,
-              structureRefinement = reft
-            }
+        let struct =
+              Structure
+                { structureId = structId,
+                  structureConstructorId = ctorId,
+                  structureFields = fields,
+                  structureRefinement = reft
+                }
+        ctxStructures . at structId ?= struct
+        ctxTypes . at structId ?= CtxTypeStructure struct
   let introVariant varntId ctors = do
-        modifying (ctxVariants . at varntId) . const . Just $
-          Variant
-            { variantId = varntId,
-              variantConstructors = ctors
-            }
+        let varnt =
+              Variant
+                { variantId = varntId,
+                  variantConstructors = ctors
+                }
+        ctxVariants . at varntId ?= varnt
+        ctxTypes . at varntId ?= CtxTypeVariant varnt
 
   flip execStateT ctx . forM_ moduleDeclarations $ \case
     (Crude.DeclarationStructure Crude.Structure {..}) ->

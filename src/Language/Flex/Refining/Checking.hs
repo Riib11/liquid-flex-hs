@@ -27,7 +27,7 @@ import Language.Flex.Refining.Syntax
 import Language.Flex.Refining.Translating
 import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
-import Utility hiding (for)
+import Utility hiding (foldrM, for)
 
 -- * Checking
 
@@ -357,48 +357,119 @@ introTransforms = do
       funSort <- lift $ foldr F.FFunc funOutputSort <$> ((reflType . snd) `traverse` functionParameters)
       ctxQuery . _qCon . at (makeTermIdSymbol functionId) ?= funSort
 
-      -- global assumption that output satisfies the refinement implied by its type
+      -- make global assumption that output satisfies the refinement implied by
+      -- its type e.g.
+      -- @
+      --    struct A { x : int32; assert(0 <= x) }
+      --    transform foo(b : bit) -> A { ... }
+      -- @
+      -- introduces global assumption
+      -- @
+      --    forall b : bit . (0 <= foo(b).x)
+      -- @
 
       -- freshen parameter ids, to ensure no naming collisions
-      params' <- functionParameters <&*> \(paramId, paramType) -> freshenTermId paramId <&> (,paramType)
-      tmexs <-
-        lift . execWriterT $
+      params' <- lift $ functionParameters <&*> \(paramId, paramType) -> (,) <$> freshenTermId paramId <*> reflTypeSort paramType
+      (quals, tmexs) <-
+        lift . runWriterT . execWriterT $
           inferTypeRefinements
-            (TermApplication functionId (params' <&> uncurry TermNamed) functionOutput)
+            (TermApplication functionId (params' <&> \(paramId, paramTypeSort) -> TermNamed paramId (getType paramTypeSort)) functionOutput)
             functionOutput
-      tmexs' <- error "!TODO universally quantify over parameters in each tmex"
-
+      -- universally quantify over params' _and_ quals, in each tmex
+      let tmexs' =
+            tmexs <&> \tmex ->
+              TermExpr
+                { getTerm = getTerm tmex,
+                  getExpr = F.PAll ((params' <> quals) <&> bimap makeTermIdSymbol getSort) (getExpr tmex)
+                }
       ctxAssumptionsReversed %= (tmexs' <>)
 
-inferTypeRefinements :: Term -> Type -> WriterT [TermExpr] RefiningM ()
+inferTypeRefinements :: Term -> Type -> WriterT [(Crude.TermId, TypeSort)] (WriterT [TermExpr] RefiningM) ()
 inferTypeRefinements tm (TypeNumber nt n) = do
   case nt of
     Crude.TypeUInt -> do
       -- 0 <= tm
-      lowerBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe (intTerm 0 n) tm) TypeBit
+      lowerBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe (intTerm 0 n) tm) TypeBit
       -- tm <= 2^n - 1
-      upperBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ n - 1) n)) TypeBit
-      tell [lowerBoundExpr, upperBoundExpr]
+      upperBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ n - 1) n)) TypeBit
+      lift $ tell [lowerBoundExpr, upperBoundExpr]
     Crude.TypeInt -> do
       -- -(2^(n-1)) + 1 <= tm
-      lowerBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe (intTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
+      lowerBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe (intTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
       -- tm <= 2^(n-1) - 1
-      upperBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ (n - 1) - 1) n)) TypeBit
-      tell [lowerBoundExpr, upperBoundExpr]
+      upperBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      lift $ tell [lowerBoundExpr, upperBoundExpr]
     Crude.TypeFloat -> do
       -- -(2^(n-1)) + 1 <= tm
-      lowerBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe (floatTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
+      lowerBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe (floatTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
       -- tm <= 2^(n-1) - 1
-      upperBoundExpr <- lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (floatTerm (2 ^ (n - 1) - 1) n)) TypeBit
-      tell [lowerBoundExpr, upperBoundExpr]
+      upperBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (floatTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      lift $ tell [lowerBoundExpr, upperBoundExpr]
 inferTypeRefinements _tm TypeBit = return ()
 inferTypeRefinements _tm TypeChar = return ()
-inferTypeRefinements tm (TypeArray ty) = _w1V
+inferTypeRefinements _tm (TypeArray _ty) = error "inferTypeRefinements TypeArray !TODO need to define an 'element of' predicate or something"
 inferTypeRefinements tm (TypeTuple ty1 ty2) = do
   inferTypeRefinements (TermPrimitive (PrimitiveFirst tm) ty1) ty1
   inferTypeRefinements (TermPrimitive (PrimitiveSecond tm) ty2) ty2
-inferTypeRefinements tm (TypeOptional ty) = _w1X
-inferTypeRefinements tm (TypeNamed ti) = _w1Y
+inferTypeRefinements tm (TypeOptional ty) = do
+  -- if tm == None; no refinements can be yielded from this case
+
+  -- if tm == Some x
+  tmId <- FlexM.freshTermId "someValue"
+  let tm' = TermNamed tmId ty
+  tysrt <- lift . lift $ reflTypeSort ty
+  tell [(tmId, tysrt)] -- forall x : ty . ...
+  -- if tm == Some x
+  tmex <-
+    lift . lift . reflTermExpr $
+      eqTerm tm (TermPrimitive (PrimitiveSome tm') (TypeOptional ty))
+  lift $ tell [tmex]
+  -- then ...
+  inferTypeRefinements tm' ty
+inferTypeRefinements tm (TypeNamed tyId) =
+  lookupType tyId >>= \case
+    CtxTypeStructure Structure {..} -> do
+      -- !TODO don't do this inline, because can cause infinite recursive
+      -- unfolding. instead, refer to top-level predicate that asserts structure
+      -- properties of fields (can have cycles of implication among assumptions,
+      -- but that's fine)
+
+      -- reftTerm <- lift . lift $ transRefinement structureRefinement
+      -- -- e.g. let x = tm.x in R(x) where tm : Structure { x : int32; assert R(x) }
+      -- let reftTerm' =
+      --       foldr
+      --         ( \(fieldId, fieldType) reftTerm'' ->
+      --             letTerm
+      --               (Crude.fromFieldIdToTermId fieldId)
+      --               (TermMember tyId tm fieldId fieldType)
+      --               reftTerm''
+      --         )
+      --         reftTerm
+      --         structureFields
+      -- reftTermExpr <- lift . lift $ reflTermExpr reftTerm'
+      -- lift . tell $ [reftTermExpr]
+
+      let reftTerm = TermPredicate (makeStructurePropertySymbol structureId) [tm] TypeBit
+      reftTermExpr <- lift . lift $ reflTermExpr reftTerm
+      lift . tell $ [reftTermExpr]
+
+    -- !TODO variants can't be recursive, so don't have to worry potentially
+    -- infinite unfolding here... but maybe its better overall to do it that
+    -- way, so lets delay that choice till i come back to this
+    CtxTypeVariant Variant {..} -> do
+      void $
+        variantConstructors <&*> \(ctorId, ctorTypes) -> do
+          tmId <- (ctorTypes `zip` [0 ..]) <&*> \(ctorType, i) -> FlexM.freshTermId ("param" <> show i)
+          tysrts <- lift . lift $ reflTypeSort <$*> ctorTypes
+          -- forall x1, x2, ..., xn
+          (tmId `zip` tysrts) <&*> \(paramIdSym, paramTypeSort) -> tell [(paramIdSym, paramTypeSort)]
+          -- if tm == ctor x1 x2 ... xn
+          -- then ...
+          (tmId `zip` ctorTypes) <&*> \(paramId, paramType) ->
+            -- infer type refinements on each of the introduced components
+            inferTypeRefinements (TermNamed paramId paramType) paramType
+
+-- inferTypeRefinements tm _
 
 introConstants :: StateT CheckingCtx RefiningM ()
 introConstants = do
