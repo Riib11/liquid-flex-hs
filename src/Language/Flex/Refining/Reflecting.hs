@@ -14,11 +14,6 @@ import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
 
-reflTermExpr :: Term -> RefiningM TermExpr
-reflTermExpr tm = do
-  ex <- reflTerm tm
-  return $ TermExpr tm ex
-
 reflTerm :: Term -> RefiningM F.Expr
 reflTerm (TermLiteral lit _ty) = reflLiteral lit
 reflTerm (TermPrimitive prim _ty) = reflPrimitive prim
@@ -88,11 +83,6 @@ reflLiteral (Crude.LiteralBit b) = return $ F.prop b
 reflLiteral (Crude.LiteralChar c) = return $ F.expr (Text.pack [c])
 -- !WARN proper way to create something of sort `strSort`?
 reflLiteral (Crude.LiteralString s) = return $ F.expr (Text.pack s)
-
-reflTypeSort :: Type -> RefiningM TypeSort
-reflTypeSort ty = do
-  srt <- reflType ty
-  return $ TypeSort ty srt
 
 reflType :: Type -> RefiningM F.Sort
 reflType (TypeNumber Crude.TypeInt _) = return F.intSort

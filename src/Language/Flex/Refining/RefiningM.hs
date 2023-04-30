@@ -49,9 +49,7 @@ data CtxType
 
 -- ** Refining Environment
 
-data RefiningEnv = RefiningEnv
-  { _envXXX :: String
-  }
+data RefiningEnv = RefiningEnv {}
 
 -- ** RefiningError
 

@@ -73,12 +73,6 @@ instance Pretty Type where
   pPrint (TypeOptional ty) = "Optional" <> angles (pPrint ty)
   pPrint (TypeNamed tyId) = pPrint tyId
 
-data TypeSort = TypeSort {getType :: Type, getSort :: F.Sort}
-  deriving (Show)
-
-instance Pretty TypeSort where
-  pPrint (TypeSort ty srt) = pPrint ty <+> parens ("reflected as:" <+> F.pprint srt)
-
 -- ** Term
 
 -- !TODO: separate structures and variants completely -- everywhere that i use
@@ -91,8 +85,8 @@ data Term
   | TermAssert {termTerm :: !Term, termBody :: !Term, termType :: !Type}
   | TermNamed {termId :: !Crude.TermId, termType :: !Type}
   | TermApplication {termFunctionId :: !Crude.TermId, termArguments :: ![Term], termType :: !Type}
-  | TermPredicate {termSymbol :: !F.Symbol, termArguments :: ![Term], termType :: !Type}
-  | -- structures
+  | {- !TODO | TermPredicate {termSymbol :: !F.Symbol, termArguments :: ![Term], termType :: !Type} -}
+    -- structures
     TermStructure {termStructId :: !Crude.TypeId, termFields :: ![Term], termType :: !Type}
   | TermMember {termStructId :: !Crude.TypeId, termTerm :: !Term, termFieldId :: !Crude.FieldId, termType :: !Type}
   | -- variants
@@ -125,27 +119,6 @@ pPrintShallowPrimitive :: Primitive -> Doc
 pPrintShallowPrimitive (PrimitiveTry tm) = "try" <+> pPrintShallowTerm tm
 pPrintShallowPrimitive (PrimitiveIf tm1 _tm2 _tm3) = "if" <+> pPrint tm1 <+> "then" <+> "..." <+> "else" <+> "..."
 pPrintShallowPrimitive prim = pPrint prim
-
-data TermExpr = TermExpr {getTerm :: !Term, getExpr :: !F.Expr}
-  deriving (Show)
-
-instance Pretty TermExpr where
-  pPrint TermExpr {..} = pPrint getTerm <+> parens ("reflected as:" <+> F.pprint getExpr)
-
-data QualTermExpr = QualTermExpr {getQuals :: [(Crude.TermId, TypeSort)], getTermExpr :: TermExpr}
-
-instance Pretty QualTermExpr where
-  pPrint QualTermExpr {..} = "forall" <+> commaList (getQuals <&> \(tmId, tysrt) -> pPrint tmId <+> ":" <+> pPrint tysrt) <+> pPrint getTermExpr
-
--- data TermIdSymbol = TermIdSymbol {getTermId :: Crude.TermId, getSymbol :: F.Symbol}
-
--- instance Pretty TermIdSymbol where
---   pPrint TermIdSymbol {..} = pPrint getTermId <+> parens ("reflected as:" <+> F.pprint getSymbol)
-
--- freshTermIdSymbol :: MonadFlex m => String -> m TermIdSymbol
--- freshTermIdSymbol str = do
---   sym <- FlexM.freshSymbol str
---   return $ TermIdSymbol (Crude.TermId str) sym
 
 trueTerm :: Term
 trueTerm = TermLiteral (Crude.LiteralBit True) TypeBit

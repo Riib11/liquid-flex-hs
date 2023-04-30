@@ -96,6 +96,4 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
 moduleRefiningEnv :: MonadFlex m => m RefiningEnv
 moduleRefiningEnv =
   return
-    RefiningEnv
-      { _envXXX = "is there anything needed in the environment?"
-      }
+    RefiningEnv {}

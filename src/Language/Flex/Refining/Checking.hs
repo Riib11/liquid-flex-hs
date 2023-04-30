@@ -48,8 +48,8 @@ data CheckingCtx = CheckingCtx
   { _ctxQuery :: Query,
     _ctxScopeReversed :: [ScopeItem],
     -- _ctxStructureProperties :: [H.Bind RefiningError],
-    _ctxAssumptionsReversed :: [TermExpr],
-    _ctxAssertion :: TermExpr
+    _ctxAssumptionsReversed :: [F.Expr],
+    _ctxAssertion :: F.Expr
   }
 
 instance Pretty CheckingCtx where
@@ -71,19 +71,19 @@ instance Pretty CheckingCtx where
         "scope:",
         nest 2 . vcat $ pPrint <$> reverse _ctxScopeReversed,
         "assumptions:",
-        nest 2 . vcat $ pPrint <$> reverse _ctxAssumptionsReversed,
+        nest 2 . vcat $ F.pprint <$> reverse _ctxAssumptionsReversed,
         "assertion:",
-        nest 2 $ pPrint _ctxAssertion
+        nest 2 $ F.pprint _ctxAssertion
       ]
 
 data ScopeItem
-  = ScopeForall Crude.TermId TypeSort
-  | ScopeLet Crude.TermId TermExpr TypeSort
+  = ScopeForall Crude.TermId F.Sort
+  | ScopeLet Crude.TermId F.Expr F.Sort
   deriving (Show)
 
 instance Pretty ScopeItem where
-  pPrint (ScopeForall ti tysrt) = "forall" <+> pPrint ti <+> ":" <+> pPrint tysrt
-  pPrint (ScopeLet ti tmex tysrt) = "let" <+> pPrint ti <+> "=" <+> pPrint tmex <+> ":" <+> pPrint tysrt
+  pPrint (ScopeForall ti srt) = "forall" <+> pPrint ti <+> ":" <+> F.pprint srt
+  pPrint (ScopeLet ti ex srt) = "let" <+> pPrint ti <+> "=" <+> F.pprint ex <+> ":" <+> F.pprint srt
 
 makeLenses ''CheckingCtx
 
@@ -102,11 +102,12 @@ introBinding :: Crude.TermId -> Term -> CheckingM a -> CheckingM a
 introBinding tmId tm = localExecM do
   ex <- lift $ reflTerm tm
   srt <- lift $ reflType $ termType tm
-  ctxScopeReversed %= (ScopeLet tmId (TermExpr tm ex) (TypeSort (termType tm) srt) :)
+  ctxScopeReversed %= (ScopeLet tmId ex srt :)
 
-introForall :: Crude.TermId -> TypeSort -> CheckingM a -> CheckingM a
-introForall tmId tysrt = localExecM do
-  ctxScopeReversed %= (ScopeForall tmId tysrt :)
+introForall :: Crude.TermId -> Type -> CheckingM a -> CheckingM a
+introForall tmId ty = localExecM do
+  srt <- lift $ reflType ty
+  ctxScopeReversed %= (ScopeForall tmId srt :)
 
 -- !TODO intro all assumptions about subterms, wherever we have refined types
 
@@ -130,11 +131,7 @@ introForall tmId tysrt = localExecM do
 
 introCase :: Term -> Crude.TypeId -> Crude.TermId -> [Crude.TermId] -> [Type] -> CheckingM a -> CheckingM a
 introCase tm tyId ctorId paramIds paramTypes = localExecM do
-  paramTypeSorts <-
-    lift $
-      paramTypes <&*> \ty ->
-        TypeSort ty <$> reflType ty
-
+  paramTypeSorts <- lift $ paramTypes <&*> reflType
   ctxScopeReversed %= ((uncurry ScopeForall <$> (paramIds `zip` paramTypeSorts)) <>)
 
   -- > assume tm == ctorId [paramIds]
@@ -148,27 +145,30 @@ introCase tm tyId ctorId paramIds paramTypes = localExecM do
               (TypeNamed tyId)
           )
   propPred <- lift $ reflTerm propTerm
-  ctxAssumptionsReversed %= (TermExpr propTerm propPred :)
+  ctxAssumptionsReversed %= (propPred :)
 
   return ()
 
 assume :: Term -> CheckingM a -> CheckingM a
 assume propTerm = localExecM do
   propPred <- lift $ reflTerm propTerm
-  ctxAssumptionsReversed %= (TermExpr propTerm propPred :)
+  ctxAssumptionsReversed %= (propPred :)
+
+-- when introducing assumption, use implications or univ quant witnesses
+_assumptions_via_witnesses = False
 
 assert :: Doc -> Term -> CheckingM ()
 assert sourceDoc tm = flip localExecM checkQuery do
   ex0 <- lift $ reflTerm tm
-  ctxAssertion .= TermExpr tm ex0
+  ctxAssertion .= ex0
 
   -- True: use implications
   -- False: use witnesses
   cstr0 <-
-    if False
+    if _assumptions_via_witnesses
       then do
         -- wrap in assumptions using F.PImp
-        asmpExprs <- gets (^.. ctxAssumptions . traverse . to getExpr)
+        asmpExprs <- gets (^.. ctxAssumptions . traverse)
         let ex1 = foldr F.PImp ex0 asmpExprs
         FlexM.debug True $ "ex' =" <+> F.pprint ex1
 
@@ -186,13 +186,13 @@ assert sourceDoc tm = flip localExecM checkQuery do
         asmps <- gets (^. ctxAssumptions)
         let cstr' =
               foldr
-                ( \tmex ->
+                ( \ex ->
                     H.Any
                       H.Bind
-                        { bSym = F.symbol . render $ "wittness to assumption:" <+> ticks (pPrint tmex),
+                        { bSym = F.symbol . render $ "wittness to assumption:" <+> ticks (F.pprint ex),
                           bSort = F.boolSort,
-                          bPred = H.Reft $ getExpr tmex,
-                          bMeta = RefiningError $ "assumption:" <+> ticks (pPrint tmex)
+                          bPred = H.Reft ex,
+                          bMeta = RefiningError $ "assumption:" <+> ticks (F.pprint ex)
                         }
                 )
                 cstr
@@ -204,21 +204,21 @@ assert sourceDoc tm = flip localExecM checkQuery do
   let cstr1 =
         foldr
           ( \case
-              (ScopeForall tmId tysrt) ->
+              (ScopeForall tmId srt) ->
                 H.All
                   H.Bind
                     { bSym = makeTermIdSymbol tmId,
-                      bSort = getSort tysrt,
+                      bSort = srt,
                       bPred = H.Reft (F.prop True),
-                      bMeta = RefiningError $ "intro" <+> pPrint tmId <+> ":" <+> pPrint tysrt
+                      bMeta = RefiningError $ "intro" <+> pPrint tmId <+> ":" <+> F.pprint srt
                     }
-              (ScopeLet tmId tmex tysrt) ->
+              (ScopeLet tmId ex srt) ->
                 H.All
                   H.Bind
                     { bSym = makeTermIdSymbol tmId,
-                      bSort = getSort tysrt,
-                      bPred = H.Reft $ F.PAtom F.Eq (F.eVar (makeTermIdSymbol tmId)) (getExpr tmex),
-                      bMeta = RefiningError $ "intro" <+> pPrint tmId <+> ":" <+> pPrint tysrt
+                      bSort = srt,
+                      bPred = H.Reft $ F.PAtom F.Eq (F.eVar (makeTermIdSymbol tmId)) ex,
+                      bMeta = RefiningError $ "intro" <+> pPrint tmId <+> ":" <+> F.pprint srt <+> "=" <+> F.pprint ex
                     }
           )
           cstr0
@@ -246,7 +246,7 @@ initCheckingContext = do
           { _ctxQuery = query,
             _ctxScopeReversed = mempty,
             _ctxAssumptionsReversed = mempty,
-            _ctxAssertion = TermExpr trueTerm (F.prop True) -- will be overwritten
+            _ctxAssertion = F.prop True -- will be overwritten
           }
   flip execStateT ctx $ do
     -- intro datatypes
@@ -357,53 +357,53 @@ introTransforms = do
       funSort <- lift $ foldr F.FFunc funOutputSort <$> ((reflType . snd) `traverse` functionParameters)
       ctxQuery . _qCon . at (makeTermIdSymbol functionId) ?= funSort
 
-      -- make global assumption that output satisfies the refinement implied by
-      -- its type e.g.
+      -- Make a global assumption that the output satisfies the refinement
+      -- implied by its type e.g.
       -- @
-      --    struct A { x : int32; assert(0 <= x) }
+      --    struct A {x : int32; assert(0 <= x)}
       --    transform foo(b : bit) -> A { ... }
       -- @
       -- introduces global assumption
       -- @
-      --    forall b : bit . (0 <= foo(b).x)
+      --    forall b : bit . isA(foo(b))
       -- @
+      -- where `isA` is the global property that corresponds to the refinement
+      -- on `struct A`.
 
-      -- freshen parameter ids, to ensure no naming collisions
-      params' <- lift $ functionParameters <&*> \(paramId, paramType) -> (,) <$> freshenTermId paramId <*> reflTypeSort paramType
-      (quals, tmexs) <-
+      -- freshen parameter ids to ensure no naming collisions
+      params' <- lift $ functionParameters <&*> \(paramId, paramType) -> (,) <$> freshenTermId paramId <*> pure paramType
+      -- reflect ids and types
+      params'' <- lift $ params' <&*> bimapM (pure . makeTermIdSymbol) reflType
+
+      (quals, exs) <-
         lift . runWriterT . execWriterT $
           inferTypeRefinements
-            (TermApplication functionId (params' <&> \(paramId, paramTypeSort) -> TermNamed paramId (getType paramTypeSort)) functionOutput)
+            (TermApplication functionId (params' <&> uncurry TermNamed) functionOutput)
             functionOutput
-      -- universally quantify over params' _and_ quals, in each tmex
-      let tmexs' =
-            tmexs <&> \tmex ->
-              TermExpr
-                { getTerm = getTerm tmex,
-                  getExpr = F.PAll ((params' <> quals) <&> bimap makeTermIdSymbol getSort) (getExpr tmex)
-                }
-      ctxAssumptionsReversed %= (tmexs' <>)
+      -- in each expr, universally quantify over params'' _and_ quals
+      let exs' = exs <&> \ex -> F.PAll (params'' <> quals) ex
+      ctxAssumptionsReversed %= (exs' <>)
 
-inferTypeRefinements :: Term -> Type -> WriterT [(Crude.TermId, TypeSort)] (WriterT [TermExpr] RefiningM) ()
+inferTypeRefinements :: Term -> Type -> WriterT [(F.Symbol, F.Sort)] (WriterT [F.Expr] RefiningM) ()
 inferTypeRefinements tm (TypeNumber nt n) = do
   case nt of
     Crude.TypeUInt -> do
       -- 0 <= tm
-      lowerBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe (intTerm 0 n) tm) TypeBit
+      lowerBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe (intTerm 0 n) tm) TypeBit
       -- tm <= 2^n - 1
-      upperBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ n - 1) n)) TypeBit
+      upperBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ n - 1) n)) TypeBit
       lift $ tell [lowerBoundExpr, upperBoundExpr]
     Crude.TypeInt -> do
       -- -(2^(n-1)) + 1 <= tm
-      lowerBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe (intTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
+      lowerBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe (intTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
       -- tm <= 2^(n-1) - 1
-      upperBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      upperBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ (n - 1) - 1) n)) TypeBit
       lift $ tell [lowerBoundExpr, upperBoundExpr]
     Crude.TypeFloat -> do
       -- -(2^(n-1)) + 1 <= tm
-      lowerBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe (floatTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
+      lowerBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe (floatTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
       -- tm <= 2^(n-1) - 1
-      upperBoundExpr <- lift . lift . reflTermExpr $ TermPrimitive (PrimitiveLe tm (floatTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      upperBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe tm (floatTerm (2 ^ (n - 1) - 1) n)) TypeBit
       lift $ tell [lowerBoundExpr, upperBoundExpr]
 inferTypeRefinements _tm TypeBit = return ()
 inferTypeRefinements _tm TypeChar = return ()
@@ -412,20 +412,20 @@ inferTypeRefinements tm (TypeTuple ty1 ty2) = do
   inferTypeRefinements (TermPrimitive (PrimitiveFirst tm) ty1) ty1
   inferTypeRefinements (TermPrimitive (PrimitiveSecond tm) ty2) ty2
 inferTypeRefinements tm (TypeOptional ty) = do
-  -- if tm == None; no refinements can be yielded from this case
-
-  -- if tm == Some x
-  tmId <- FlexM.freshTermId "someValue"
-  let tm' = TermNamed tmId ty
-  tysrt <- lift . lift $ reflTypeSort ty
-  tell [(tmId, tysrt)] -- forall x : ty . ...
-  -- if tm == Some x
-  tmex <-
-    lift . lift . reflTermExpr $
-      eqTerm tm (TermPrimitive (PrimitiveSome tm') (TypeOptional ty))
-  lift $ tell [tmex]
-  -- then ...
-  inferTypeRefinements tm' ty
+  -- !TODO
+  -- -- if tm == None; no refinements can be yielded from this case
+  -- -- if tm == Some x
+  -- -- !OLD tmId <- FlexM.freshTermId "someValue"
+  -- sym <- FlexM.freshSymbol "someValue"
+  -- let tm' = TermNamed tmId ty
+  -- srt <- lift . lift $ reflType ty
+  -- tell [(sym, srt)] -- forall x : ty . ...
+  -- -- if tm == Some x
+  -- ex <- lift . lift . reflTerm $ eqTerm tm (TermPrimitive (PrimitiveSome tm') (TypeOptional ty))
+  -- lift $ tell [ex]
+  -- -- then ...
+  -- inferTypeRefinements tm' ty
+  pure ()
 inferTypeRefinements tm (TypeNamed tyId) =
   lookupType tyId >>= \case
     CtxTypeStructure Structure {..} -> do
@@ -446,28 +446,31 @@ inferTypeRefinements tm (TypeNamed tyId) =
       --         )
       --         reftTerm
       --         structureFields
-      -- reftTermExpr <- lift . lift $ reflTermExpr reftTerm'
+      -- reftTermExpr <- lift . lift $ reflTerm reftTerm'
       -- lift . tell $ [reftTermExpr]
 
-      let reftTerm = TermPredicate (makeStructurePropertySymbol structureId) [tm] TypeBit
-      reftTermExpr <- lift . lift $ reflTermExpr reftTerm
+      -- !TODO
+      let reftTerm = undefined -- TermPredicate (makeStructurePropertySymbol structureId) [tm] TypeBit
+      reftTermExpr <- lift . lift $ reflTerm reftTerm
       lift . tell $ [reftTermExpr]
 
-    -- !TODO variants can't be recursive, so don't have to worry potentially
+    -- !TODO variants can't be recursive (?), so don't have to worry potentially
     -- infinite unfolding here... but maybe its better overall to do it that
     -- way, so lets delay that choice till i come back to this
     CtxTypeVariant Variant {..} -> do
-      void $
-        variantConstructors <&*> \(ctorId, ctorTypes) -> do
-          tmId <- (ctorTypes `zip` [0 ..]) <&*> \(ctorType, i) -> FlexM.freshTermId ("param" <> show i)
-          tysrts <- lift . lift $ reflTypeSort <$*> ctorTypes
-          -- forall x1, x2, ..., xn
-          (tmId `zip` tysrts) <&*> \(paramIdSym, paramTypeSort) -> tell [(paramIdSym, paramTypeSort)]
-          -- if tm == ctor x1 x2 ... xn
-          -- then ...
-          (tmId `zip` ctorTypes) <&*> \(paramId, paramType) ->
-            -- infer type refinements on each of the introduced components
-            inferTypeRefinements (TermNamed paramId paramType) paramType
+      -- !TODO
+      -- void $
+      --   variantConstructors <&*> \(ctorId, ctorTypes) -> do
+      --     tmId <- (ctorTypes `zip` [0 ..]) <&*> \(ctorType, i) -> FlexM.freshTermId ("param" <> show i)
+      --     tysrts <- lift . lift $ reflType <$*> ctorTypes
+      --     -- forall x1, x2, ..., xn
+      --     (tmId `zip` tysrts) <&*> \(paramIdSym, paramTypeSort) -> tell [(paramIdSym, paramTypeSort)]
+      --     -- if tm == ctor x1 x2 ... xn
+      --     -- then ...
+      --     (tmId `zip` ctorTypes) <&*> \(paramId, paramType) ->
+      --       -- infer type refinements on each of the introduced components
+      --       inferTypeRefinements (TermNamed paramId paramType) paramType
+      pure ()
 
 -- inferTypeRefinements tm _
 
@@ -537,13 +540,12 @@ checkTransform :: Function -> CheckingM ()
 checkTransform Function {..} = FlexM.markSection [FlexM.FlexMarkStep ("checkTransform:" <+> pPrint functionId) Nothing] do
   -- introduce parameters
   body <- lift $ transTerm functionBody
-  paramIdTypeSorts <- lift $ functionParameters <&*> \(tmId, ty) -> (tmId,) . TypeSort ty <$> reflType ty
-  FlexM.debug True $ "checkTransform: body =" <+> pPrint body
+  FlexM.debug True $ "checkTransform: params =" <+> pPrint functionParameters <+> "; body =" <+> pPrint body
   foldr
     (uncurry introForall)
     -- check body
     (checkTerm body)
-    paramIdTypeSorts
+    functionParameters
 
 checkConstant :: Crude.Term Type -> CheckingM ()
 checkConstant tm = do
@@ -602,16 +604,14 @@ checkBranch matchTerm (PatternConstructor tyId ctorId ctorParamIds) branchTerm =
 checkBranch matchTerm PatternNone branchTerm = flip localExecM (checkTerm branchTerm) do
   let propTerm = eqTerm matchTerm (TermPrimitive PrimitiveNone (termType matchTerm))
   propPred <- lift $ reflTerm propTerm
-  ctxAssumptionsReversed
-    %= (TermExpr propTerm propPred :)
+  ctxAssumptionsReversed %= (propPred :)
 checkBranch matchTerm (PatternSome tmId) branchTerm = flip localExecM (checkTerm branchTerm) do
   ty <- case termType matchTerm of
     TypeOptional ty -> return ty
     ty -> FlexM.throw $ "PatternSome should not have matched term with type" <+> ticks (pPrint ty)
   let propTerm = eqTerm matchTerm (TermPrimitive (PrimitiveSome (TermNamed tmId ty)) (termType matchTerm))
   propPred <- lift $ reflTerm propTerm
-  ctxAssumptionsReversed
-    %= (TermExpr propTerm propPred :)
+  ctxAssumptionsReversed %= (propPred :)
 
 checkPrimitive :: Type -> Primitive -> CheckingM ()
 checkPrimitive _ (PrimitiveTry tm) = checkTerm `traverse_` [tm]

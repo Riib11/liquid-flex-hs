@@ -20,7 +20,7 @@ import Utility
 data CstrQE = CstrQE
   { cqeQualifiers :: [F.Qualifier],
     cqePred :: [(H.Pred, RefiningError)],
-    cqeTermExprs :: [TermExpr]
+    cqeExprs :: [F.Expr]
   }
 
 trivialCstrQE :: CstrQE
@@ -28,7 +28,7 @@ trivialCstrQE =
   CstrQE
     { cqeQualifiers = mempty,
       cqePred = mempty,
-      cqeTermExprs = mempty
+      cqeExprs = mempty
     }
 
 -- intro { x | True }
