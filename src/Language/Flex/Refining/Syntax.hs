@@ -158,6 +158,8 @@ instance Pretty Pattern where
 
 -- *** Primitive
 
+-- !TODO partial casts are not resolved during typechecking, so need to have
+-- them here (instantiated with the types they are casting between)
 data Primitive
   = PrimitiveTry !Term
   | PrimitiveNone

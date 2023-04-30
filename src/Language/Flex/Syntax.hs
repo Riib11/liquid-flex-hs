@@ -401,7 +401,7 @@ instance Traversable (Tm Function ty) where
     Tm
       . (\functionBody' -> fun {functionBody = functionBody'})
       <$> f
-        `traverse` functionBody
+      `traverse` functionBody
 
 instance (Pretty ty, Pretty tm) => Pretty (Function ty tm) where
   pPrint (Function {..}) =
@@ -501,7 +501,7 @@ instance Traversable (Tm Constant ty) where
     Tm
       . (\constantBody' -> con {constantBody = constantBody'})
       <$> f
-        `traverse` constantBody
+      `traverse` constantBody
 
 instance Pretty (Constant ty tm) where
   pPrint (Constant {..}) =

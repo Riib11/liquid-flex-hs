@@ -1,7 +1,15 @@
 # TODO
 
+Refinements that are implied by types:
+- refine via type:
+    - inputs to a transform
+    - transform application
+    - cast
+
+
 Limitations of prototype:
-- structure fields must have unique names
+- structure fields must have unique names (because of how translated to Liquid
+  Fixpoints datatype interface)
 
 - [ ] assume refinements on parameters of transforms and outputs of transform
   calls

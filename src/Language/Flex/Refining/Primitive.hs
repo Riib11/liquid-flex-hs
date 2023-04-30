@@ -116,3 +116,6 @@ primitiveRecRewrites =
       }
   ]
 -}
+
+arrayElementPropertySymbol :: F.Symbol
+arrayElementPropertySymbol = "propertyArrayElement"

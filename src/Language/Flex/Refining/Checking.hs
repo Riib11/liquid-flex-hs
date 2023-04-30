@@ -249,6 +249,9 @@ initCheckingContext = do
             _ctxAssertion = F.prop True -- will be overwritten
           }
   flip execStateT ctx $ do
+    -- intro primitive properties, like inArray
+    introPrimitiveProperties
+
     -- intro datatypes
     -- - intro primitive datatypes
     -- - intro user datatypes
@@ -263,36 +266,47 @@ initCheckingContext = do
 
     return ()
 
+-- intro primitive properties, like inArray
+introPrimitiveProperties :: StateT CheckingCtx RefiningM ()
+introPrimitiveProperties = return () -- !TODO
+
 introUserDatatypes :: StateT CheckingCtx RefiningM ()
 introUserDatatypes = do
   -- intro structures
   structs <- asks (^. ctxStructures)
-  forM_ (Map.elems structs) \struct@Structure {..} -> do
-    dd <- lift $ reflStructure struct
-    ctxQuery . _qData %= (dd :)
+  forM_ structs introStructureUserDatatype
 
-  -- intro refinement properties
-  {-
-    struct A {
-      b: B;
-      assert P(b);
-    }
+  -- intro variants
+  varnts <- asks (^. ctxVariants)
+  forM_ (Map.elems varnts) introVariantUserDatatype
 
-    struct B {
-      y: A;
-      assert Q(y);
-    }
-
-    predicate isA(a : A)
-    axiom forall a . isA(a) ==>
-      P(a.b) && -- refinement of A
-      isB(a.b)  -- refinement of B (inherited)
-
-    predicate isB(b : B)
-    axiom forall b . isB(b) ==>
-      P(b.a) && -- refinement of B
-      isA(b.a)  -- refinement of A (inherited)
-  -}
+introStructureUserDatatype :: Structure -> StateT CheckingCtx RefiningM ()
+introStructureUserDatatype struct = do
+  -- intro reflected datatype
+  dd <- lift $ reflStructure struct
+  ctxQuery . _qData %= (dd :)
+  -- !TODO intro structure's refinement predicate
+  -- @
+  -- struct A {
+  --   b: B;
+  --   assert P(b);
+  -- }
+  --
+  -- struct B {
+  --   y: A;
+  --   assert Q(y);
+  -- }
+  --
+  -- predicate isA(a : A)
+  -- axiom forall a . isA(a) ==>
+  --   P(a.b) && -- refinement of A
+  --   isB(a.b)  -- refinement of B (inherited)
+  --
+  -- predicate isB(b : B)
+  -- axiom forall b . isB(b) ==>
+  --   P(b.a) && -- refinement of B
+  --   isA(b.a)  -- refinement of A (inherited)
+  -- @
 
   {- !TODO need to implement substTerm for Refining terms
 
@@ -340,12 +354,15 @@ introUserDatatypes = do
                :
            )
   -}
+  return ()
 
-  -- intro variants
-  varnts <- asks (^. ctxVariants)
-  forM_ (Map.elems varnts) \varnt -> do
-    dd <- lift $ reflVariant varnt
-    ctxQuery . _qData %= (dd :)
+introVariantUserDatatype :: Variant -> StateT CheckingCtx RefiningM ()
+introVariantUserDatatype varnt = do
+  -- intro reflected datatype
+  dd <- lift $ reflVariant varnt
+  ctxQuery . _qData %= (dd :)
+  -- !TODO intro refinement predicate
+  return ()
 
 introTransforms :: StateT CheckingCtx RefiningM ()
 introTransforms = do
@@ -375,15 +392,53 @@ introTransforms = do
       -- reflect ids and types
       params'' <- lift $ params' <&*> bimapM (pure . makeTermIdSymbol) reflType
 
-      (quals, exs) <-
-        lift . runWriterT . execWriterT $
+      exs <-
+        lift . execWriterT $
           inferTypeRefinements
             (TermApplication functionId (params' <&> uncurry TermNamed) functionOutput)
             functionOutput
       -- in each expr, universally quantify over params'' _and_ quals
-      let exs' = exs <&> \ex -> F.PAll (params'' <> quals) ex
+      let exs' = exs <&> \ex -> F.PAll params'' ex
       ctxAssumptionsReversed %= (exs' <>)
 
+inferTypeRefinements :: Term -> Type -> WriterT [F.Expr] RefiningM ()
+inferTypeRefinements tm (TypeNumber nt n) = do
+  case nt of
+    Crude.TypeUInt -> do
+      -- 0 <= tm
+      lowerBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe (intTerm 0 n) tm) TypeBit
+      -- tm <= 2^n - 1
+      upperBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ n - 1) n)) TypeBit
+      tell [lowerBoundExpr, upperBoundExpr]
+    Crude.TypeInt -> do
+      -- -(2^(n-1)) + 1 <= tm
+      lowerBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe (intTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
+      -- tm <= 2^(n-1) - 1
+      upperBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      tell [lowerBoundExpr, upperBoundExpr]
+    Crude.TypeFloat -> do
+      -- -(2^(n-1)) + 1 <= tm
+      lowerBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe (floatTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
+      -- tm <= 2^(n-1) - 1
+      upperBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe tm (floatTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      tell [lowerBoundExpr, upperBoundExpr]
+inferTypeRefinements term TypeBit = return ()
+inferTypeRefinements term TypeChar = return ()
+-- > term : Array<A>
+-- then induced refinement on `term` is
+-- > forall x : A . inArray(x, term) ==> inferTypeRefinements x A
+inferTypeRefinements term (TypeArray ty) = return () -- !TODO
+-- > term : Tuple<A, B>
+-- then induced refinement on `term` is
+-- > inferTypeRefinements (fst term); inferTypeRefinements (snd term)
+inferTypeRefinements term (TypeTuple ty1 ty2) = return () -- !TODO
+-- > term : Optional<A>
+-- then induced refinement on `term` is
+-- > forall x : A . term == Some x ==> inferTypeRefinements x A
+inferTypeRefinements term (TypeOptional ty) = return () -- !TODO
+inferTypeRefinements term (TypeNamed ti) = return () -- !TODO
+
+{-
 -- | Traverse down to atomic types, variants, and structures which have special
 -- cases for their inferred refinements.
 --
@@ -485,8 +540,7 @@ inferTypeRefinements tm (TypeNamed tyId) =
       --       -- infer type refinements on each of the introduced components
       --       inferTypeRefinements (TermNamed paramId paramType) paramType
       pure ()
-
--- inferTypeRefinements tm _
+-}
 
 introConstants :: StateT CheckingCtx RefiningM ()
 introConstants = do
