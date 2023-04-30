@@ -384,6 +384,20 @@ introTransforms = do
       let exs' = exs <&> \ex -> F.PAll (params'' <> quals) ex
       ctxAssumptionsReversed %= (exs' <>)
 
+-- | Traverse down to atomic types, variants, and structures which have special
+-- cases for their inferred refinements.
+--
+-- @
+--   struct S {x: int32; assert(0 <= x)}
+-- @
+--
+-- > inferTypeRefinements x (TupleType S S)
+-- > ==> isS(proj1 x) && isS(proj2 x)
+--
+-- !TODO or maybe don't manually destruct -- can just do the same thing as in `x`
+-- case and let the system of equalities figure it out
+-- > inferTypeRefinements (TupleTerm x y) (TupleType S S)
+-- > ==> isS(x) && isS(y)
 inferTypeRefinements :: Term -> Type -> WriterT [(F.Symbol, F.Sort)] (WriterT [F.Expr] RefiningM) ()
 inferTypeRefinements tm (TypeNumber nt n) = do
   case nt of
