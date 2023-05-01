@@ -419,7 +419,7 @@ checkTerm expectType term = do
     Left (mb_doc, tyExpect, tySynth) ->
       throwTypingError
         ( vcat
-            [ hcat ["When checking that", pPrint term, "has type", pPrint expectType, ", failed to unify synthesized type"],
+            [ hsep ["When checking that", pPrint term, "has type", pPrint expectType, ", failed to unify synthesized type"],
               nest 2 (pPrint tySynth),
               "with expected type",
               nest 2 (pPrint tyExpect),
@@ -508,7 +508,7 @@ unify' mtype1 mtype2 = do
   type2 <- lift mtype2
   unify type1 type2
 
--- uv{mb_uc} := ty (during: type1 ~ type2)
+-- attempt to substitute uv{mb_uc} for ty; during: type1 ~ type2
 substUnifyVar :: Type -> Type -> UnifyVar -> Maybe UnifyConstraint -> Type -> UnifyM ()
 substUnifyVar type1 type2 uv mb_uc ty = do
   -- check if uv1 occurs in type2
@@ -537,6 +537,9 @@ satisfiesUnifyConstraint ty = \case
     _uc -> False
   UnifyConstraintNumeric -> case ty of
     TypeNumber _ _ -> True
+    TypeUnifyVar _ (Just uc) -> case uc of
+      (UnifyConstraintCasted ty') -> satisfiesUnifyConstraint ty' UnifyConstraintNumeric
+      UnifyConstraintNumeric -> True
     _ -> False
 
 unifyVarOccursInType :: UnifyVar -> Type -> Bool
