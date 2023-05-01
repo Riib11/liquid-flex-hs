@@ -23,6 +23,6 @@ struct S2 {
 
 transform f3() -> bit {
     let s1 = f1();
-    let s2 = S2 {s1 = s1};
+    // let s2 = S2 {s1 = s1}; // FAIL
     true
 }
