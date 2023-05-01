@@ -1,5 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
+{-# HLINT ignore "Use camelCase" #-}
+
 module Language.Flex.Typing.TypingM where
 
 import Control.Lens hiding (enum)
@@ -27,6 +29,12 @@ runTypingM' env ctx m =
   liftFlex (runExceptT (runReaderT (evalStateT m env) ctx)) >>= \case
     Left err -> throwError err
     Right a -> return a
+
+runTypingM_unsafe :: MonadFlex m => TypingEnv -> TypingCtx -> TypingM a -> m a
+runTypingM_unsafe env ctx m = liftFlex do
+  runExceptT (runReaderT (runStateT m env) ctx) >>= \case
+    (Left err) -> FlexM.throw $ pPrint err
+    (Right (a, _)) -> return a
 
 -- | During typing, store each type as a `MType = TypingM Type` so that whenever
 -- a `Type`'s value is used, the `TypingM` must be run first (in a `TypingM`

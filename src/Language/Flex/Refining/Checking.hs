@@ -304,6 +304,9 @@ introStructureUserDatatype struct = do
   (ctxQuery . _qCon . at (makeDatatypePropertySymbol structId))
     ?= F.FFunc structSort F.boolSort
 
+  FlexM.debug True $ "structureFields struct =" <+> pPrint (structureFields struct)
+  FlexM.debug True $ "structureRefinement struct =" <+> pPrint (structureRefinement struct)
+
   -- Intro assumption about predicate
   asmpExpr :: F.Expr <- do
     structVar <- FlexM.freshSymbol "struct"

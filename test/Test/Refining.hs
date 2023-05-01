@@ -6,6 +6,7 @@ import Control.Monad
 import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
 import Data.List (singleton)
 import Language.Flex.DefaultFlexCtx (defaultFlexCtx)
+import Language.Flex.Elaboration (elaborateModule)
 import Language.Flex.FlexM (FlexCtx (flexDebug), FlexM, runFlexM)
 import Language.Flex.Parsing (parseModuleFile)
 import Language.Flex.Refining (refineModule)
@@ -46,7 +47,7 @@ test =
                 -- makeTest_refineModule True "examples/refining/Structures.flex" -- !TODO get introducing refined structures to work
                 -- makeTest_refineModule True "examples/refining/Functions.flex"
                 -- makeTest_refineModule True "examples/refining/Matches.flex"
-                makeTest_refineModule True "examples/refining/Tmp.flex"
+                makeTest_refineModule True "examples/refining/RefinedStructureInputs.flex"
               ]
               --  [makeTest_refineModule True "examples/refining/Structures.flex"]
               -- [makeTest_refineModule True "examples/refining/Variants.flex"]
@@ -72,19 +73,23 @@ makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . Tes
 
   !_ <- return ()
 
-  mdl' <-
-    (runFlexM defaultFlexCtx . runExceptT) (typeModule mdl) >>= \case
+  mdl <- runFlexM defaultFlexCtx {flexDebug = False} (elaborateModule mdl)
+
+  !_ <- return ()
+
+  mdl <-
+    (runFlexM defaultFlexCtx {flexDebug = True} . runExceptT) (typeModule mdl) >>= \case
       Left err -> assertFailure (render $ "[error: typing failure in refinement test]" $$ pPrint err)
       Right (_env, mdl') -> return mdl'
   !_ <- return ()
 
   putStrLn "[typed module]"
   putStrLn $ replicate 40 '='
-  putStrLn $ render (pPrint mdl')
+  putStrLn $ render (pPrint mdl)
   putStrLn $ replicate 40 '='
 
   !_ <- return ()
 
-  (runFlexM defaultFlexCtx {flexDebug = _DEBUG} . runExceptT) (refineModule mdl') >>= \case
+  (runFlexM defaultFlexCtx {flexDebug = _DEBUG} . runExceptT) (refineModule mdl) >>= \case
     Left err -> when pass $ assertFailure (render . pPrint $ err)
     Right _ -> unless pass $ assertFailure "expected refining to fail"

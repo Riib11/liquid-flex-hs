@@ -15,6 +15,8 @@ import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
 import Language.Flex.Refining.Translating
 import qualified Language.Flex.Syntax as Crude
+import Language.Flex.Typing.TypingM (TypingCtx, TypingEnv)
+import qualified Language.Flex.Typing.TypingM as TypingM
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility hiding (for)
 

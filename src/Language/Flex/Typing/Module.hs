@@ -24,67 +24,14 @@ moduleTypingCtx ::
   Module Type () ->
   m TypingCtx
 moduleTypingCtx Module {..} = FlexM.markSection [FlexM.FlexMarkStep "moduleTypingCtx" Nothing] do
-  -- collect all structures
-  let structs :: Map.Map TypeId (Structure Type)
-      structs = for moduleDeclarations mempty \case
-        (DeclarationStructure struct@Structure {..}) -> Map.insert structureId struct
-        _ -> id
-
-  -- collect all refined types
-  let refinedTypes :: Map.Map TypeId (RefinedType ())
-      refinedTypes = for moduleDeclarations mempty \case
-        DeclarationRefinedType rt@RefinedType {..} -> Map.insert refinedTypeId rt
-        _ -> id
-
-  let -- fully extend the structure's fields
-      extendStructure structIds struct@Structure {..} = FlexM.markSection [FlexM.FlexMarkStep ("extendStructure" <+> pPrint structureId) . Just $ pPrint (structIds, structureId)] do
-        -- assert acyclic extensions
-        when (structureId `elem` structIds) $ throwTypingError ("the structure" <+> ticks (pPrint structureId) <+> "has an extension that forms a cycle:" <+> hcat (punctuate (space <> "extends" <> space) $ pPrint <$> reverse structIds)) (Just $ SyntaxDeclaration $ DeclarationStructure struct)
-
-        case (structs Map.!?) =<< structureMaybeExtensionId of
-          Nothing -> return struct
-          Just struct' -> do
-            -- extend the extending struct
-            struct'' <- extendStructure structIds struct'
-
-            -- assert non-overlapping fields from extension
-            case filter (isJust . (`lookup` Syntax.structureFields struct'') . fst) structureFields of
-              interFields | not (null interFields) -> throwTypingError ("the structure" <+> ticks (pPrint structureId) <+> "inherits fields that overlap with fields it already has:" <+> pPrint (fst <$> interFields)) (Just $ SyntaxDeclaration $ DeclarationStructure struct)
-              _ -> return ()
-
-            -- append extending struct's fields to extended struct's fields
-            return struct {structureFields = structureFields <> Syntax.structureFields struct''}
-
-  let -- fully extend the refined type's refinements (if it is refining a structure that extends another structure)
-      extendRefinedType tyIds rt@RefinedType {..} = FlexM.markSection [FlexM.FlexMarkStep ("extendRefinedType" <+> pPrint refinedTypeId) . Just $ pPrint (tyIds, refinedTypeId)] case structs Map.!? refinedTypeId of
-        Nothing -> return rt
-        Just Structure {..} ->
-          case structureMaybeExtensionId of
-            Nothing -> return rt
-            Just extendId -> case refinedTypes Map.!? extendId of
-              Nothing -> FlexM.throw $ "unknown refinable type id:" <+> ticks (text $ show structureId) $$ "known refined types:" <+> text (show $ Map.keys refinedTypes)
-              Just rt' -> do
-                -- extend refinement
-                rt'' <- extendRefinedType (refinedTypeId : tyIds) rt'
-                -- conjoin refinements
-                return
-                  rt
-                    { refinedTypeRefinement =
-                        andRefinements
-                          [ refinedTypeRefinement,
-                            Syntax.refinedTypeRefinement rt''
-                          ]
-                    }
-
   let ctx :: TypingCtx
       ctx = preludeTypingCtx
 
   flip execStateT ctx . forM_ moduleDeclarations $ \decl -> case decl of
     (DeclarationStructure struct@Structure {..}) -> do
       -- extend structure
-      struct' <- extendStructure [] struct
       -- normalize structure
-      let struct'' = normalizeType <$> struct'
+      let struct'' = normalizeType <$> struct
       -- intro structure type
       modifyInsertUnique (Just $ SyntaxDeclaration decl) structureId (ctxTypes . at structureId) (CtxStructure struct'')
     (DeclarationNewtype newty@Newtype {..}) -> do
@@ -160,9 +107,8 @@ moduleTypingCtx Module {..} = FlexM.markSection [FlexM.FlexMarkStep "moduleTypin
       modifyInsertUnique (Just $ SyntaxDeclaration decl) (void app) (ctxApplicants . at protoapp) app
     (DeclarationRefinedType rt@RefinedType {..}) -> do
       -- extend refined type (if refined structure inherits refinements)
-      rt' <- extendRefinedType [] rt
       -- intro refined type
-      modifyInsertUnique (Just $ SyntaxDeclaration decl) refinedTypeId (ctxRefinedTypes . at refinedTypeId) rt'
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) refinedTypeId (ctxRefinedTypes . at refinedTypeId) rt
 
 -- ** Module Typing Environment
 
