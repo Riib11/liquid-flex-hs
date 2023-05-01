@@ -58,11 +58,11 @@ transTerm' term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
         Just tm' -> return tm'
     transPrimitive (Crude.PrimitiveArray tes) = TermPrimitive <$> (PrimitiveArray <$> transTerm `traverse` tes) <*> return ty
     transPrimitive (Crude.PrimitiveIf te1 te2 te3) = TermPrimitive <$> (PrimitiveIf <$> transTerm te1 <*> transTerm te2 <*> transTerm te3) <*> return ty
-    transPrimitive (Crude.PrimitiveAnd te te') = TermPrimitive <$> (PrimitiveAnd <$> transTerm te <*> transTerm te') <*> return ty
-    transPrimitive (Crude.PrimitiveOr te te') = TermPrimitive <$> (PrimitiveOr <$> transTerm te <*> transTerm te') <*> return ty
     transPrimitive (Crude.PrimitiveNot te) = TermPrimitive <$> (PrimitiveNot <$> transTerm te) <*> return ty
-    transPrimitive (Crude.PrimitiveEq te te') = TermPrimitive <$> (PrimitiveEq <$> transTerm te <*> transTerm te') <*> return ty
-    transPrimitive (Crude.PrimitiveAdd te te') = TermPrimitive <$> (PrimitiveAdd <$> transTerm te <*> transTerm te') <*> return ty
+    transPrimitive (Crude.PrimitiveEq b te te') = TermPrimitive <$> (PrimitiveEq b <$> transTerm te <*> transTerm te') <*> return ty
+    transPrimitive (Crude.PrimitiveBoolBinOp bbo te te') = TermPrimitive <$> (PrimitiveBoolBinOp bbo <$> transTerm te <*> transTerm te') <*> return ty
+    transPrimitive (Crude.PrimitiveNumBinOp nbo te te') = TermPrimitive <$> (PrimitiveNumBinOp nbo <$> transTerm te <*> transTerm te') <*> return ty
+    transPrimitive (Crude.PrimitiveNumBinRel nbr te te') = TermPrimitive <$> (PrimitiveNumBinRel nbr <$> transTerm te <*> transTerm te') <*> return ty
     -- !TODO is there something special to do here, by introducing global facts
     -- or something about extension relations?
     transPrimitive (Crude.PrimitiveExtends te ti) = TermPrimitive <$> (PrimitiveExtends <$> transTerm te <*> return ti) <*> return ty

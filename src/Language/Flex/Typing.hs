@@ -375,27 +375,28 @@ synthPrimitive (PrimitiveIf te te1 te2) = do
   te1' <- synthCheckTerm' ty te1
   te2' <- synthCheckTerm' ty te2
   return $ TermPrimitive (PrimitiveIf te' te1' te2') ty
-synthPrimitive (PrimitiveAnd te1 te2) = do
+synthPrimitive (PrimitiveBoolBinOp bbo te1 te2) = do
   te1' <- synthCheckTerm TypeBit te1
   te2' <- synthCheckTerm TypeBit te2
-  return $ TermPrimitive (PrimitiveAnd te1' te2') (return TypeBit)
-synthPrimitive (PrimitiveOr te1 te2) = do
-  te1' <- synthCheckTerm TypeBit te1
-  te2' <- synthCheckTerm TypeBit te2
-  return $ TermPrimitive (PrimitiveOr te1' te2') (return TypeBit)
+  return $ TermPrimitive (PrimitiveBoolBinOp bbo te1' te2') (return TypeBit)
 synthPrimitive (PrimitiveNot te) = do
   te' <- synthCheckTerm TypeBit te
   return $ TermPrimitive (PrimitiveNot te') (return TypeBit)
-synthPrimitive (PrimitiveEq te1 te2) = do
+synthPrimitive (PrimitiveEq neg te1 te2) = do
   ty <- freshTypeUnifyVar' (render $ "primitive equality" <+> pPrint [te1, te2]) Nothing
   te1' <- synthCheckTerm' ty te1
   te2' <- synthCheckTerm' ty te2
-  return $ TermPrimitive (PrimitiveEq te1' te2') (return TypeBit)
-synthPrimitive (PrimitiveAdd te1 te2) = do
-  ty <- freshTypeUnifyVar' (render $ "primitive add" <+> pPrint [te1, te2]) (Just UnifyConstraintNumeric)
+  return $ TermPrimitive (PrimitiveEq neg te1' te2') (return TypeBit)
+synthPrimitive (PrimitiveNumBinOp nbo te1 te2) = do
+  ty <- freshTypeUnifyVar' (render $ "primitive" <+> text (operatorOfNumBinOp nbo) <+> pPrint [te1, te2]) (Just UnifyConstraintNumeric)
   te1' <- synthCheckTerm' ty te1
   te2' <- synthCheckTerm' ty te2
-  return $ TermPrimitive (PrimitiveAdd te1' te2') ty
+  return $ TermPrimitive (PrimitiveNumBinOp nbo te1' te2') ty
+synthPrimitive (PrimitiveNumBinRel nbr te1 te2) = do
+  ty <- freshTypeUnifyVar' (render $ "primitive" <+> text (operatorOfNumBinRel nbr) <+> pPrint [te1, te2]) (Just UnifyConstraintNumeric)
+  te1' <- synthCheckTerm' ty te1
+  te2' <- synthCheckTerm' ty te2
+  return $ TermPrimitive (PrimitiveNumBinRel nbr te1' te2') (return TypeBit)
 synthPrimitive (PrimitiveExtends {}) = error "synthPrimitive PrimitiveExtends"
 
 synthCheckTerm :: Type -> Term () -> TypingM (Term MType)

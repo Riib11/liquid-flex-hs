@@ -63,17 +63,25 @@ reflPrimitive (PrimitiveArray _tms) = do
   --   firstExpr : restExprs -> return $
   --     for restExprs firstExpr \headExpr tailExpr ->
   --       F.eApps (F.eVar array_ConsConstructorSymbol) [headExpr, tailExpr]
-  error "use LH's built-in arrays"
+  error "!TODO use LH's built-in arrays"
 reflPrimitive (PrimitiveIf tm1 tm2 tm3) = F.EIte <$> reflTerm tm1 <*> reflTerm tm2 <*> reflTerm tm3
-reflPrimitive (PrimitiveAnd tm1 tm2) = F.pAnd <$> reflTerm `traverse` [tm1, tm2]
-reflPrimitive (PrimitiveOr tm1 tm2) = F.pOr <$> reflTerm `traverse` [tm1, tm2]
 reflPrimitive (PrimitiveNot tm) = F.PNot <$> reflTerm tm
-reflPrimitive (PrimitiveEq tm1 tm2) = F.PAtom F.Eq <$> reflTerm tm1 <*> reflTerm tm2
-reflPrimitive (PrimitiveAdd tm1 tm2) = F.EBin F.Plus <$> reflTerm tm1 <*> reflTerm tm2
-reflPrimitive (PrimitiveLe tm1 tm2) = F.PAtom F.Le <$> reflTerm tm1 <*> reflTerm tm2
-reflPrimitive (PrimitiveLt tm1 tm2) = F.PAtom F.Lt <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveEq True tm1 tm2) = F.PAtom F.Eq <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveEq False tm1 tm2) = F.PAtom F.Ne <$> reflTerm tm1 <*> reflTerm tm2
 reflPrimitive (PrimitiveFirst tm) = F.eApps (F.eVar tuple_FirstFieldAccessorSymbol) <$> reflTerm `traverse` [tm]
 reflPrimitive (PrimitiveSecond tm) = F.eApps (F.eVar tuple_SecondFieldAccessorSymbol) <$> reflTerm `traverse` [tm]
+reflPrimitive (PrimitiveBoolBinOp Crude.BoolBinOpAnd tm1 tm2) = F.pAnd <$> reflTerm `traverse` [tm1, tm2]
+reflPrimitive (PrimitiveBoolBinOp Crude.BoolBinOpOr tm1 tm2) = F.pOr <$> reflTerm `traverse` [tm1, tm2]
+reflPrimitive (PrimitiveBoolBinOp Crude.BoolBinOpImp tm1 tm2) = F.PImp <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveNumBinOp Crude.NumBinOpAdd tm1 tm2) = F.EBin F.Plus <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveNumBinOp Crude.NumBinOpDiv tm1 tm2) = F.EBin F.Div <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveNumBinOp Crude.NumBinOpSub tm1 tm2) = F.EBin F.Minus <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveNumBinOp Crude.NumBinOpMul tm1 tm2) = F.EBin F.Times <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveNumBinOp Crude.NumBinOpMod tm1 tm2) = F.EBin F.Mod <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveNumBinRel Crude.NumBinRelLt tm1 tm2) = F.PAtom F.Lt <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveNumBinRel Crude.NumBinRelLe tm1 tm2) = F.PAtom F.Le <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveNumBinRel Crude.NumBinRelGt tm1 tm2) = F.PAtom F.Gt <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveNumBinRel Crude.NumBinRelGe tm1 tm2) = F.PAtom F.Ge <$> reflTerm tm1 <*> reflTerm tm2
 reflPrimitive (PrimitiveExtends {}) = error "!TODO reflect PrimitiveExtends"
 
 reflLiteral :: Crude.Literal -> RefiningM F.Expr

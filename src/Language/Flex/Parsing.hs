@@ -484,10 +484,15 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
 
     table :: OperatorTable String LexingEnv IO (Term ())
     table =
-      [ [makePrefix PrimitiveNot "!"],
-        [makeInfix PrimitiveAnd "&&" AssocLeft],
-        [makeInfix PrimitiveOr "||" AssocLeft],
-        [makeInfix PrimitiveEq "==" AssocNone]
+      [ [makeInfix (PrimitiveNumBinOp nbo) (operatorOfNumBinOp nbo) AssocLeft | nbo <- [NumBinOpMul, NumBinOpDiv]],
+        [makeInfix (PrimitiveNumBinOp nbo) (operatorOfNumBinOp nbo) AssocLeft | nbo <- [NumBinOpAdd, NumBinOpSub]],
+        [makeInfix (PrimitiveNumBinOp nbo) (operatorOfNumBinOp nbo) AssocLeft | nbo <- [NumBinOpMod]],
+        [makeInfix (PrimitiveNumBinRel nbr) (operatorOfNumBinRel nbr) AssocNone | nbr <- enumFrom (toEnum 0)],
+        [makePrefix PrimitiveNot "!"],
+        [makeInfix (PrimitiveBoolBinOp BoolBinOpAnd) "&&" AssocLeft],
+        [makeInfix (PrimitiveBoolBinOp BoolBinOpOr) "||" AssocLeft],
+        [makeInfix (PrimitiveEq True) "==" AssocNone, makeInfix (PrimitiveEq False) "!=" AssocNone],
+        [makeInfix (PrimitiveBoolBinOp BoolBinOpImp) "==>" AssocRight]
       ]
       where
         makePrefix constr str = Prefix do

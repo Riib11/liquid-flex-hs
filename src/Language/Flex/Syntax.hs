@@ -8,6 +8,7 @@ import Data.Functor ((<&>))
 import Data.List (intercalate)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
+import qualified GHC.Enum as Enum
 import qualified Language.Fixpoint.Types as F
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
@@ -401,7 +402,7 @@ instance Traversable (Tm Function ty) where
     Tm
       . (\functionBody' -> fun {functionBody = functionBody'})
       <$> f
-      `traverse` functionBody
+        `traverse` functionBody
 
 instance (Pretty ty, Pretty tm) => Pretty (Function ty tm) where
   pPrint (Function {..}) =
@@ -501,7 +502,7 @@ instance Traversable (Tm Constant ty) where
     Tm
       . (\constantBody' -> con {constantBody = constantBody'})
       <$> f
-      `traverse` constantBody
+        `traverse` constantBody
 
 instance Pretty (Constant ty tm) where
   pPrint (Constant {..}) =
@@ -674,13 +675,52 @@ data Primitive ann
   | PrimitiveTuple [Term ann]
   | PrimitiveArray [Term ann]
   | PrimitiveIf (Term ann) (Term ann) (Term ann)
-  | PrimitiveAnd (Term ann) (Term ann)
-  | PrimitiveOr (Term ann) (Term ann)
   | PrimitiveNot (Term ann)
-  | PrimitiveEq (Term ann) (Term ann)
-  | PrimitiveAdd (Term ann) (Term ann)
+  | PrimitiveEq Bool (Term ann) (Term ann) -- bool is False if negated
+  | PrimitiveBoolBinOp BoolBinOp (Term ann) (Term ann)
+  | PrimitiveNumBinOp NumBinOp (Term ann) (Term ann)
+  | PrimitiveNumBinRel NumBinRel (Term ann) (Term ann)
   | PrimitiveExtends (Term ann) TypeId
   deriving (Eq, Show, Functor, Foldable, Traversable)
+
+data BoolBinOp
+  = BoolBinOpAnd
+  | BoolBinOpOr
+  | BoolBinOpImp
+  deriving (Eq, Show, Enum.Enum)
+
+operatorOfBoolBinOp :: BoolBinOp -> String
+operatorOfBoolBinOp BoolBinOpAnd = "&&"
+operatorOfBoolBinOp BoolBinOpOr = "||"
+operatorOfBoolBinOp BoolBinOpImp = "==>"
+
+data NumBinOp
+  = NumBinOpAdd
+  | NumBinOpSub
+  | NumBinOpDiv
+  | NumBinOpMul
+  | NumBinOpMod
+  deriving (Eq, Show, Enum.Enum)
+
+operatorOfNumBinOp :: NumBinOp -> String
+operatorOfNumBinOp NumBinOpAdd = "+"
+operatorOfNumBinOp NumBinOpSub = "-"
+operatorOfNumBinOp NumBinOpDiv = "/"
+operatorOfNumBinOp NumBinOpMul = "*"
+operatorOfNumBinOp NumBinOpMod = "%"
+
+data NumBinRel
+  = NumBinRelLt
+  | NumBinRelLe
+  | NumBinRelGt
+  | NumBinRelGe
+  deriving (Eq, Show, Enum.Enum)
+
+operatorOfNumBinRel :: NumBinRel -> String
+operatorOfNumBinRel NumBinRelLt = "<"
+operatorOfNumBinRel NumBinRelLe = "<="
+operatorOfNumBinRel NumBinRelGt = ">"
+operatorOfNumBinRel NumBinRelGe = ">="
 
 instance Pretty (Primitive ann) where
   pPrint = \case
@@ -691,11 +731,12 @@ instance Pretty (Primitive ann) where
     PrimitiveTuple tms -> parens . hcat . punctuate (comma <> space) . fmap pPrint $ tms
     PrimitiveArray tms -> braces . hcat . punctuate (comma <> space) . fmap pPrint $ tms
     PrimitiveIf tm1 tm2 tm3 -> parens $ hsep ["if", pPrint tm1, "then", pPrint tm2, "else", pPrint tm3]
-    PrimitiveAnd tm1 tm2 -> parens $ hsep [pPrint tm1, "&&", pPrint tm2]
-    PrimitiveOr tm1 tm2 -> parens $ hsep [pPrint tm1, "||", pPrint tm2]
+    PrimitiveBoolBinOp bbo tm1 tm2 -> parens $ hsep [pPrint tm1, text $ operatorOfBoolBinOp bbo, pPrint tm2]
     PrimitiveNot tm -> "!" <> pPrint tm
-    PrimitiveEq tm1 tm2 -> parens $ pPrint tm1 <+> "==" <+> pPrint tm2
-    PrimitiveAdd tm1 tm2 -> parens $ pPrint tm1 <+> "+" <+> pPrint tm2
+    PrimitiveEq True tm1 tm2 -> parens $ pPrint tm1 <+> "==" <+> pPrint tm2
+    PrimitiveEq False tm1 tm2 -> parens $ pPrint tm1 <+> "!=" <+> pPrint tm2
+    PrimitiveNumBinOp nbo tm1 tm2 -> parens $ pPrint tm1 <+> text (operatorOfNumBinOp nbo) <+> pPrint tm2
+    PrimitiveNumBinRel nbr tm1 tm2 -> parens $ pPrint tm1 <+> text (operatorOfNumBinRel nbr) <+> pPrint tm2
     PrimitiveExtends tm tyId -> parens $ pPrint tm <+> "extends" <+> pPrint tyId
 
 -- ** Pattern
@@ -793,7 +834,7 @@ trueRefinement :: Refinement ()
 trueRefinement = Refinement (TermLiteral (LiteralBit True) ())
 
 andRefinement :: Refinement () -> Refinement () -> Refinement ()
-andRefinement (Refinement tm1) (Refinement tm2) = Refinement (TermPrimitive (PrimitiveAnd tm1 tm2) ())
+andRefinement (Refinement tm1) (Refinement tm2) = Refinement (TermPrimitive (PrimitiveBoolBinOp BoolBinOpAnd tm1 tm2) ())
 
 andRefinements :: [Refinement ()] -> Refinement ()
 andRefinements [] = trueRefinement
@@ -851,11 +892,11 @@ renamePrimitive tmIds prim = case prim of
   PrimitiveTuple tes -> PrimitiveTuple (renameTerm tmIds <$> tes)
   PrimitiveArray tes -> PrimitiveArray (renameTerm tmIds <$> tes)
   PrimitiveIf te te' te_r -> PrimitiveIf (renameTerm tmIds te) (renameTerm tmIds te') (renameTerm tmIds te_r)
-  PrimitiveAnd te te' -> PrimitiveAnd (renameTerm tmIds te) (renameTerm tmIds te')
-  PrimitiveOr te te' -> PrimitiveOr (renameTerm tmIds te) (renameTerm tmIds te')
+  PrimitiveBoolBinOp bbo te te' -> PrimitiveBoolBinOp bbo (renameTerm tmIds te) (renameTerm tmIds te')
   PrimitiveNot te -> PrimitiveNot (renameTerm tmIds te)
-  PrimitiveEq te te' -> PrimitiveEq (renameTerm tmIds te) (renameTerm tmIds te')
-  PrimitiveAdd te te' -> PrimitiveAdd (renameTerm tmIds te) (renameTerm tmIds te')
+  PrimitiveEq b te te' -> PrimitiveEq b (renameTerm tmIds te) (renameTerm tmIds te')
+  PrimitiveNumBinOp nbo te te' -> PrimitiveNumBinOp nbo (renameTerm tmIds te) (renameTerm tmIds te')
+  PrimitiveNumBinRel nbr te te' -> PrimitiveNumBinRel nbr (renameTerm tmIds te) (renameTerm tmIds te')
   PrimitiveExtends tm tyId -> PrimitiveExtends (renameTerm tmIds tm) tyId
 
 -- substTerm x a b = b[x := a]
@@ -868,11 +909,11 @@ substTerm sub (TermPrimitive (PrimitiveSome te) r) = TermPrimitive (PrimitiveSom
 substTerm sub (TermPrimitive (PrimitiveTuple tes) r) = TermPrimitive (PrimitiveTuple (substTerm sub <$> tes)) r
 substTerm sub (TermPrimitive (PrimitiveArray tes) r) = TermPrimitive (PrimitiveArray (substTerm sub <$> tes)) r
 substTerm sub (TermPrimitive (PrimitiveIf te te' te_r) r) = TermPrimitive (PrimitiveIf (substTerm sub te) (substTerm sub te') (substTerm sub te_r)) r
-substTerm sub (TermPrimitive (PrimitiveAnd te te') r) = TermPrimitive (PrimitiveAnd (substTerm sub te) (substTerm sub te')) r
-substTerm sub (TermPrimitive (PrimitiveOr te te') r) = TermPrimitive (PrimitiveOr (substTerm sub te) (substTerm sub te')) r
 substTerm sub (TermPrimitive (PrimitiveNot te) r) = TermPrimitive (PrimitiveNot (substTerm sub te)) r
-substTerm sub (TermPrimitive (PrimitiveEq te te') r) = TermPrimitive (PrimitiveEq (substTerm sub te) (substTerm sub te')) r
-substTerm sub (TermPrimitive (PrimitiveAdd te te') r) = TermPrimitive (PrimitiveAdd (substTerm sub te) (substTerm sub te')) r
+substTerm sub (TermPrimitive (PrimitiveEq b te te') r) = TermPrimitive (PrimitiveEq b (substTerm sub te) (substTerm sub te')) r
+substTerm sub (TermPrimitive (PrimitiveBoolBinOp bbo te te') r) = TermPrimitive (PrimitiveBoolBinOp bbo (substTerm sub te) (substTerm sub te')) r
+substTerm sub (TermPrimitive (PrimitiveNumBinOp nbo te te') r) = TermPrimitive (PrimitiveNumBinOp nbo (substTerm sub te) (substTerm sub te')) r
+substTerm sub (TermPrimitive (PrimitiveNumBinRel nbr te te') r) = TermPrimitive (PrimitiveNumBinRel nbr (substTerm sub te) (substTerm sub te')) r
 substTerm sub (TermPrimitive (PrimitiveExtends te ti) r) = TermPrimitive (PrimitiveExtends (substTerm sub te) ti) r
 substTerm sub (TermLet m_ti te te' r) = TermLet m_ti (substTerm sub te) (substTerm sub te') r
 substTerm sub (TermAssert te te' r) = TermAssert (substTerm sub te) (substTerm sub te') r

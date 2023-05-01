@@ -41,11 +41,11 @@ Limitations of prototype:
           over that?
 - [ ] Primitives (includes reflection)
     - [x] `==`
-        - [ ] `!=`
+        - [x] `!=`
     - [x] `&&`, `||`, `!`
-        [ ] `==>`
+        [x] `==>`
     - [x] `+`
-        - [ ] `-`, `*`, `/`, `mod`, `<=`, `<`, `>`, `>=`, ...
+        - [x] `-`, `*`, `/`, `%`, `<=`, `<`, `>`, `>=`, ...
 - [x] Structures
     - [x] constructing
         - `S{ x = 1; y = 2 } : { VV: S | VV = S 1 2 }`

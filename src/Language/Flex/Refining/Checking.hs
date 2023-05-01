@@ -637,11 +637,19 @@ checkPrimitive _ (PrimitiveIf tm1 tm2 tm3) = do
   assume (eqTerm tm1 trueTerm) $ checkTerm tm2
   -- tm1 == false ==> ...
   assume (eqTerm tm1 falseTerm) $ checkTerm tm3
-checkPrimitive _ (PrimitiveAnd tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
-checkPrimitive _ (PrimitiveOr tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveNot tm) = checkTerm `traverse_` [tm]
-checkPrimitive _ (PrimitiveEq tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
-checkPrimitive _ (PrimitiveAdd tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
-checkPrimitive _ (PrimitiveLe tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
-checkPrimitive _ (PrimitiveLt tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
+checkPrimitive _ (PrimitiveEq _ tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveExtends tm _tyId) = checkTerm `traverse_` [tm]
+checkPrimitive _ (PrimitiveBoolBinOp _ tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
+-- x % y yields obligation y != 0
+checkPrimitive ty prim@(PrimitiveNumBinOp Crude.NumBinOpDiv tm1 tm2) = do
+  checkTerm tm1
+  assert (pPrint prim) (TermPrimitive (PrimitiveEq False tm2 (TermLiteral (Crude.LiteralInteger 0) ty)) ty)
+  checkTerm tm2
+-- x / y yields obligation y != 0
+checkPrimitive ty prim@(PrimitiveNumBinOp Crude.NumBinOpMod tm1 tm2) = do
+  checkTerm tm1
+  assert (pPrint prim) (TermPrimitive (PrimitiveEq False tm2 (TermLiteral (Crude.LiteralInteger 0) ty)) ty)
+  checkTerm tm2
+checkPrimitive _ (PrimitiveNumBinOp _ tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
+checkPrimitive _ (PrimitiveNumBinRel _ tm1 tm2) = checkTerm `traverse_` [tm1, tm2]

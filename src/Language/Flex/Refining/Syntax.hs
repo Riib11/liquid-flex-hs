@@ -130,7 +130,10 @@ letTerm :: Crude.TermId -> Term -> Term -> Term
 letTerm tmId tm1 tm2 = TermLet (Just tmId) tm1 tm2 (termType tm2)
 
 eqTerm :: Term -> Term -> Term
-eqTerm tm1 tm2 = TermPrimitive (PrimitiveEq tm1 tm2) TypeBit
+eqTerm tm1 tm2 = TermPrimitive (PrimitiveEq True tm1 tm2) TypeBit
+
+neqTerm :: Term -> Term -> Term
+neqTerm tm1 tm2 = TermPrimitive (PrimitiveEq False tm1 tm2) TypeBit
 
 -- -- pow2Term n = 2^n
 -- pow2Term :: Integer -> Term
@@ -172,13 +175,11 @@ data Primitive
   | PrimitiveSecond !Term
   | PrimitiveArray ![Term]
   | PrimitiveIf !Term !Term !Term
-  | PrimitiveAnd !Term !Term
-  | PrimitiveOr !Term !Term
   | PrimitiveNot !Term
-  | PrimitiveEq !Term !Term
-  | PrimitiveAdd !Term !Term
-  | PrimitiveLe !Term !Term
-  | PrimitiveLt !Term !Term
+  | PrimitiveEq Bool !Term !Term -- bool is False if negated
+  | PrimitiveBoolBinOp Crude.BoolBinOp !Term !Term
+  | PrimitiveNumBinOp Crude.NumBinOp !Term !Term
+  | PrimitiveNumBinRel Crude.NumBinRel !Term !Term
   | PrimitiveExtends !Term !Crude.TypeId
   deriving (Eq, Show)
 
@@ -191,13 +192,12 @@ instance Pretty Primitive where
   pPrint (PrimitiveSecond te) = parens $ "snd" <+> pPrint te
   pPrint (PrimitiveArray tes) = brackets $ commaList $ pPrint <$> tes
   pPrint (PrimitiveIf te te' te2) = parens $ "if" <+> pPrint te <+> "then" <+> pPrint te' <+> pPrint te2
-  pPrint (PrimitiveAnd te te') = parens $ pPrint te <+> "&&" <+> pPrint te'
-  pPrint (PrimitiveOr te te') = parens $ pPrint te <+> "||" <+> pPrint te'
+  pPrint (PrimitiveBoolBinOp bbo te te') = parens $ pPrint te <+> text (Crude.operatorOfBoolBinOp bbo) <+> pPrint te'
   pPrint (PrimitiveNot te) = parens $ "!" <+> pPrint te
-  pPrint (PrimitiveEq te te') = parens $ pPrint te <+> "==" <+> pPrint te'
-  pPrint (PrimitiveAdd te te') = parens $ pPrint te <+> "+" <+> pPrint te'
-  pPrint (PrimitiveLe te te') = parens $ pPrint te <+> "<=" <+> pPrint te'
-  pPrint (PrimitiveLt te te') = parens $ pPrint te <+> "<" <+> pPrint te'
+  pPrint (PrimitiveEq True te te') = parens $ pPrint te <+> "==" <+> pPrint te'
+  pPrint (PrimitiveEq False te te') = parens $ pPrint te <+> "!=" <+> pPrint te'
+  pPrint (PrimitiveNumBinOp nbo te te') = parens $ pPrint te <+> text (Crude.operatorOfNumBinOp nbo) <+> pPrint te'
+  pPrint (PrimitiveNumBinRel nbr te te') = parens $ pPrint te <+> text (Crude.operatorOfNumBinRel nbr) <+> pPrint te'
   pPrint (PrimitiveExtends te structId) = parens $ pPrint te <+> "extends" <+> pPrint structId
 
 -- ** Converting to Symbols
