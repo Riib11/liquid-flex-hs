@@ -47,7 +47,8 @@ test =
                 -- makeTest_refineModule True "examples/refining/Structures.flex" -- !TODO get introducing refined structures to work
                 -- makeTest_refineModule True "examples/refining/Functions.flex"
                 -- makeTest_refineModule True "examples/refining/Matches.flex"
-                makeTest_refineModule True "examples/refining/RefinedStructureInputs.flex"
+                -- makeTest_refineModule True "examples/refining/RefinedStructureInputs.flex"
+                makeTest_refineModule True "examples/refining/RefinedTransformOutput.flex"
               ]
               --  [makeTest_refineModule True "examples/refining/Structures.flex"]
               -- [makeTest_refineModule True "examples/refining/Variants.flex"]

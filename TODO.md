@@ -2,16 +2,15 @@
 
 Refinements that are implied by types:
 - refine via type:
-    - inputs to a transform
-    - transform application
-    - cast
-
+    - [x] inputs to a transform
+    - [x] transform application
+    - [x] cast
 
 Limitations of prototype:
 - structure fields must have unique names (because of how translated to Liquid
   Fixpoints datatype interface)
 
-- [ ] assume refinements on parameters of transforms and outputs of transform
+- [x] assume refinements on parameters of transforms and outputs of transform
   calls
 - [ ] reflecting `match`
 - [x] fix named type normalization
