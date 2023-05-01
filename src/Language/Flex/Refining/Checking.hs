@@ -19,7 +19,7 @@ import qualified Language.Fixpoint.Types as F
 import Language.Flex.FlexM (freshenTermId)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
-import Language.Flex.Refining.Primitive (primitiveDataDecls)
+import Language.Flex.Refining.Primitive (option_SomeFieldAccessorLocatedSymbol, optional_SomeConstructorSymbol, primitiveDataDecls, tuple_FirstFieldAccessorSymbol, tuple_SecondFieldAccessorSymbol)
 import Language.Flex.Refining.Query
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Reflecting
@@ -109,26 +109,6 @@ introForall tmId ty = localExecM do
   srt <- lift $ reflType ty
   ctxScopeReversed %= (ScopeForall tmId srt :)
 
--- !TODO intro all assumptions about subterms, wherever we have refined types
-
--- !TODO this it not the right way since there can be recursive types, and in
--- principle its wrong also -- shoud be propogating refinements with refinement types rather htan
-
--- -- according to the term's type, assume all refinements on its type of
--- -- nested fields' types
--- assumedTypeRefinements :: Term -> TypeSort -> CheckingM a -> CheckingM a
--- assumedTypeRefinements tm tysrt m = do
---   ex <- lift $ reflTerm tm
---   case getType tysrt of
---     (TypeArray ty) -> _wt -- !TODO assume refinement on each element of array
---     (TypeTuple ty1 ty2) ->
---       flip comps m $
---         [ assumedTypeRefinements (TermMember _ _ _ _) _
---         ]
---     (TypeOptional ty') -> _wv
---     (TypeNamed ti) -> _ww
---     _ -> m
-
 introCase :: Term -> Crude.TypeId -> Crude.TermId -> [Crude.TermId] -> [Type] -> CheckingM a -> CheckingM a
 introCase tm tyId ctorId paramIds paramTypes = localExecM do
   paramTypeSorts <- lift $ paramTypes <&*> reflType
@@ -154,7 +134,8 @@ assume propTerm = localExecM do
   propPred <- lift $ reflTerm propTerm
   ctxAssumptionsReversed %= (propPred :)
 
--- when introducing assumption, use implications or univ quant witnesses
+-- When introducing assumption, use implications or univ quant witnesses.
+-- It seems that either works?
 _assumptions_via_witnesses = False
 
 assert :: Doc -> Term -> CheckingM ()
@@ -165,7 +146,7 @@ assert sourceDoc tm = flip localExecM checkQuery do
   -- True: use implications
   -- False: use witnesses
   cstr0 <-
-    if _assumptions_via_witnesses
+    if not _assumptions_via_witnesses
       then do
         -- wrap in assumptions using F.PImp
         asmpExprs <- gets (^.. ctxAssumptions . traverse)
@@ -177,7 +158,6 @@ assert sourceDoc tm = flip localExecM checkQuery do
             (H.Reft ex1)
             (RefiningError $ "unable to prove predicate" <+> ticks (pPrint tm) <+> "arising from" <+> sourceDoc)
       else do
-        -- !TODO this _actually_ works!
         -- wrap in assumptions using existentially-quantified witnesses
         let cstr =
               H.Head
@@ -282,78 +262,70 @@ introUserDatatypes = do
 
 introStructureUserDatatype :: Structure -> StateT CheckingCtx RefiningM ()
 introStructureUserDatatype struct = do
+  let structId = structureId struct
+  symLoc <- FlexM.defaultLocated $ makeTypeIdSymbol structId
   -- intro reflected datatype
   dd <- lift $ reflStructure struct
   ctxQuery . _qData %= (dd :)
-  -- !TODO intro structure's refinement predicate
   -- @
   -- struct A {
   --   b: B;
   --   assert P(b);
   -- }
+  -- predicate isA(a : A) uninterpreted
+  -- axiom: forall (a : A) . isA(a) ==> P(a.b) && isB(a.b)
   --
   -- struct B {
   --   y: A;
   --   assert Q(y);
   -- }
   --
-  -- predicate isA(a : A)
-  -- axiom forall a . isA(a) ==>
-  --   P(a.b) && -- refinement of A
-  --   isB(a.b)  -- refinement of B (inherited)
-  --
-  -- predicate isB(b : B)
-  -- axiom forall b . isB(b) ==>
-  --   P(b.a) && -- refinement of B
-  --   isA(b.a)  -- refinement of A (inherited)
+  -- predicate isB(b : B) uninterpreted
+  -- axiom: forall (b : B) . isB(b) ==> P(b.a) && isA(b.a)
   -- @
 
-  {- !TODO need to implement substTerm for Refining terms
+  let structSort = F.FTC (F.symbolFTycon symLoc)
 
-      structSort <- lift $ reflType (TypeNamed structureId)
-      let structPropSymbol = makeStructurePropertySymbol structureId
+  -- Intro uninterpreted predicate.
+  -- > propS : S -> Bool
+  (ctxQuery . _qCon . at (makeDatatypePropertySymbol structId))
+    ?= F.FFunc structSort F.boolSort
 
-      -- predicate is<Struct>(s : <Struct>)
-      (ctxQuery . _qCon . at structPropSymbol) ?= F.FFunc structSort F.boolSort
+  -- Intro assumption about predicate
+  asmpExpr :: F.Expr <- do
+    structVar <- FlexM.freshSymbol "struct"
+    refnTerm <- lift $ transRefinement (structureRefinement struct)
+    refnExpr <- lift $ reflTerm refnTerm
+    -- replace appearances of each variable with field access from struct var x
+    -- > P(x.a, x.b, ...)
+    let refnExpr' =
+          F.subst
+            ( F.Su
+                ( mempty
+                    & comps
+                      ( structureFields struct <&> \(fieldId, _ty) ->
+                          at (makeFieldIdSymbol fieldId)
+                            ?~ F.eApps
+                              (F.eVar (makeStructureFieldAccessorSymbol (structId, fieldId)))
+                              [F.eVar structVar]
+                      )
+                )
+            )
+            refnExpr
 
-      -- is<Struct>(instance) = P[x := instance.x, y := instance.y]
+    (xs, exs) <-
+      lift . runWriterT . execWriterT $
+        structureFields struct <&*> \(fieldId, fieldType) -> do
+          inferTypeRefinements
+            (F.eApps (F.eVar (makeStructureFieldAccessorSymbol (structId, fieldId))) [F.eVar structVar])
+            fieldType
 
-      -- let structPropTerm =
-      --       Crude.substTerm
-      --         ( Map.fromList $
-      --             structureFields <&> \(fieldId, fieldType) ->
-      --               ( Crude.fromFieldIdToTermId fieldId,
-      --                 Crude.TermMember (Crude.TermNeutral (Crude.Neutral (Crude.TermId "instance")) (TypeNamed structureId)) fieldId fieldType
-      --               )
-      --         )
-      --         (Crude.unRefinement structureRefinement)
-
-      structPropRawTerm <- lift $ transTerm (Crude.unRefinement structureRefinement)
-
-      let structPropTerm =
-            substTerm
-              _
-              structPropRawTerm
-
-      structPropPred <- lift $ reflTerm _
-
-      ctxStructureProperties
-        %= ( H.Bind
-               { bSym = F.symbol . render $ "witness to assumption of structure property" <+> F.pprint structPropSymbol,
-                 bSort = F.FFunc structSort F.boolSort,
-                 bPred =
-                   H.Reft
-                     ( F.PAll
-                         [(F.symbol @String "instance", structSort)]
-                         ( F.eApps (F.eVar structPropSymbol) [F.eVar @String "instance"]
-                             `F.PImp` structPropTerm
-                         )
-                     ),
-                 bMeta = RefiningError $ "intro of witness to assumption of structure property" <+> F.pprint structPropSymbol
-               }
-               :
-           )
-  -}
+    -- > forall (x : S) . isS(x) ==> P(x.a, x.b, ...) && ...
+    return $
+      F.PAll ([(structVar, structSort)] <> xs) $
+        F.PImp (F.eApps (F.eVar (makeDatatypePropertySymbol structId)) [F.eVar structVar]) $
+          F.pAnd ([refnExpr'] <> exs)
+  ctxAssumptionsReversed %= (asmpExpr :)
   return ()
 
 introVariantUserDatatype :: Variant -> StateT CheckingCtx RefiningM ()
@@ -389,158 +361,97 @@ introTransforms = do
 
       -- freshen parameter ids to ensure no naming collisions
       params' <- lift $ functionParameters <&*> \(paramId, paramType) -> (,) <$> freshenTermId paramId <*> pure paramType
-      -- reflect ids and types
+      -- reflect types
       params'' <- lift $ params' <&*> bimapM (pure . makeTermIdSymbol) reflType
 
-      exs <-
-        lift . execWriterT $
+      (xs, exs) <-
+        lift . runWriterT . execWriterT $
           inferTypeRefinements
-            (TermApplication functionId (params' <&> uncurry TermNamed) functionOutput)
+            -- (TermApplication functionId (params' <&> uncurry TermNamed) functionOutput)
+            (F.eApps (F.eVar (makeTermIdSymbol functionId)) $ params' <&> \(x, _) -> F.eVar (makeTermIdSymbol x))
             functionOutput
-      -- in each expr, universally quantify over params'' _and_ quals
-      let exs' = exs <&> \ex -> F.PAll params'' ex
+      -- in each expr, universally quantify over params'' _and_ xs
+      let exs' = exs <&> \ex -> F.PAll (params'' <> xs) ex
       ctxAssumptionsReversed %= (exs' <>)
 
-inferTypeRefinements :: Term -> Type -> WriterT [F.Expr] RefiningM ()
-inferTypeRefinements tm (TypeNumber nt n) = do
+inferTypeRefinements :: F.Expr -> Type -> WriterT [(F.Symbol, F.Sort)] (WriterT [F.Expr] RefiningM) ()
+inferTypeRefinements ex (TypeNumber nt n) = do
   case nt of
     Crude.TypeUInt -> do
-      -- 0 <= tm
-      lowerBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe (intTerm 0 n) tm) TypeBit
-      -- tm <= 2^n - 1
-      upperBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ n - 1) n)) TypeBit
-      tell [lowerBoundExpr, upperBoundExpr]
-    Crude.TypeInt -> do
-      -- -(2^(n-1)) + 1 <= tm
-      lowerBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe (intTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
-      -- tm <= 2^(n-1) - 1
-      upperBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ (n - 1) - 1) n)) TypeBit
-      tell [lowerBoundExpr, upperBoundExpr]
-    Crude.TypeFloat -> do
-      -- -(2^(n-1)) + 1 <= tm
-      lowerBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe (floatTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
-      -- tm <= 2^(n-1) - 1
-      upperBoundExpr <- lift . reflTerm $ TermPrimitive (PrimitiveLe tm (floatTerm (2 ^ (n - 1) - 1) n)) TypeBit
-      tell [lowerBoundExpr, upperBoundExpr]
-inferTypeRefinements term TypeBit = return ()
-inferTypeRefinements term TypeChar = return ()
--- > term : Array<A>
--- then induced refinement on `term` is
--- > forall x : A . inArray(x, term) ==> inferTypeRefinements x A
-inferTypeRefinements term (TypeArray ty) = return () -- !TODO
--- > term : Tuple<A, B>
--- then induced refinement on `term` is
--- > inferTypeRefinements (fst term); inferTypeRefinements (snd term)
-inferTypeRefinements term (TypeTuple ty1 ty2) = return () -- !TODO
--- > term : Optional<A>
--- then induced refinement on `term` is
--- > forall x : A . term == Some x ==> inferTypeRefinements x A
-inferTypeRefinements term (TypeOptional ty) = return () -- !TODO
-inferTypeRefinements term (TypeNamed ti) = return () -- !TODO
-
-{-
--- | Traverse down to atomic types, variants, and structures which have special
--- cases for their inferred refinements.
---
--- @
---   struct S {x: int32; assert(0 <= x)}
--- @
---
--- > inferTypeRefinements x (TupleType S S)
--- > ==> isS(proj1 x) && isS(proj2 x)
---
--- !TODO or maybe don't manually destruct -- can just do the same thing as in `x`
--- case and let the system of equalities figure it out
--- > inferTypeRefinements (TupleTerm x y) (TupleType S S)
--- > ==> isS(x) && isS(y)
-inferTypeRefinements :: Term -> Type -> WriterT [(F.Symbol, F.Sort)] (WriterT [F.Expr] RefiningM) ()
-inferTypeRefinements tm (TypeNumber nt n) = do
-  case nt of
-    Crude.TypeUInt -> do
-      -- 0 <= tm
-      lowerBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe (intTerm 0 n) tm) TypeBit
-      -- tm <= 2^n - 1
-      upperBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ n - 1) n)) TypeBit
+      -- !OLD
+      -- -- 0 <= tm
+      -- lowerBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe (intTerm 0 n) tm) TypeBit
+      -- -- tm <= 2^n - 1
+      -- upperBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ n - 1) n)) TypeBit
+      -- lift $ tell [lowerBoundExpr, upperBoundExpr]
+      let n2 = 2 ^ (n - 1) :: Int
+      -- 0 <= ex
+      let lowerBoundExpr = F.PAtom F.Le (F.expr (0 :: Int)) ex
+      -- ex <= 2^n - 1
+      let upperBoundExpr = F.PAtom F.Lt ex (F.expr n2)
       lift $ tell [lowerBoundExpr, upperBoundExpr]
     Crude.TypeInt -> do
-      -- -(2^(n-1)) + 1 <= tm
-      lowerBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe (intTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
-      -- tm <= 2^(n-1) - 1
-      upperBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      -- !OLD
+      -- -- -(2^(n-1)) + 1 <= tm
+      -- lowerBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe (intTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
+      -- -- tm <= 2^(n-1) - 1
+      -- upperBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe tm (intTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      -- lift $ tell [lowerBoundExpr, upperBoundExpr]
+      let n2 = 2 ^ (n - 1) :: Int
+      -- -(2^(n-1)) + 1 <= ex
+      let lowerBoundExpr = F.PAtom F.Le (F.expr ((-n2) + 1)) ex
+      -- ex <= 2^(n-1) - 1
+      let upperBoundExpr = F.PAtom F.Lt ex (F.expr (n2 - 1))
       lift $ tell [lowerBoundExpr, upperBoundExpr]
     Crude.TypeFloat -> do
-      -- -(2^(n-1)) + 1 <= tm
-      lowerBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe (floatTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
-      -- tm <= 2^(n-1) - 1
-      upperBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe tm (floatTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      -- !OLD
+      -- -- -(2^(n-1)) + 1 <= tm
+      -- lowerBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe (floatTerm (-(2 ^ (n - 1)) + 1) n) tm) TypeBit
+      -- -- tm <= 2^(n-1) - 1
+      -- upperBoundExpr <- lift . lift . reflTerm $ TermPrimitive (PrimitiveLe tm (floatTerm (2 ^ (n - 1) - 1) n)) TypeBit
+      -- lift $ tell [lowerBoundExpr, upperBoundExpr]
+      let n2 = 2 ^ (n - 1) :: Int
+      -- -(2^(n-1)) + 1 <= ex
+      let lowerBoundExpr = F.PAtom F.Le (F.expr ((-n2) + 1)) ex
+      -- ex <= 2^(n-1) - 1
+      let upperBoundExpr = F.PAtom F.Lt ex (F.expr (n2 - 1))
       lift $ tell [lowerBoundExpr, upperBoundExpr]
-inferTypeRefinements _tm TypeBit = return ()
-inferTypeRefinements _tm TypeChar = return ()
-inferTypeRefinements _tm (TypeArray _ty) = error "inferTypeRefinements TypeArray !TODO need to define an 'element of' predicate or something"
-inferTypeRefinements tm (TypeTuple ty1 ty2) = do
-  inferTypeRefinements (TermPrimitive (PrimitiveFirst tm) ty1) ty1
-  inferTypeRefinements (TermPrimitive (PrimitiveSecond tm) ty2) ty2
-inferTypeRefinements tm (TypeOptional ty) = do
-  -- !TODO
-  -- -- if tm == None; no refinements can be yielded from this case
-  -- -- if tm == Some x
-  -- -- !OLD tmId <- FlexM.freshTermId "someValue"
-  -- sym <- FlexM.freshSymbol "someValue"
-  -- let tm' = TermNamed tmId ty
-  -- srt <- lift . lift $ reflType ty
-  -- tell [(sym, srt)] -- forall x : ty . ...
-  -- -- if tm == Some x
-  -- ex <- lift . lift . reflTerm $ eqTerm tm (TermPrimitive (PrimitiveSome tm') (TypeOptional ty))
-  -- lift $ tell [ex]
-  -- -- then ...
-  -- inferTypeRefinements tm' ty
-  pure ()
-inferTypeRefinements tm (TypeNamed tyId) =
-  lookupType tyId >>= \case
-    CtxTypeStructure Structure {..} -> do
-      -- !TODO don't do this inline, because can cause infinite recursive
-      -- unfolding. instead, refer to top-level predicate that asserts structure
-      -- properties of fields (can have cycles of implication among assumptions,
-      -- but that's fine)
-
-      -- reftTerm <- lift . lift $ transRefinement structureRefinement
-      -- -- e.g. let x = tm.x in R(x) where tm : Structure { x : int32; assert R(x) }
-      -- let reftTerm' =
-      --       foldr
-      --         ( \(fieldId, fieldType) reftTerm'' ->
-      --             letTerm
-      --               (Crude.fromFieldIdToTermId fieldId)
-      --               (TermMember tyId tm fieldId fieldType)
-      --               reftTerm''
-      --         )
-      --         reftTerm
-      --         structureFields
-      -- reftTermExpr <- lift . lift $ reflTerm reftTerm'
-      -- lift . tell $ [reftTermExpr]
-
-      -- !TODO
-      let reftTerm = undefined -- TermPredicate (makeStructurePropertySymbol structureId) [tm] TypeBit
-      reftTermExpr <- lift . lift $ reflTerm reftTerm
-      lift . tell $ [reftTermExpr]
-
-    -- !TODO variants can't be recursive (?), so don't have to worry potentially
-    -- infinite unfolding here... but maybe its better overall to do it that
-    -- way, so lets delay that choice till i come back to this
-    CtxTypeVariant Variant {..} -> do
-      -- !TODO
-      -- void $
-      --   variantConstructors <&*> \(ctorId, ctorTypes) -> do
-      --     tmId <- (ctorTypes `zip` [0 ..]) <&*> \(ctorType, i) -> FlexM.freshTermId ("param" <> show i)
-      --     tysrts <- lift . lift $ reflType <$*> ctorTypes
-      --     -- forall x1, x2, ..., xn
-      --     (tmId `zip` tysrts) <&*> \(paramIdSym, paramTypeSort) -> tell [(paramIdSym, paramTypeSort)]
-      --     -- if tm == ctor x1 x2 ... xn
-      --     -- then ...
-      --     (tmId `zip` ctorTypes) <&*> \(paramId, paramType) ->
-      --       -- infer type refinements on each of the introduced components
-      --       inferTypeRefinements (TermNamed paramId paramType) paramType
-      pure ()
--}
+inferTypeRefinements _ex TypeBit = return ()
+inferTypeRefinements _ex TypeChar = return ()
+-- > ex : Array<A>
+-- then induced refinement on `ex` is
+-- > forall x : A . inArray(x, ex) ==> inferTypeRefinements x A
+inferTypeRefinements _ex (TypeArray _ty) = return () -- !TODO
+-- > ex : Tuple<A, B>
+-- then induced refinement on `ex` is
+-- > inferTypeRefinements (fst ex); inferTypeRefinements (snd ex)
+inferTypeRefinements ex (TypeTuple ty1 ty2) = do
+  inferTypeRefinements (F.eVar tuple_FirstFieldAccessorSymbol `F.eApps` [ex]) ty1
+  inferTypeRefinements (F.eVar tuple_SecondFieldAccessorSymbol `F.eApps` [ex]) ty2
+-- > ex : Optional<A>
+-- then induced refinement on `ex` is
+-- > forall x : A . ex == Some x ==> inferTypeRefinements x A
+inferTypeRefinements ex (TypeOptional ty) = do
+  someValue <- FlexM.freshSymbol "someValue"
+  srt <- lift . lift $ reflType ty
+  tell [(someValue, srt)]
+  -- any inferred refinements for `somvValue` are under the supposition that
+  -- `ex == Some someValue`
+  mapWriterT
+    ( censor \exs ->
+        [ F.PImp
+            ( F.PAtom
+                F.Eq
+                ex
+                (F.eVar optional_SomeConstructorSymbol `F.eApps` [F.eVar someValue])
+            )
+            (F.pAnd exs)
+        ]
+    )
+    do
+      inferTypeRefinements (F.eVar option_SomeFieldAccessorLocatedSymbol `F.eApps` [ex]) ty
+inferTypeRefinements ex (TypeNamed tyId) = do
+  lift . tell $ [F.eVar (makeDatatypePropertySymbol tyId) `F.eApps` [ex]]
 
 introConstants :: StateT CheckingCtx RefiningM ()
 introConstants = do
@@ -686,6 +597,8 @@ checkPrimitive _ (PrimitiveTry tm) = checkTerm `traverse_` [tm]
 checkPrimitive _ PrimitiveNone = return ()
 checkPrimitive _ (PrimitiveSome tm) = checkTerm `traverse_` [tm]
 checkPrimitive _ (PrimitiveTuple tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
+checkPrimitive _ (PrimitiveFirst tm) = checkTerm `traverse_` [tm]
+checkPrimitive _ (PrimitiveSecond tm) = checkTerm `traverse_` [tm]
 checkPrimitive _ (PrimitiveArray tms) = checkTerm `traverse_` tms
 checkPrimitive _ (PrimitiveIf tm1 tm2 tm3) = do
   checkTerm tm1

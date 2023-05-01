@@ -54,7 +54,7 @@ reflPrimitive (PrimitiveSome tm) = do
 reflPrimitive (PrimitiveTuple tm1 tm2) = do
   exs <- reflTerm `traverse` [tm1, tm2]
   return $ F.eApps (F.eVar tuple_TupleConstructorSymbol) exs
-reflPrimitive (PrimitiveArray tms) = do
+reflPrimitive (PrimitiveArray _tms) = do
   -- exs <- reflTerm `traverse` tms
   -- case exs of
   --   -- Nil
@@ -72,6 +72,8 @@ reflPrimitive (PrimitiveEq tm1 tm2) = F.PAtom F.Eq <$> reflTerm tm1 <*> reflTerm
 reflPrimitive (PrimitiveAdd tm1 tm2) = F.EBin F.Plus <$> reflTerm tm1 <*> reflTerm tm2
 reflPrimitive (PrimitiveLe tm1 tm2) = F.PAtom F.Le <$> reflTerm tm1 <*> reflTerm tm2
 reflPrimitive (PrimitiveLt tm1 tm2) = F.PAtom F.Lt <$> reflTerm tm1 <*> reflTerm tm2
+reflPrimitive (PrimitiveFirst tm) = F.eApps (F.eVar tuple_FirstFieldAccessorSymbol) <$> reflTerm `traverse` [tm]
+reflPrimitive (PrimitiveSecond tm) = F.eApps (F.eVar tuple_SecondFieldAccessorSymbol) <$> reflTerm `traverse` [tm]
 reflPrimitive (PrimitiveExtends {}) = error "!TODO reflect PrimitiveExtends"
 
 reflLiteral :: Crude.Literal -> RefiningM F.Expr
@@ -91,9 +93,9 @@ reflType (TypeNumber Crude.TypeFloat _) = return F.realSort
 reflType TypeBit = return F.boolSort
 reflType TypeChar = return F.charSort
 reflType (TypeArray TypeChar) = return F.strSort
-reflType (TypeArray ty) =
+reflType (TypeArray _ty) =
   -- F.fAppTC array_ArrayFTycon <$> reflType `traverse` [ty]
-  error "user LH's built-in arrays"
+  error "!TODO use LH's built-in arrays"
 reflType (TypeTuple ty1 ty2) = F.fAppTC tuple_TupleFTycon <$> reflType `traverse` [ty1, ty2]
 reflType (TypeOptional ty) = F.fAppTC optional_OptionalFTycon <$> reflType `traverse` [ty]
 reflType (TypeNamed tyId) = do

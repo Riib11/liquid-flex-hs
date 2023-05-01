@@ -129,6 +129,9 @@ falseTerm = TermLiteral (Crude.LiteralBit False) TypeBit
 letTerm :: Crude.TermId -> Term -> Term -> Term
 letTerm tmId tm1 tm2 = TermLet (Just tmId) tm1 tm2 (termType tm2)
 
+eqTerm :: Term -> Term -> Term
+eqTerm tm1 tm2 = TermPrimitive (PrimitiveEq tm1 tm2) TypeBit
+
 -- -- pow2Term n = 2^n
 -- pow2Term :: Integer -> Term
 -- pow2Term n = TermLiteral (Crude.LiteralInteger (2 ^ n)) (TypeNumber Crude.TypeInt 32)
@@ -184,6 +187,8 @@ instance Pretty Primitive where
   pPrint PrimitiveNone = "None"
   pPrint (PrimitiveSome tm) = "Some" <> parens (pPrint tm)
   pPrint (PrimitiveTuple te te') = parens $ commaList $ pPrint <$> [te, te']
+  pPrint (PrimitiveFirst te) = parens $ "fst" <+> pPrint te
+  pPrint (PrimitiveSecond te) = parens $ "snd" <+> pPrint te
   pPrint (PrimitiveArray tes) = brackets $ commaList $ pPrint <$> tes
   pPrint (PrimitiveIf te te' te2) = parens $ "if" <+> pPrint te <+> "then" <+> pPrint te' <+> pPrint te2
   pPrint (PrimitiveAnd te te') = parens $ pPrint te <+> "&&" <+> pPrint te'
@@ -195,16 +200,13 @@ instance Pretty Primitive where
   pPrint (PrimitiveLt te te') = parens $ pPrint te <+> "<" <+> pPrint te'
   pPrint (PrimitiveExtends te structId) = parens $ pPrint te <+> "extends" <+> pPrint structId
 
-eqTerm :: Term -> Term -> Term
-eqTerm tm1 tm2 = TermPrimitive (PrimitiveEq tm1 tm2) TypeBit
-
 -- ** Converting to Symbols
 
 makeTypeIdSymbol :: Crude.TypeId -> F.Symbol
 makeTypeIdSymbol (Crude.TypeId x) = F.symbol x
 
-makeStructurePropertySymbol :: Crude.TypeId -> F.Symbol
-makeStructurePropertySymbol (Crude.TypeId x) = F.symbol ("property" <> x)
+makeDatatypePropertySymbol :: Crude.TypeId -> F.Symbol
+makeDatatypePropertySymbol (Crude.TypeId x) = F.symbol ("property" <> x)
 
 makeTermIdSymbol :: Crude.TermId -> F.Symbol
 makeTermIdSymbol (Crude.TermId x) = F.symbol x

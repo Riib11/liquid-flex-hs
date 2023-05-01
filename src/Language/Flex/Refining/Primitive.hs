@@ -17,6 +17,21 @@ $(makePrimitiveSymbols "optional" "Optional" ["Some", "None"])
 
 -- $(makePrimitiveSymbols "array" "Array" ["Nil", "Cons"])
 
+tuple_FirstFieldAccessorLocatedSymbol = primitiveLocated $ F.symbol @String "getTupleTuple1"
+
+tuple_FirstFieldAccessorSymbol = F.val tuple_FirstFieldAccessorLocatedSymbol
+
+tuple_SecondFieldAccessorLocatedSymbol = primitiveLocated $ F.symbol @String "getTupleTuple2"
+
+tuple_SecondFieldAccessorSymbol = F.val tuple_SecondFieldAccessorLocatedSymbol
+
+option_SomeFieldAccessorSymbol = primitiveLocated $ F.symbol @String "getOptionalSome1"
+
+option_SomeFieldAccessorLocatedSymbol = F.val option_SomeFieldAccessorSymbol
+
+arrayElementPropertySymbol :: F.Symbol
+arrayElementPropertySymbol = "propertyArrayElement"
+
 primitiveDataDecls :: [F.DataDecl]
 primitiveDataDecls =
   F.muSort -- !TODO does this take the fixpoint of recursive types or something?
@@ -116,6 +131,3 @@ primitiveRecRewrites =
       }
   ]
 -}
-
-arrayElementPropertySymbol :: F.Symbol
-arrayElementPropertySymbol = "propertyArrayElement"
