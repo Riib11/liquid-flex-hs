@@ -40,7 +40,7 @@ transform test1(ei: EqualInt32s) -> bit {
     true
 }
 
-transform idEqualInt32s(ie: EqualInt32s) -> EqualInt32s { ... }
+// transform idEqualInt32s(ie: EqualInt32s) -> EqualInt32s { ... }
 
 // forall e . (e : EqualInt32s) => equalInt32(e.x1, e.x2)
 

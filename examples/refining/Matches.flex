@@ -64,8 +64,6 @@ transform test5(c : Coin) -> bit {
     // if c.b == false then ..
     // else assert(false)
 
-    let c = Coin.Heads;
-
     match c with {
         Coin#Heads => true;
         Coin#Tails => false;
