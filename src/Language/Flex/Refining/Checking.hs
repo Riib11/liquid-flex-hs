@@ -77,13 +77,13 @@ instance Pretty CheckingCtx where
       ]
 
 data ScopeItem
-  = ScopeForall Crude.TermId F.Sort
-  | ScopeLet Crude.TermId F.Expr F.Sort
+  = ScopeForall F.Symbol F.Sort
+  | ScopeLet F.Symbol F.Expr F.Sort
   deriving (Show)
 
 instance Pretty ScopeItem where
-  pPrint (ScopeForall ti srt) = "forall" <+> pPrint ti <+> ":" <+> F.pprint srt
-  pPrint (ScopeLet ti ex srt) = "let" <+> pPrint ti <+> "=" <+> F.pprint ex <+> ":" <+> F.pprint srt
+  pPrint (ScopeForall ti srt) = "forall" <+> F.pprint ti <+> ":" <+> F.pprint srt
+  pPrint (ScopeLet ti ex srt) = "let" <+> F.pprint ti <+> "=" <+> F.pprint ex <+> ":" <+> F.pprint srt
 
 makeLenses ''CheckingCtx
 
@@ -102,17 +102,26 @@ introBinding :: Crude.TermId -> Term -> CheckingM a -> CheckingM a
 introBinding tmId tm = localExecM do
   ex <- lift $ reflTerm tm
   srt <- lift $ reflType $ termType tm
-  ctxScopeReversed %= (ScopeLet tmId ex srt :)
+  ctxScopeReversed %= (ScopeLet (makeTermIdSymbol tmId) ex srt :)
+
+introBinding' :: F.Symbol -> F.Expr -> F.Sort -> CheckingM a -> CheckingM a
+introBinding' sym ex srt = localExecM do
+  ctxScopeReversed %= (ScopeLet sym ex srt :)
 
 introForall :: Crude.TermId -> Type -> CheckingM a -> CheckingM a
 introForall tmId ty = localExecM do
   srt <- lift $ reflType ty
-  ctxScopeReversed %= (ScopeForall tmId srt :)
+  ctxScopeReversed %= (ScopeForall (makeTermIdSymbol tmId) srt :)
+
+introForall' :: F.Symbol -> F.Sort -> CheckingM a -> CheckingM a
+introForall' sym srt = localExecM do
+  ctxScopeReversed %= (ScopeForall sym srt :)
 
 introCase :: Term -> Crude.TypeId -> Crude.TermId -> [Crude.TermId] -> [Type] -> CheckingM a -> CheckingM a
 introCase tm tyId ctorId paramIds paramTypes = localExecM do
   paramTypeSorts <- lift $ paramTypes <&*> reflType
-  ctxScopeReversed %= ((uncurry ScopeForall <$> (paramIds `zip` paramTypeSorts)) <>)
+  -- !TODO assume refinements implied by types
+  ctxScopeReversed %= ((uncurry ScopeForall <$> ((makeTermIdSymbol <$> paramIds) `zip` paramTypeSorts)) <>)
 
   -- > assume tm == ctorId [paramIds]
   let propTerm =
@@ -133,6 +142,10 @@ assume :: Term -> CheckingM a -> CheckingM a
 assume propTerm = localExecM do
   propPred <- lift $ reflTerm propTerm
   ctxAssumptionsReversed %= (propPred :)
+
+assume' :: F.Pred -> CheckingM a -> CheckingM a
+assume' p = localExecM do
+  ctxAssumptionsReversed %= (p :)
 
 -- When introducing assumption, use implications or univ quant witnesses.
 -- It seems that either works?
@@ -184,21 +197,21 @@ assert sourceDoc tm = flip localExecM checkQuery do
   let cstr1 =
         foldr
           ( \case
-              (ScopeForall tmId srt) ->
+              (ScopeForall sym srt) ->
                 H.All
                   H.Bind
-                    { bSym = makeTermIdSymbol tmId,
+                    { bSym = sym,
                       bSort = srt,
                       bPred = H.Reft (F.prop True),
-                      bMeta = RefiningError $ "intro" <+> pPrint tmId <+> ":" <+> F.pprint srt
+                      bMeta = RefiningError $ "intro" <+> F.pprint sym <+> ":" <+> F.pprint srt
                     }
-              (ScopeLet tmId ex srt) ->
+              (ScopeLet sym ex srt) ->
                 H.All
                   H.Bind
-                    { bSym = makeTermIdSymbol tmId,
+                    { bSym = sym,
                       bSort = srt,
-                      bPred = H.Reft $ F.PAtom F.Eq (F.eVar (makeTermIdSymbol tmId)) ex,
-                      bMeta = RefiningError $ "intro" <+> pPrint tmId <+> ":" <+> F.pprint srt <+> "=" <+> F.pprint ex
+                      bPred = H.Reft $ F.PAtom F.Eq (F.eVar sym) ex,
+                      bMeta = RefiningError $ "intro" <+> F.pprint sym <+> ":" <+> F.pprint srt <+> "=" <+> F.pprint ex
                     }
           )
           cstr0
@@ -374,6 +387,17 @@ introTransforms = do
       let exs' = exs <&> \ex -> F.PAll (params'' <> xs) ex
       ctxAssumptionsReversed %= (exs' <>)
 
+assumeTypeRefinements :: F.Expr -> Type -> CheckingM a -> CheckingM a
+assumeTypeRefinements ex ty m = do
+  (params, exs) <-
+    lift . runWriterT . execWriterT $
+      inferTypeRefinements ex ty
+  comps
+    [ \m' -> foldr (uncurry introForall') m' params,
+      \m' -> foldr assume' m' exs
+    ]
+    m
+
 inferTypeRefinements :: F.Expr -> Type -> WriterT [(F.Symbol, F.Sort)] (WriterT [F.Expr] RefiningM) ()
 inferTypeRefinements ex (TypeNumber nt n) = do
   case nt of
@@ -520,11 +544,15 @@ checkTransform Function {..} = FlexM.markSection [FlexM.FlexMarkStep ("checkTran
   -- introduce parameters
   body <- lift $ transTerm functionBody
   FlexM.debug True $ "checkTransform: params =" <+> pPrint functionParameters <+> "; body =" <+> pPrint body
-  foldr
-    (uncurry introForall)
-    -- check body
-    (checkTerm body)
-    functionParameters
+  ( \m -> do
+      let f tmId ty =
+            comps
+              [ assumeTypeRefinements (F.eVar (makeTermIdSymbol tmId)) ty,
+                introForall tmId ty
+              ]
+      foldr (uncurry f) m functionParameters
+    )
+    $ checkTerm body
 
 checkConstant :: Crude.Term Type -> CheckingM ()
 checkConstant tm = do
