@@ -1,5 +1,20 @@
 module Structures where
 
+function p(b: bit) -> bit {
+    b
+}
+
+struct S {
+    b: bit;
+    assert(p(b));
+}
+
+transform test(s: S) -> bit {
+    assert(s.b);
+    true
+}
+
+
 struct EqualBits {
     b1: bit;
     b2: bit;
@@ -34,6 +49,7 @@ struct EqualInt32s {
     x2: int32;
     assert equalInt32(x1, x2);
 }
+
 
 transform test1(ei: EqualInt32s) -> bit {
     // assert ei.x1 == ei.x2; // FAIL !TODO assume refinements (nested) on inputs

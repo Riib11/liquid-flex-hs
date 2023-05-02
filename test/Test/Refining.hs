@@ -44,11 +44,12 @@ test =
                 -- makeTest_refineModule True "examples/refining/Locals.flex",
                 -- makeTest_refineModule True "examples/refining/Parameters.flex",
                 -- makeTest_refineModule True "examples/refining/StructureConstructors.flex",
-                -- makeTest_refineModule True "examples/refining/Structures.flex" -- !TODO get introducing refined structures to work
+                makeTest_refineModule True "examples/refining/Structures.flex"
+                -- makeTest_refineModule True "examples/refining/Matches.flex"
                 -- makeTest_refineModule True "examples/refining/Functions.flex"
                 -- makeTest_refineModule True "examples/refining/Matches.flex"
                 -- makeTest_refineModule True "examples/refining/RefinedStructureInputs.flex"
-                makeTest_refineModule True "examples/refining/RefinedTransformOutput.flex"
+                -- makeTest_refineModule True "examples/refining/RefinedTransformOutput.flex"
               ]
               --  [makeTest_refineModule True "examples/refining/Structures.flex"]
               -- [makeTest_refineModule True "examples/refining/Variants.flex"]
@@ -79,7 +80,7 @@ makeTest_refineModule pass fp = TestLabel ("refining module file: " ++ fp) . Tes
   !_ <- return ()
 
   mdl <-
-    (runFlexM defaultFlexCtx {flexDebug = True} . runExceptT) (typeModule mdl) >>= \case
+    (runFlexM defaultFlexCtx {flexDebug = False} . runExceptT) (typeModule mdl) >>= \case
       Left err -> assertFailure (render $ "[error: typing failure in refinement test]" $$ pPrint err)
       Right (_env, mdl') -> return mdl'
   !_ <- return ()

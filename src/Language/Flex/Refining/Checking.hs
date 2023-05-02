@@ -331,24 +331,37 @@ introStructureUserDatatype struct = do
   asmpExpr <- do
     structVar <- FlexM.freshSymbol "struct"
     refnTerm <- lift $ transRefinement (structureRefinement struct)
-    FlexM.debug True $ "asmpExpr.refnTerm =" <+> pPrint refnTerm
-    (refnExpr, scope) <- lift $ runWriterT $ reflTerm refnTerm
-    FlexM.debug True $ "asmpExpr.refnExpr =" <+> F.pprint refnExpr
+    refnExpr <- do
+      (refnExpr0, scope) <- lift $ runWriterT $ reflTerm refnTerm
+      -- !TODO this isn't ideal, but it's the only way I could get it to work
+      -- inline bound items in scope
+      let reflExpr1 =
+            F.subst
+              ( F.Su $
+                  mempty
+                    & comps
+                      ( scope <&> \(sym, _srt, mb_ex) -> case mb_ex of
+                          Nothing -> id
+                          Just ex -> at sym ?~ ex
+                      )
+              )
+              refnExpr0
+      -- !TODO handle univ quantified items in scope???
+      return reflExpr1
     -- replace appearances of each variable with field access from struct var x
     -- > P(x.a, x.b, ...)
     let sigma =
-          F.Su
-            ( mempty
-                & comps
-                  ( structureFields struct <&> \(fieldId, _ty) ->
-                      at (makeFieldIdSymbol fieldId)
-                        ?~ F.eApps
-                          (F.eVar (makeStructureFieldAccessorSymbol (structId, fieldId)))
-                          [F.eVar structVar]
-                  )
-            )
+          F.Su $
+            mempty
+              & comps
+                ( structureFields struct <&> \(fieldId, _ty) ->
+                    at (makeFieldIdSymbol fieldId)
+                      ?~ F.eApps
+                        (F.eVar (makeStructureFieldAccessorSymbol (structId, fieldId)))
+                        [F.eVar structVar]
+                )
+
     let refnExpr' = F.subst sigma refnExpr
-    let scope' = scope <&> \(sym, srt, mb_ex) -> (sym, srt, F.subst sigma <$> mb_ex)
 
     (params', exs) <-
       lift . runWriterT . execWriterT $
@@ -358,21 +371,10 @@ introStructureUserDatatype struct = do
             fieldType
 
     -- > forall (x : S) . isS(x) ==> P(x.a, x.b, ...) && ...
-    return
-      $ F.PAll ([(structVar, structSort)] <> ((\(sym, srt, _) -> (sym, srt)) <$> scope') <> params')
-      $ ( \ex ->
-            -- for things in scope that are bound, introduce equality
-            -- assumptions as a sort of binding
-            foldr
-              ( \(sym, _srt, mb_ex') -> case mb_ex' of
-                  Nothing -> id
-                  Just ex' -> F.PImp (F.PAtom F.Eq (F.eVar sym) ex')
-              )
-              ex
-              scope'
-        )
-      $ F.PImp (F.eApps (F.eVar (makeDatatypePropertySymbol structId)) [F.eVar structVar])
-      $ F.pAnd ([refnExpr'] <> exs)
+    return $
+      F.PAll ([(structVar, structSort)] <> params') $
+        F.PImp (F.eApps (F.eVar (makeDatatypePropertySymbol structId)) [F.eVar structVar]) $
+          F.pAnd ([refnExpr'] <> exs)
   ctxAssumptionsReversed %= (asmpExpr :)
   return ()
 
