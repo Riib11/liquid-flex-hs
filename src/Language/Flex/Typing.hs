@@ -353,14 +353,12 @@ synthPrimitive (PrimitiveSome tm) = do
   tm' <- synthTerm tm
   return $ TermPrimitive (PrimitiveSome tm') (TypeOptional $ termAnn tm')
 synthPrimitive (PrimitiveCast te) = do
-  -- PrimitiveCase is unwrapped during typing, so should not appear in typed
-  -- result
   te' <- synthTerm te
   -- since we haven't finished typechecking, this type can be non-normal by the
   -- time it's used again, so make sure to normalize there!
   ty' <- normalizeType (termAnn te')
   ty <- freshTypeUnifyVar' (render $ "cast" <+> pPrint te') (Just (UnifyConstraintCasted ty'))
-  return te' {termAnn = ty}
+  return $ TermPrimitive (PrimitiveCast te') ty
 synthPrimitive (PrimitiveTuple tes) = do
   tes' <- synthTerm `traverse` tes
   return $ TermPrimitive (PrimitiveTuple tes') (TypeTuple $ termAnn <$> tes')

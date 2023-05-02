@@ -164,10 +164,11 @@ instance Pretty Pattern where
 
 -- *** Primitive
 
--- !TODO partial casts are not resolved during typechecking, so need to have
--- them here (instantiated with the types they are casting between)
+-- | Includes partial casts are not resolved during typechecking, so need to
+-- have them here (instantiated with the types they are casting between)
 data Primitive
   = PrimitiveTry !Term
+  | PrimitiveCast !Term !Type !Type
   | PrimitiveNone
   | PrimitiveSome !Term
   | PrimitiveTuple !Term !Term
@@ -185,6 +186,7 @@ data Primitive
 
 instance Pretty Primitive where
   pPrint (PrimitiveTry te) = parens $ "try" <+> pPrint te
+  pPrint (PrimitiveCast tm ty1 ty2) = parens $ ("cast" <> braces (pPrint ty1 <+> "~>" <+> pPrint ty2)) <+> pPrint tm
   pPrint PrimitiveNone = "None"
   pPrint (PrimitiveSome tm) = "Some" <> parens (pPrint tm)
   pPrint (PrimitiveTuple te te') = parens $ commaList $ pPrint <$> [te, te']

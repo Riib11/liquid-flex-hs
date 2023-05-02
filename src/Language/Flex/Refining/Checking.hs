@@ -20,6 +20,7 @@ import qualified Language.Fixpoint.Types as F
 import Language.Flex.FlexM (freshenTermId)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
+import Language.Flex.Refining.Prelude (preludeQuery)
 import Language.Flex.Refining.Primitive (option_SomeFieldAccessorLocatedSymbol, optional_SomeConstructorSymbol, primitiveDataDecls, tuple_FirstFieldAccessorSymbol, tuple_SecondFieldAccessorSymbol)
 import Language.Flex.Refining.Query
 import Language.Flex.Refining.RefiningM
@@ -243,17 +244,7 @@ assert sourceDoc tm = flip localExecM checkQuery do
 
 initCheckingContext :: RefiningM CheckingCtx
 initCheckingContext = do
-  let query =
-        H.Query
-          { qQuals = mempty,
-            qVars = mempty,
-            qCstr = H.CAnd [], -- will be overwritten during checking
-            qCon = mempty,
-            qDis = mempty,
-            qEqns = mempty,
-            qMats = mempty,
-            qData = mempty
-          }
+  query <- lift . lift . lift $ preludeQuery
   let ctx =
         CheckingCtx
           { _ctxQuery = query,
@@ -659,6 +650,8 @@ checkBranch matchTerm (PatternSome tmId) branchTerm = flip localExecM (checkTerm
 
 checkPrimitive :: Type -> Primitive -> CheckingM ()
 checkPrimitive _ (PrimitiveTry tm) = checkTerm `traverse_` [tm]
+-- !TODO assert that cast is actually defined given the value being casted
+checkPrimitive _ (PrimitiveCast tm _ty1 _ty2) = checkTerm `traverse_` [tm]
 checkPrimitive _ PrimitiveNone = return ()
 checkPrimitive _ (PrimitiveSome tm) = checkTerm `traverse_` [tm]
 checkPrimitive _ (PrimitiveTuple tm1 tm2) = checkTerm `traverse_` [tm1, tm2]

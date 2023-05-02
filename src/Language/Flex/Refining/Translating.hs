@@ -1,5 +1,6 @@
 module Language.Flex.Refining.Translating where
 
+import Control.Monad (foldM, liftM2)
 import Data.Functor
 import qualified Data.Map as Map
 import Data.Maybe
@@ -66,7 +67,13 @@ transTerm' term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
     -- !TODO is there something special to do here, by introducing global facts
     -- or something about extension relations?
     transPrimitive (Crude.PrimitiveExtends te ti) = TermPrimitive <$> (PrimitiveExtends <$> transTerm te <*> return ti) <*> return ty
-    transPrimitive (Crude.PrimitiveCast {}) = FlexM.throw $ "transPrimitive should not encounter this form:" <+> pPrint prim
+    -- unwrap total casts; keep partial casts
+    transPrimitive (Crude.PrimitiveCast te) = do
+      let tyInner = Crude.termAnn te
+      let tyOuter = ty
+      isTotalCast tyInner tyOuter >>= \case
+        True -> transTerm te
+        False -> TermPrimitive <$> (PrimitiveCast <$> transTerm te <*> pure tyInner <*> pure tyOuter) <*> pure tyOuter
 transTerm' (Crude.TermLet mb_tmId te' te2 ty) = TermLet mb_tmId <$> transTerm te' <*> transTerm te2 <*> return ty
 transTerm' (Crude.TermAssert te' te2 ty) = TermAssert <$> transTerm te' <*> transTerm te2 <*> return ty
 transTerm' (Crude.TermStructure structId fields ty) = do
@@ -116,6 +123,29 @@ transTerm' (Crude.TermMatch tm branches ty) = do
   return $ TermMatch tm' branches' ty
 transTerm' term0@Crude.TermProtoNeutral {} = FlexM.throw $ "transTerm should not encounter this form:" <+> pPrint term0
 transTerm' term0@Crude.TermAscribe {} = FlexM.throw $ "transTerm should not encounter this form:" <+> pPrint term0
+
+-- Is a cast from ty1 to ty2 total?
+isTotalCast :: Type -> Type -> RefiningM Bool
+-- TypeUInt ~~> _
+isTotalCast (TypeNumber Crude.TypeUInt n) (TypeNumber Crude.TypeUInt n') = return (n <= n')
+isTotalCast (TypeNumber Crude.TypeUInt n) (TypeNumber Crude.TypeInt n') = return (n <= n')
+isTotalCast (TypeNumber Crude.TypeUInt n) (TypeNumber Crude.TypeFloat n') = return (n <= n')
+-- TypeInt ~~> _
+isTotalCast (TypeNumber Crude.TypeInt _n) (TypeNumber Crude.TypeUInt _n') = return False
+isTotalCast (TypeNumber Crude.TypeInt n) (TypeNumber Crude.TypeInt n') = return (n <= n')
+isTotalCast (TypeNumber Crude.TypeInt n) (TypeNumber Crude.TypeFloat n') = return (n <= n')
+-- TypeFloat ~~> _
+isTotalCast (TypeNumber Crude.TypeFloat _n) (TypeNumber Crude.TypeUInt _n') = return False
+isTotalCast (TypeNumber Crude.TypeFloat _n) (TypeNumber Crude.TypeInt _n') = return False
+isTotalCast (TypeNumber Crude.TypeFloat n) (TypeNumber Crude.TypeFloat n') = return (n <= n')
+isTotalCast TypeBit TypeBit = return True
+isTotalCast TypeChar TypeChar = return True
+isTotalCast (TypeArray ty) (TypeArray ty') = isTotalCast ty ty'
+isTotalCast (TypeTuple ty1 ty2) (TypeTuple ty1' ty2') = liftM2 (&&) (isTotalCast ty1 ty1') (isTotalCast ty2 ty2')
+isTotalCast (TypeOptional ty) (TypeOptional ty') = isTotalCast ty ty'
+-- !TODO handle structure extension
+isTotalCast (TypeNamed tyId) (TypeNamed tyId') = return (tyId == tyId')
+isTotalCast _ _ = return False
 
 transBranch :: Term -> Crude.Branch Type -> RefiningM Branch
 transBranch _tm (Crude.PatternConstructor ti ti' tis _ty, body) = do
