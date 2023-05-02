@@ -2,6 +2,8 @@ module Language.Flex.Refining.Reflecting where
 
 import Control.Category hiding ((.))
 import Control.Monad (forM)
+import Control.Monad.Trans (lift)
+import Control.Monad.Writer (MonadWriter (tell), WriterT)
 import Data.Functor
 import Data.Text (pack)
 import qualified Data.Text as Text
@@ -14,16 +16,27 @@ import qualified Language.Flex.Syntax as Crude
 import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Utility
 
-reflTerm :: Term -> RefiningM F.Expr
+type ReflM =
+  WriterT
+    [(F.Symbol, F.Sort, Maybe F.Expr)] -- intros (from let and match)
+    RefiningM
+
+reflTerm :: Term -> ReflM F.Expr
 reflTerm (TermLiteral lit _ty) = reflLiteral lit
 reflTerm (TermPrimitive prim _ty) = reflPrimitive prim
 reflTerm (TermLet Nothing _tm1 tm2 _ty) = reflTerm tm2
+-- reflTerm (TermLet (Just x) tm1 tm2 _ty) = do
+--   -- (let x = a in b) ~~> ((lam x => b) a)
+--   ex1 <- reflTerm tm1
+--   srt <- reflType (termType tm1)
+--   ex2 <- reflTerm tm2
+--   return $ F.eApps (F.ELam (makeTermIdSymbol x, srt) ex2) [ex1]
 reflTerm (TermLet (Just x) tm1 tm2 _ty) = do
-  -- (let x = a in b) ~~> ((lam x => b) a)
   ex1 <- reflTerm tm1
-  srt <- reflType (termType tm1)
+  srt <- lift $ reflType (termType tm1)
   ex2 <- reflTerm tm2
-  return $ F.eApps (F.ELam (F.symbol (makeTermIdSymbol x), srt) ex2) [ex1]
+  tell [(makeTermIdSymbol x, srt, Just ex1)]
+  return ex2
 reflTerm (TermAssert _te tm _ty) = do
   -- assert is unwrapped
   reflTerm tm
@@ -45,7 +58,7 @@ reflTerm (TermConstructor varntId ctorId args _ty) = do
 -- !TODO use field accessors
 reflTerm (TermMatch _tm _branches _ty) = error "reflTerm TermMatch"
 
-reflPrimitive :: Primitive -> RefiningM F.Expr
+reflPrimitive :: Primitive -> ReflM F.Expr
 reflPrimitive (PrimitiveTry {}) = error "!TODO reflect PrimitiveTry"
 reflPrimitive PrimitiveNone = return $ F.eVar optional_NoneConstructorSymbol
 reflPrimitive (PrimitiveSome tm) = do
@@ -84,7 +97,7 @@ reflPrimitive (PrimitiveNumBinRel Crude.NumBinRelGt tm1 tm2) = F.PAtom F.Gt <$> 
 reflPrimitive (PrimitiveNumBinRel Crude.NumBinRelGe tm1 tm2) = F.PAtom F.Ge <$> reflTerm tm1 <*> reflTerm tm2
 reflPrimitive (PrimitiveExtends {}) = error "!TODO reflect PrimitiveExtends"
 
-reflLiteral :: Crude.Literal -> RefiningM F.Expr
+reflLiteral :: Crude.Literal -> ReflM F.Expr
 reflLiteral (Crude.LiteralInteger n) = return $ F.expr n
 -- !WARN proper way to create something of sort `realSort`?
 reflLiteral (Crude.LiteralFloat x) = return $ F.ECon (F.R x)
@@ -148,17 +161,16 @@ reflStructure Structure {..} = do
 reflVariant :: Variant -> RefiningM F.DataDecl
 reflVariant Variant {..} = do
   variantTypeLocatedSymbol <- FlexM.defaultLocated $ makeTypeIdSymbol variantId
-  ctors <-
-    forM variantConstructors $
-      \(ctorId, fieldTypes) -> do
-        ctor <- FlexM.defaultLocated (makeVariantConstructorSymbol (variantId, ctorId))
-        fields <-
-          (fieldTypes `zip` [0 :: Int ..]) <&*> \(fieldType, i) -> do
-            fieldSymbol <- FlexM.defaultLocated $ makeVariantFieldAccessorSymbol (variantId, ctorId, i)
-            fieldSort <- reflType fieldType
-            return (fieldSymbol, fieldSort)
+  ctors <- forM variantConstructors $
+    \(ctorId, fieldTypes) -> do
+      ctor <- FlexM.defaultLocated (makeVariantConstructorSymbol (variantId, ctorId))
+      fields <-
+        (fieldTypes `zip` [0 :: Int ..]) <&*> \(fieldType, i) -> do
+          fieldSymbol <- FlexM.defaultLocated $ makeVariantFieldAccessorSymbol (variantId, ctorId, i)
+          fieldSort <- reflType fieldType
+          return (fieldSymbol, fieldSort)
 
-        return (ctor, fields)
+      return (ctor, fields)
   return
     F.DDecl
       { ddTyCon = F.symbolFTycon variantTypeLocatedSymbol,

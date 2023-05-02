@@ -140,7 +140,7 @@ initFlexEnv =
 freshenString :: MonadFlex m => String -> m String
 freshenString str = do
   i <- freshInt
-  return $ str <> "~" <> show i
+  return $ str <> "__" <> show i
 
 freshSymbol :: MonadFlex m => String -> m F.Symbol
 freshSymbol str = F.symbol <$> freshenString str

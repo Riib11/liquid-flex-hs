@@ -14,6 +14,7 @@ import Data.Foldable hiding (toList)
 import Data.HashMap.Strict (toList)
 import qualified Data.Map as Map
 import Data.Maybe
+import qualified Data.Traversable as Traversable
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
 import Language.Flex.FlexM (freshenTermId)
@@ -47,7 +48,6 @@ type CheckingM a = ReaderT CheckingCtx RefiningM a
 data CheckingCtx = CheckingCtx
   { _ctxQuery :: Query,
     _ctxScopeReversed :: [ScopeItem],
-    -- _ctxStructureProperties :: [H.Bind RefiningError],
     _ctxAssumptionsReversed :: [F.Expr],
     _ctxAssertion :: F.Expr
   }
@@ -98,9 +98,29 @@ ctxScope = ctxScopeReversed . reversed
 ctxAssumptions :: Functor f => ([_] -> f [_]) -> CheckingCtx -> f CheckingCtx
 ctxAssumptions = ctxAssumptionsReversed . reversed
 
+reflTermLocal :: Term -> (F.Expr -> CheckingM a) -> CheckingM a
+reflTermLocal tm k = do
+  (ex, params) <- lift $ runWriterT $ reflTerm tm
+  flip comps (k ex) $
+    params <&> \(sym, srt, mb_ex') ->
+      local
+        ( ctxScopeReversed %~ case mb_ex' of
+            Nothing -> (ScopeForall sym srt :)
+            Just ex' -> (ScopeLet sym ex' srt :)
+        )
+
+reflTermState :: Term -> StateT CheckingCtx RefiningM F.Expr
+reflTermState tm = do
+  (ex, params) <- lift $ runWriterT $ reflTerm tm
+  for_ params \(sym, srt, mb_ex') ->
+    ctxScopeReversed %= case mb_ex' of
+      Nothing -> (ScopeForall sym srt :)
+      Just ex' -> (ScopeLet sym ex' srt :)
+  return ex
+
 introBinding :: Crude.TermId -> Term -> CheckingM a -> CheckingM a
 introBinding tmId tm = localExecM do
-  ex <- lift $ reflTerm tm
+  ex <- reflTermState tm
   srt <- lift $ reflType $ termType tm
   ctxScopeReversed %= (ScopeLet (makeTermIdSymbol tmId) ex srt :)
 
@@ -133,14 +153,14 @@ introCase tm tyId ctorId paramIds paramTypes = localExecM do
               (paramIds `zip` paramTypes <&> uncurry TermNamed)
               (TypeNamed tyId)
           )
-  propPred <- lift $ reflTerm propTerm
+  propPred <- reflTermState propTerm
   ctxAssumptionsReversed %= (propPred :)
 
   return ()
 
 assume :: Term -> CheckingM a -> CheckingM a
 assume propTerm = localExecM do
-  propPred <- lift $ reflTerm propTerm
+  propPred <- reflTermState propTerm
   ctxAssumptionsReversed %= (propPred :)
 
 assume' :: F.Pred -> CheckingM a -> CheckingM a
@@ -153,7 +173,7 @@ _assumptions_via_witnesses = False
 
 assert :: Doc -> Term -> CheckingM ()
 assert sourceDoc tm = flip localExecM checkQuery do
-  ex0 <- lift $ reflTerm tm
+  ex0 <- reflTermState tm
   ctxAssertion .= ex0
 
   -- True: use implications
@@ -308,28 +328,29 @@ introStructureUserDatatype struct = do
   FlexM.debug True $ "structureRefinement struct =" <+> pPrint (structureRefinement struct)
 
   -- Intro assumption about predicate
-  asmpExpr :: F.Expr <- do
+  asmpExpr <- do
     structVar <- FlexM.freshSymbol "struct"
     refnTerm <- lift $ transRefinement (structureRefinement struct)
-    refnExpr <- lift $ reflTerm refnTerm
+    FlexM.debug True $ "asmpExpr.refnTerm =" <+> pPrint refnTerm
+    (refnExpr, scope) <- lift $ runWriterT $ reflTerm refnTerm
+    FlexM.debug True $ "asmpExpr.refnExpr =" <+> F.pprint refnExpr
     -- replace appearances of each variable with field access from struct var x
     -- > P(x.a, x.b, ...)
-    let refnExpr' =
-          F.subst
-            ( F.Su
-                ( mempty
-                    & comps
-                      ( structureFields struct <&> \(fieldId, _ty) ->
-                          at (makeFieldIdSymbol fieldId)
-                            ?~ F.eApps
-                              (F.eVar (makeStructureFieldAccessorSymbol (structId, fieldId)))
-                              [F.eVar structVar]
-                      )
-                )
+    let sigma =
+          F.Su
+            ( mempty
+                & comps
+                  ( structureFields struct <&> \(fieldId, _ty) ->
+                      at (makeFieldIdSymbol fieldId)
+                        ?~ F.eApps
+                          (F.eVar (makeStructureFieldAccessorSymbol (structId, fieldId)))
+                          [F.eVar structVar]
+                  )
             )
-            refnExpr
+    let refnExpr' = F.subst sigma refnExpr
+    let scope' = scope <&> \(sym, srt, mb_ex) -> (sym, srt, F.subst sigma <$> mb_ex)
 
-    (xs, exs) <-
+    (params', exs) <-
       lift . runWriterT . execWriterT $
         structureFields struct <&*> \(fieldId, fieldType) -> do
           inferTypeRefinements
@@ -337,10 +358,21 @@ introStructureUserDatatype struct = do
             fieldType
 
     -- > forall (x : S) . isS(x) ==> P(x.a, x.b, ...) && ...
-    return $
-      F.PAll ([(structVar, structSort)] <> xs) $
-        F.PImp (F.eApps (F.eVar (makeDatatypePropertySymbol structId)) [F.eVar structVar]) $
-          F.pAnd ([refnExpr'] <> exs)
+    return
+      $ F.PAll ([(structVar, structSort)] <> ((\(sym, srt, _) -> (sym, srt)) <$> scope') <> params')
+      $ ( \ex ->
+            -- for things in scope that are bound, introduce equality
+            -- assumptions as a sort of binding
+            foldr
+              ( \(sym, _srt, mb_ex') -> case mb_ex' of
+                  Nothing -> id
+                  Just ex' -> F.PImp (F.PAtom F.Eq (F.eVar sym) ex')
+              )
+              ex
+              scope'
+        )
+      $ F.PImp (F.eApps (F.eVar (makeDatatypePropertySymbol structId)) [F.eVar structVar])
+      $ F.pAnd ([refnExpr'] <> exs)
   ctxAssumptionsReversed %= (asmpExpr :)
   return ()
 
@@ -486,7 +518,7 @@ introConstants = do
   asks (^. ctxConstants . to Map.toList) >>= traverse_ \(tmId, tm) -> do
     let sym = makeTermIdSymbol tmId
     tm' <- lift $ transTerm tm
-    ex <- lift $ reflTerm tm'
+    ex <- reflTermState tm'
     srt <- lift $ reflType (termType tm')
     (ctxQuery . _qEqns)
       %= ( F.Equ
@@ -613,14 +645,14 @@ checkBranch matchTerm (PatternConstructor tyId ctorId ctorParamIds) branchTerm =
     checkTerm branchTerm
 checkBranch matchTerm PatternNone branchTerm = flip localExecM (checkTerm branchTerm) do
   let propTerm = eqTerm matchTerm (TermPrimitive PrimitiveNone (termType matchTerm))
-  propPred <- lift $ reflTerm propTerm
+  propPred <- reflTermState propTerm
   ctxAssumptionsReversed %= (propPred :)
 checkBranch matchTerm (PatternSome tmId) branchTerm = flip localExecM (checkTerm branchTerm) do
   ty <- case termType matchTerm of
     TypeOptional ty -> return ty
     ty -> FlexM.throw $ "PatternSome should not have matched term with type" <+> ticks (pPrint ty)
   let propTerm = eqTerm matchTerm (TermPrimitive (PrimitiveSome (TermNamed tmId ty)) (termType matchTerm))
-  propPred <- lift $ reflTerm propTerm
+  propPred <- reflTermState propTerm
   ctxAssumptionsReversed %= (propPred :)
 
 checkPrimitive :: Type -> Primitive -> CheckingM ()

@@ -22,15 +22,19 @@ import Prelude hiding (Enum)
 -- ** Typing
 
 typeModule :: (MonadError TypingError m, MonadFlex m) => Module Type () -> m (TypingEnv, Module Type Type)
-typeModule mdl = FlexM.markSection [FlexM.FlexMarkStep "typeModule" . Just $ pPrint mdl] do
-  ctx <- moduleTypingCtx mdl
-  env <- moduleTypingEnv mdl
-  (env', mdl') <- runTypingM' env ctx do
-    mdl' <- synthModule mdl
+typeModule mdl0 = FlexM.markSection [FlexM.FlexMarkStep "typeModule" . Just $ pPrint mdl0] do
+  ctx <- moduleTypingCtx mdl0
+  env <- moduleTypingEnv mdl0
+  (env', mdl4) <- runTypingM' env ctx do
+    mdl1 <- synthModule mdl0
+    -- aliases can also appear in types that are necessarily given during
+    -- parsing, so need to normalize those also
+    mdl2 <- unTy <$> normalizeAndDefaultInternalTypes (Ty mdl1)
+    mdl3 <- unTm <$> normalizeAndDefaultInternalTypes (Tm mdl2)
     -- make sure to synthModule before getting state
     env' <- get
-    return (env', mdl')
-  return (env', mdl')
+    return (env', mdl3)
+  return (env', mdl4)
 
 -- ** Synthesizing
 
@@ -41,8 +45,8 @@ synthModule mdl@Module {..} = do
   return mdl {moduleDeclarations = moduleDeclarations'}
 
 synthDeclaration :: Declaration Type () -> TypingM (Declaration Type Type)
-synthDeclaration decl0 = FlexM.markSection [FlexM.FlexMarkStep ("synthDeclaration:" <+> pPrintDeclarationHeader decl0) Nothing] do
-  decl1 <- case decl0 of
+synthDeclaration decl = FlexM.markSection [FlexM.FlexMarkStep ("synthDeclaration:" <+> pPrintDeclarationHeader decl) Nothing] do
+  case decl of
     (DeclarationFunction fun) -> DeclarationFunction <$> synthFunction fun
     (DeclarationConstant con) -> DeclarationConstant <$> synthConstant con
     (DeclarationRefinedType rt) -> DeclarationRefinedType <$> synthRefinedType rt
@@ -51,9 +55,6 @@ synthDeclaration decl0 = FlexM.markSection [FlexM.FlexMarkStep ("synthDeclaratio
     (DeclarationVariant varnt) -> return $ DeclarationVariant varnt
     (DeclarationEnum enum) -> return $ DeclarationEnum enum
     (DeclarationAlias alias) -> return $ DeclarationAlias alias
-  FlexM.debugMark True $ FlexM.FlexMarkStep "normalizeInternalTypes" Nothing
-  decl2 <- unTm <$> normalizeInternalTypes (Tm decl1)
-  return decl2
 
 synthFunction :: Function Type () -> TypingM (Function Type Type)
 synthFunction fun@Function {..} = do

@@ -10,6 +10,7 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Bifunctor (Bifunctor (second))
+import qualified Data.List as List
 import qualified Data.Map as Map
 import Language.Flex.FlexM
 import qualified Language.Flex.FlexM as FlexM
@@ -135,7 +136,10 @@ normalizeType = go []
           asks (^. ctxTypes . at tyId) >>= \case
             Nothing -> return (TypeNamed tyId)
             Just ctxType -> case ctxType of
-              (CtxAlias Alias {..}) -> go (aliasId : aliasIds) aliasType
+              (CtxAlias Alias {..}) | aliasId `elem` aliasIds -> throwTypingError ("cycle of type aliases:" <+> commaList (pPrint <$> aliasIds)) (Just $ SyntaxType (TypeNamed tyId))
+              (CtxAlias Alias {..}) -> do
+                FlexM.debug True $ "[normalizeType] aliasId =" <+> pPrint aliasId
+                go (aliasId : aliasIds) aliasType
               _ -> return (TypeNamed tyId)
         TypeUnifyVar uv ->
           gets (^. envUnification . at uv) >>= \case
@@ -144,8 +148,9 @@ normalizeType = go []
             _ -> return type0
         _ -> return type0
 
-normalizeInternalTypes :: Traversable t => t Type -> TypingM (t Type)
-normalizeInternalTypes t0 = do
+-- normalizes and defaults
+normalizeAndDefaultInternalTypes :: Traversable t => t Type -> TypingM (t Type)
+normalizeAndDefaultInternalTypes t0 = do
   t1 <- normalizeType `traverse` t0
   t2 <- defaultInternalTypes t1
   t3 <- assertNormalType `traverse` t2
