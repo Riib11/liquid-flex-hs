@@ -28,7 +28,7 @@ transType type0@(Crude.TypeTuple tys) = do
     Just ty' -> return ty'
 transType (Crude.TypeOptional ty') = TypeOptional <$> transType ty'
 transType (Crude.TypeNamed ti) = return $ TypeNamed ti
-transType ty@(Crude.TypeUnifyVar _uv _m_uc) = FlexM.throw $ "transType should not encounter this form:" <+> pPrint ty
+transType ty@(Crude.TypeUnifyVar _uv) = FlexM.throw $ "transType should not encounter this form:" <+> pPrint ty
 
 -- - inlines functions
 -- - homogenizes neutrals

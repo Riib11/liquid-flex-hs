@@ -447,9 +447,7 @@ instance Pretty Type where
     TypeTuple tys -> "Tuple<" <> (tuple . fmap pPrint $ tys) <> ">"
     TypeOptional ty -> "Optional<" <> pPrint ty <> ">"
     TypeNamed ti -> pPrint ti
-    TypeUnifyVar uv mb_uc -> case mb_uc of
-      Nothing -> pPrint uv
-      Just uc -> pPrint uv <> "{" <> pPrint uc <> "}"
+    TypeUnifyVar uv -> pPrint uv
     where
       tuple :: [Doc] -> Doc
       tuple = parens . hcat . punctuate (comma <> space)
@@ -775,8 +773,8 @@ data Type
   | TypeTuple [Type]
   | TypeOptional Type
   | TypeNamed TypeId
-  | -- | Introduce and eliminated during typing.
-    TypeUnifyVar UnifyVar (Maybe UnifyConstraint)
+  | -- | Introduced and eliminated during typing.
+    TypeUnifyVar UnifyVar
   deriving (Eq, Show)
 
 data NumberType

@@ -58,7 +58,7 @@ data TypingCtx = TypingCtx
 
 data TypingEnv = TypingEnv
   { -- | Current unifying substitution
-    _envUnification :: Map.Map UnifyVar Type,
+    _envUnification :: Map.Map UnifyVar (Either UnifyConstraint Type),
     _envFreshUnificationVarIndex :: Int
   }
 
@@ -126,6 +126,7 @@ modifyInsertUnique mb_syn a l b = modifyM \s -> case s ^. l of
 
 -- ** Normalization
 
+-- defaults unsubstituted type vars
 normalizeType :: Type -> MType
 normalizeType = go []
   where
@@ -141,14 +142,29 @@ normalizeType = go []
             Just ctxType -> case ctxType of
               (CtxAlias Alias {..}) -> go (aliasId : aliasIds) =<< aliasType
               _ -> return (TypeNamed tyId)
-        (TypeUnifyVar uv _) ->
+        TypeUnifyVar uv ->
           gets (^. envUnification . at uv) >>= \case
-            Nothing -> return type0
-            (Just ty) -> normalizeType ty
+            (Just (Right ty)) -> normalizeType ty
+            -- _ -> defaultType type0
+            _ -> return type0
         _ -> return type0
 
 normalizeInternalTypes :: Traversable t => t MType -> TypingM (t Type)
-normalizeInternalTypes = traverse (>>= assertNormalType)
+normalizeInternalTypes t_mty = do
+  env <- get
+  ctx <- ask
+  traverse
+    ( ( ( FlexM.liftFlex
+            >=> ( \case
+                    (Left err) -> throwError err
+                    (Right (ty, _)) -> return ty
+                )
+        )
+          . runTypingM env ctx
+      )
+        >=> assertNormalType
+    )
+    t_mty
 
 assertNormalType :: Type -> TypingM Type
 assertNormalType ty = case ty of
@@ -164,7 +180,7 @@ assertNormalType ty = case ty of
       (Just ct) -> case ct of
         (CtxAlias {}) -> FlexM.throw ("assertNormalType: type alias reference" <+> ticks (pPrint ty))
         _ -> return ty
-  (TypeUnifyVar uv _) ->
+  TypeUnifyVar uv ->
     gets (^. envUnification . at uv) >>= \case
       Nothing -> return ty
       (Just {}) -> FlexM.throw ("assertNormalType: unsubstituted type unification variable:" <+> ticks (pPrint ty))
@@ -184,9 +200,15 @@ defaultType ty = do
     go (TypeArray ty2) = TypeArray <$> defaultType ty2
     go (TypeTuple tys) = TypeTuple <$> defaultType `traverse` tys
     go (TypeOptional ty2) = TypeOptional <$> defaultType ty2
-    go ty2@(TypeUnifyVar _uv Nothing) = FlexM.throw $ "cannot default unconstrained type unification variable" <+> ticks (pPrint ty2)
-    go (TypeUnifyVar _uv (Just (UnifyConstraintCasted ty'))) = return ty'
-    go (TypeUnifyVar _uv (Just UnifyConstraintNumeric)) = return (TypeNumber TypeInt 32)
+    go ty2@(TypeUnifyVar uv) =
+      gets (^. envUnification . at uv) >>= \case
+        Nothing -> FlexM.throw $ "cannot default unconstrained type unification variable" <+> ticks (pPrint ty2)
+        (Just (Left uc)) -> case uc of
+          (UnifyConstraintCasted ty') -> defaultType ty'
+          UnifyConstraintNumeric -> return (TypeNumber TypeInt 32)
+        -- the var has been substituted via the environment, so probably should
+        -- have already been handled by normalization?
+        (Just (Right ty')) -> go ty'
     go ty2 = return ty2
 
 defaultInternalTypes :: Traversable t => t Type -> TypingM (t Type)

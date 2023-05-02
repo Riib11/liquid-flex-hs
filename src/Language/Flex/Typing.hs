@@ -1,3 +1,4 @@
+{-# HLINT ignore "Redundant return" #-}
 module Language.Flex.Typing where
 
 import Control.Lens hiding (enum)
@@ -6,6 +7,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Data.Bifunctor
+import Data.Foldable (foldlM)
 import qualified Data.Map as Map
 import Data.Maybe
 import Language.Flex.FlexM (MonadFlex)
@@ -39,9 +41,8 @@ synthModule mdl@Module {..} = do
   return mdl {moduleDeclarations = moduleDeclarations'}
 
 synthDeclaration :: Declaration Type () -> TypingM (Declaration Type Type)
-synthDeclaration decl = FlexM.markSection
-  [FlexM.FlexMarkStep ("synthDeclaration:" <+> pPrintDeclarationHeader decl) Nothing]
-  case decl of
+synthDeclaration decl0 = FlexM.markSection [FlexM.FlexMarkStep ("synthDeclaration:" <+> pPrintDeclarationHeader decl0) Nothing] do
+  decl1 <- case decl0 of
     (DeclarationFunction fun) -> DeclarationFunction <$> synthFunction fun
     (DeclarationConstant con) -> DeclarationConstant <$> synthConstant con
     (DeclarationRefinedType rt) -> DeclarationRefinedType <$> synthRefinedType rt
@@ -50,8 +51,12 @@ synthDeclaration decl = FlexM.markSection
     (DeclarationVariant varnt) -> return $ DeclarationVariant varnt
     (DeclarationEnum enum) -> return $ DeclarationEnum enum
     (DeclarationAlias alias) -> return $ DeclarationAlias alias
+  FlexM.debugMark True $ FlexM.FlexMarkStep "normalizeInternalTypes" Nothing
+  decl2 <- unTm <$> normalizeInternalTypes (Tm decl1)
+  decl3 <- unTm <$> defaultInternalTypes (Tm decl2)
+  return decl3
 
-synthFunction :: Function Type () -> TypingM (Function Type Type)
+synthFunction :: Function Type () -> TypingM (Function Type MType)
 synthFunction fun@Function {..} = do
   let mb_syn = Just $ SyntaxDeclaration $ DeclarationFunction fun
   let FunctionType {..} = functionType
@@ -86,18 +91,14 @@ synthFunction fun@Function {..} = do
           modifyInsertUnique mb_syn cxparamId (ctxCxparamIds . at cxparamNewtypeId) cxparamId
   localM intros do
     functionBody1 <- synthCheckTerm' (normalizeType functionOutput) functionBody
-    functionBody2 <- normalizeInternalTypes functionBody1
-    functionBody3 <- defaultInternalTypes functionBody2
-    return fun {functionBody = functionBody3}
+    return fun {functionBody = functionBody1}
 
-synthConstant :: Constant Type () -> TypingM (Constant Type Type)
+synthConstant :: Constant Type () -> TypingM (Constant Type MType)
 synthConstant con@Constant {..} = do
   constantBody1 <- synthCheckTerm' (normalizeType constantType) constantBody
-  constantBody2 <- normalizeInternalTypes constantBody1
-  constantBody3 <- defaultInternalTypes constantBody2
-  return con {constantBody = constantBody3}
+  return con {constantBody = constantBody1}
 
-synthRefinedType :: RefinedType () -> TypingM (RefinedType Type)
+synthRefinedType :: RefinedType () -> TypingM (RefinedType MType)
 synthRefinedType rt@(RefinedType {..}) = do
   -- get the fields to add to scope
   fields <-
@@ -122,9 +123,7 @@ synthRefinedType rt@(RefinedType {..}) = do
     )
     do
       refinedTypeRefinement1 <- synthRefinement refinedTypeRefinement
-      refinedTypeRefinement2 <- normalizeInternalTypes refinedTypeRefinement1
-      refinedTypeRefinement3 <- defaultInternalTypes refinedTypeRefinement2
-      return rt {refinedTypeRefinement = refinedTypeRefinement3}
+      return rt {refinedTypeRefinement = refinedTypeRefinement1}
 
 synthRefinement :: Refinement () -> TypingM (Refinement MType)
 synthRefinement (Refinement tm) = Refinement <$> synthCheckTerm TypeBit tm
@@ -383,9 +382,10 @@ synthPrimitive (PrimitiveNot te) = do
   te' <- synthCheckTerm TypeBit te
   return $ TermPrimitive (PrimitiveNot te') (return TypeBit)
 synthPrimitive (PrimitiveEq neg te1 te2) = do
-  ty <- freshTypeUnifyVar' (render $ "primitive equality" <+> pPrint [te1, te2]) Nothing
-  te1' <- synthCheckTerm' ty te1
-  te2' <- synthCheckTerm' ty te2
+  m_ty <- freshTypeUnifyVar' (render $ "primitive equality" <+> pPrint [te1, te2]) Nothing
+  te1' <- synthCheckTerm' m_ty te1
+  -- !TODO why do i need to normalize again here; shouldn't that be handled already via being wrapped in a TypingM?
+  te2' <- synthCheckTerm' (normalizeType =<< m_ty) te2
   return $ TermPrimitive (PrimitiveEq neg te1' te2') (return TypeBit)
 synthPrimitive (PrimitiveNumBinOp nbo te1 te2) = do
   ty <- freshTypeUnifyVar' (render $ "primitive" <+> text (operatorOfNumBinOp nbo) <+> pPrint [te1, te2]) (Just UnifyConstraintNumeric)
@@ -400,7 +400,7 @@ synthPrimitive (PrimitiveNumBinRel nbr te1 te2) = do
 synthPrimitive (PrimitiveExtends {}) = error "synthPrimitive PrimitiveExtends"
 
 synthCheckTerm :: Type -> Term () -> TypingM (Term MType)
-synthCheckTerm type_ term = do
+synthCheckTerm type_ term = FlexM.markSection [FlexM.FlexMarkStep ("synthCheckTerm (" <> pPrint type_ <> ") (" <> pPrint term <> ")") Nothing] do
   term' <- synthTerm term
   checkTerm type_ term'
   return term'
@@ -411,6 +411,17 @@ synthCheckTerm' m_type term = do
   synthCheckTerm type_ term
 
 -- ** Checking
+
+-- Tries to unify the types. If successful, then updated environment as if
+-- normal unify. If unsuccessful, does not update environment.
+tryUnify :: Type -> Type -> TypingM (Either (Maybe Doc, Type, Type) ())
+tryUnify tyExpect tyInfer = do
+  env <- get
+  lift (runStateT (runExceptT (unify tyExpect tyInfer)) env) >>= \case
+    (Left err, _env') -> return (Left err)
+    (Right _, env') -> do
+      put env'
+      return (Right ())
 
 checkTerm :: Type -> Term MType -> TypingM ()
 checkTerm expectType term = do
@@ -445,7 +456,7 @@ synthCheckPattern' mtype pat@(PatternNone ()) =
     ty -> throwTypingError ("can't match on term of type" <+> ticks (pPrint ty)) (Just $ SyntaxPattern pat)
 synthCheckPattern' mtype pat@(PatternSome tmId ()) =
   mtype >>= \case
-    (TypeOptional ty) -> return $ PatternSome tmId mtype
+    (TypeOptional _ty) -> return $ PatternSome tmId mtype
     ty -> throwTypingError ("can't match on term of type" <+> ticks (pPrint ty)) (Just $ SyntaxPattern pat)
 
 introTermId :: TermId -> MType -> TypingM a -> TypingM a
@@ -485,11 +496,10 @@ type UnifyM a = ExceptT (Maybe Doc, Type, Type) TypingM a
 -- | Attempt to unify an expected type with a synthesized type.
 -- > <expected type> ~? <synthesized type>
 unify :: Type -> Type -> UnifyM ()
-unify type1 type2 = case (type1, type2) of
+unify type1 type2 = FlexM.markSection [FlexM.FlexMarkStep ("unify (" <> pPrint type1 <> ") (" <> pPrint type2 <> ")") Nothing] case (type1, type2) of
   -- type unification variables; substitute uv for ty while unifying type1 and type2
-  (TypeUnifyVar uv mb_uc, ty) -> substUnifyVar type1 type2 uv mb_uc ty
-  (ty, TypeUnifyVar uv mb_uc) -> substUnifyVar type1 type2 uv mb_uc ty
-  -- simple types
+  (TypeUnifyVar uv, ty) -> substUnifyVar type1 type2 uv ty
+  (ty, TypeUnifyVar uv) -> substUnifyVar type1 type2 uv ty
   (TypeNumber numty1 size1, TypeNumber numty2 size2) -> unless (numty1 == numty2 && size1 == size2) $ throwUnifyError type1 type2 Nothing
   (TypeBit, TypeBit) -> return ()
   (TypeChar, TypeChar) -> return ()
@@ -508,61 +518,85 @@ unify' mtype1 mtype2 = do
   type2 <- lift mtype2
   unify type1 type2
 
-substUnifyVar :: Type -> Type -> UnifyVar -> Maybe UnifyConstraint -> Type -> UnifyM ()
-substUnifyVar = error "!TODO move unification constraints into context"
-
-{-
--- attempt to substitute uv{mb_uc} for ty; during: type1 ~ type2
-substUnifyVar :: Type -> Type -> UnifyVar -> Maybe UnifyConstraint -> Type -> UnifyM ()
-substUnifyVar type1 type2 uv mb_uc ty = FlexM.markSection [FlexM.FlexMarkStep ("substUnifyVar; uv = " <> pPrint uv <> "; mb_uc = " <> pPrint mb_uc <> "; ty = " <> pPrint ty) Nothing] do
+substUnifyVar :: Type -> Type -> UnifyVar -> Type -> UnifyM ()
+substUnifyVar type1 type2 uv ty = FlexM.markSection [FlexM.FlexMarkStep ("substUnifyVar; uv = " <> pPrint uv <> "; ty = " <> pPrint ty) Nothing] do
   case ty of
-    (TypeUnifyVar uv' mb_uc') | uv == uv' -> case mb_uc' of
-      -- already identical
-      Nothing -> return ()
-      (Just uc) -> case uc of
-        (UnifyConstraintCasted ty') -> subst
-        UnifyConstraintNumeric -> _wm
-        _ -> throwUnifyError type1 type2 (Just )
-    _ -> _
-  -- check if uv1 occurs in type2
-  when (uv `unifyVarOccursInType` ty) $ throwUnifyError type1 type2 (Just "fails occurs check")
-  case mb_uc of
-    Nothing -> return ()
-    -- check if ty satisfies the constraints uc
-    Just uc -> unless (ty `satisfiesUnifyConstraint` uc) $ throwUnifyError type1 type2 (Just $ "it does not satisfy unification constraint:" <+> pPrint uc)
-  modifyingM (envUnification . at uv) \case
-    Just ty' -> FlexM.throw $ "trying to substitute" <+> ticks (pPrint uv) <+> "for" <+> ticks (pPrint ty) <+> ", but it's already be substituted for" <+> pPrint ty'
-    Nothing -> return $ Just ty
+    -- already identical
+    TypeUnifyVar uv' | uv == uv' -> return ()
+    _ -> do
+      gets (^. envUnification . at uv) >>= \case
+        Just (Right ty') -> FlexM.throw $ "trying to substitute" <+> ticks (pPrint uv) <+> "for" <+> ticks (pPrint ty) <+> ", but it's already be substituted for" <+> pPrint ty'
+        -- uv is constrained by uc
+        Just (Left uc) ->
+          lift (ty `satisfiesUnifyConstraint` uc) >>= \case
+            False -> throwUnifyError type1 type2 (Just $ "it does not satisfy unification constraint:" <+> pPrint uc)
+            True -> envUnification . at uv ?= Right ty
+        -- uv is unconstrained
+        Nothing -> envUnification . at uv ?= Right ty
 
-satisfiesUnifyConstraint :: Type -> UnifyConstraint -> Bool
-satisfiesUnifyConstraint ty = \case
-  UnifyConstraintCasted ty' -> case (ty, ty') of
+satisfiesUnifyConstraint :: Type -> UnifyConstraint -> TypingM Bool
+satisfiesUnifyConstraint ty1 uc2 = case uc2 of
+  UnifyConstraintCasted ty2 -> case (ty1, ty2) of
     (TypeNumber numty1 _size1, TypeNumber numty2 _size2)
-      | all (`elem` [TypeInt, TypeUInt]) [numty1, numty2] -> True
-      | all (`elem` [TypeFloat]) [numty1, numty2] -> True
-    (TypeBit, TypeBit) -> True
-    (TypeChar, TypeChar) -> True
-    (TypeArray ty1, TypeArray ty2) -> satisfiesUnifyConstraint ty1 (UnifyConstraintCasted ty2)
-    (TypeTuple tys1, TypeTuple tys2) -> all (\(ty1, ty2) -> satisfiesUnifyConstraint ty1 (UnifyConstraintCasted ty2)) $ tys1 `zip` tys2
-    (TypeOptional ty1, TypeOptional ty2) -> satisfiesUnifyConstraint ty1 (UnifyConstraintCasted ty2)
-    (TypeUnifyVar _ mb_uc, _) -> maybe True (satisfiesUnifyConstraint ty') mb_uc
-    -- !TODO FlexM.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 2 ("type =" <+> pPrint ty) $$ nest 2 ("unifyConstraint =" <+> pPrint uc)
-    _uc -> False
-  UnifyConstraintNumeric -> case ty of
-    TypeNumber _ _ -> True
-    TypeUnifyVar _ (Just uc) -> case uc of
-      (UnifyConstraintCasted ty') -> satisfiesUnifyConstraint ty' UnifyConstraintNumeric
-      UnifyConstraintNumeric -> True
-    _ -> False
+      | all (`elem` [TypeInt, TypeUInt]) [numty1, numty2] -> return True
+      | all (`elem` [TypeFloat]) [numty1, numty2] -> return True
+    (TypeBit, TypeBit) -> return True
+    (TypeChar, TypeChar) -> return True
+    (TypeArray ty1', TypeArray ty2') -> satisfiesUnifyConstraint ty1' (UnifyConstraintCasted ty2')
+    (TypeTuple tys1, TypeTuple tys2) -> allM (\(ty1', ty2') -> satisfiesUnifyConstraint ty1' (UnifyConstraintCasted ty2')) $ tys1 `zip` tys2
+    (TypeOptional ty1', TypeOptional ty2') -> satisfiesUnifyConstraint ty1' (UnifyConstraintCasted ty2')
+    -- ty = uv
+    (TypeUnifyVar uv1, _) ->
+      -- !TODO FlexM.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 2 ("type =" <+> pPrint ty) $$ nest 2 ("unifyConstraint =" <+> pPrint uc)
+      gets (^. envUnification . at uv1) >>= \case
+        Nothing -> maybe (return True) (satisfiesUnifyConstraint ty2) Nothing
+        -- ty1 is constrained by uc1
+        Just (Left uc1) ->
+          runExceptT (leqUnifyConstraint uc1 uc2) >>= \case
+            (Left _err) -> return False
+            (Right b) -> return b
+        -- ty is a unify var substituted for ty''
+        Just (Right ty_) -> FlexM.throw $ "in satisfiesUnifyConstraint; expected inputs to be normalized, but ty is a unify var that is substiuted for" <+> pPrint ty_
+    _uc -> return False
+  UnifyConstraintNumeric -> case ty1 of
+    TypeNumber _ _ -> return True
+    TypeUnifyVar uv1 ->
+      gets (^. envUnification . at uv1) >>= \case
+        -- already substituted
+        Just (Right ty1') -> normalizeType ty1' >>= (`satisfiesUnifyConstraint` uc2)
+        -- neither constrained nor substituted
+        Nothing -> return True
+        -- constrained but not yet substituted
+        Just (Left uc) -> case uc of
+          (UnifyConstraintCasted ty') -> satisfiesUnifyConstraint ty' UnifyConstraintNumeric
+          UnifyConstraintNumeric -> return True
+    _ -> return False
+
+leqUnifyConstraint :: UnifyConstraint -> UnifyConstraint -> UnifyM Bool
+leqUnifyConstraint (UnifyConstraintCasted ty1) (UnifyConstraintCasted ty2) =
+  lift (tryUnify ty1 ty2) >>= \case
+    (Left _err) -> return False
+    (Right _) -> return True
+leqUnifyConstraint uc (UnifyConstraintCasted ty) = lift $ satisfiesUnifyConstraint ty uc
+leqUnifyConstraint (UnifyConstraintCasted ty) uc = lift $ satisfiesUnifyConstraint ty uc
+leqUnifyConstraint UnifyConstraintNumeric UnifyConstraintNumeric = return True
+
+allM :: ((Type, Type) -> TypingM Bool) -> [(Type, Type)] -> TypingM Bool
+allM k =
+  foldlM
+    ( \case
+        False -> \_ -> return False
+        True -> k
+    )
+    True
 
 unifyVarOccursInType :: UnifyVar -> Type -> Bool
 unifyVarOccursInType uv = \case
   TypeArray ty -> unifyVarOccursInType uv ty
   TypeTuple tys -> any (unifyVarOccursInType uv) tys
   TypeOptional ty -> unifyVarOccursInType uv ty
-  TypeUnifyVar uv' _ | uv == uv' -> True
+  TypeUnifyVar uv' | uv == uv' -> True
   _ -> False
--}
 
 throwUnifyError :: Type -> Type -> Maybe Doc -> UnifyM a
 throwUnifyError tyExpect tySynth mb_msg =
@@ -583,8 +617,12 @@ throwUnifyError tyExpect tySynth mb_msg =
 freshTypeUnifyVar :: String -> Maybe UnifyConstraint -> TypingM Type
 freshTypeUnifyVar str mb_uc = do
   i <- gets (^. envFreshUnificationVarIndex)
-  modifying envFreshUnificationVarIndex (+ 1)
-  return $ TypeUnifyVar (UnifyVar str i) mb_uc
+  envFreshUnificationVarIndex %= (+ 1)
+  let uv = UnifyVar str i
+  case mb_uc of
+    Just uc -> envUnification . at uv ?= Left uc
+    Nothing -> return ()
+  return $ TypeUnifyVar uv
 
 freshTypeUnifyVar' :: String -> Maybe UnifyConstraint -> TypingM MType
 freshTypeUnifyVar' str mb_uc' = normalizeType <$> freshTypeUnifyVar str mb_uc'
