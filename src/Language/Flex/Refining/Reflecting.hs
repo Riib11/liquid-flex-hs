@@ -114,9 +114,7 @@ reflType (TypeNumber Crude.TypeFloat _) = return F.realSort
 reflType TypeBit = return F.boolSort
 reflType TypeChar = return F.charSort
 reflType (TypeArray TypeChar) = return F.strSort
-reflType (TypeArray _ty) =
-  -- F.fAppTC array_ArrayFTycon <$> reflType `traverse` [ty]
-  error "!TODO use LH's built-in arrays"
+reflType (TypeArray ty) = F.fAppTC F.listFTyCon <$> reflType `traverse` [ty]
 reflType (TypeTuple ty1 ty2) = F.fAppTC tuple_TupleFTycon <$> reflType `traverse` [ty1, ty2]
 reflType (TypeOptional ty) = F.fAppTC optional_OptionalFTycon <$> reflType `traverse` [ty]
 reflType (TypeNamed tyId) = do
