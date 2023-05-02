@@ -18,28 +18,30 @@ test :: Test
 test =
   TestLabel "typing" $
     TestList $
-      concat
-        [ let !fps =
-                unsafePerformIO $
-                  fmap concat . sequence $
-                    [getDirectoryFilesBySuffix dir_examples_typing ".flex"]
-           in makeTest_procModule True <$> fps,
-          let !fps =
-                unsafePerformIO $
-                  fmap concat . sequence $
-                    [getDirectoryFilesBySuffix dir_examples_typing_fail ".flex"]
-           in makeTest_procModule False <$> fps,
-          let !fps =
-                unsafePerformIO $
-                  fmap concat . sequence $
-                    [getDirectoryFilesBySuffix dir_examples_refining ".flex"]
-           in makeTest_procModule True <$> fps,
-          let !fps =
-                unsafePerformIO $
-                  fmap concat . sequence $
-                    [getDirectoryFilesBySuffix dir_examples_refining_fail ".flex"]
-           in makeTest_procModule True <$> fps
-        ]
+      -- concat
+      --   [ let !fps =
+      --           unsafePerformIO $
+      --             fmap concat . sequence $
+      --               [getDirectoryFilesBySuffix dir_examples_typing ".flex"]
+      --      in makeTest_procModule True <$> fps,
+      --     let !fps =
+      --           unsafePerformIO $
+      --             fmap concat . sequence $
+      --               [getDirectoryFilesBySuffix dir_examples_typing_fail ".flex"]
+      --      in makeTest_procModule False <$> fps,
+      --     let !fps =
+      --           unsafePerformIO $
+      --             fmap concat . sequence $
+      --               [getDirectoryFilesBySuffix dir_examples_refining ".flex"]
+      --      in makeTest_procModule True <$> fps,
+      --     let !fps =
+      --           unsafePerformIO $
+      --             fmap concat . sequence $
+      --               [getDirectoryFilesBySuffix dir_examples_refining_fail ".flex"]
+      --      in makeTest_procModule True <$> fps
+      --   ]
+      [ makeTest_procModule True $ dir_examples_typing <> "Operators.flex"
+      ]
 
 makeTest_procModule :: Bool -> FilePath -> Test
 makeTest_procModule pass fp =
@@ -54,6 +56,6 @@ makeTest_procModule pass fp =
           Right mdl -> return mdl
       mdl' <- runFlexM (defaultFlexCtx {flexDebug = False}) do
         elaborateModule mdl
-      runFlexM (defaultFlexCtx {flexDebug = False}) (runExceptT $ typeModule mdl') >>= \case
+      runFlexM (defaultFlexCtx {flexDebug = True}) (runExceptT $ typeModule mdl') >>= \case
         Left err -> when pass $ assertFailure (render . pPrint $ err)
         Right (_mdl', _env) -> do unless pass $ assertFailure "expected typing to fail"

@@ -508,9 +508,22 @@ unify' mtype1 mtype2 = do
   type2 <- lift mtype2
   unify type1 type2
 
+substUnifyVar :: Type -> Type -> UnifyVar -> Maybe UnifyConstraint -> Type -> UnifyM ()
+substUnifyVar = error "!TODO move unification constraints into context"
+
+{-
 -- attempt to substitute uv{mb_uc} for ty; during: type1 ~ type2
 substUnifyVar :: Type -> Type -> UnifyVar -> Maybe UnifyConstraint -> Type -> UnifyM ()
-substUnifyVar type1 type2 uv mb_uc ty = do
+substUnifyVar type1 type2 uv mb_uc ty = FlexM.markSection [FlexM.FlexMarkStep ("substUnifyVar; uv = " <> pPrint uv <> "; mb_uc = " <> pPrint mb_uc <> "; ty = " <> pPrint ty) Nothing] do
+  case ty of
+    (TypeUnifyVar uv' mb_uc') | uv == uv' -> case mb_uc' of
+      -- already identical
+      Nothing -> return ()
+      (Just uc) -> case uc of
+        (UnifyConstraintCasted ty') -> subst
+        UnifyConstraintNumeric -> _wm
+        _ -> throwUnifyError type1 type2 (Just )
+    _ -> _
   -- check if uv1 occurs in type2
   when (uv `unifyVarOccursInType` ty) $ throwUnifyError type1 type2 (Just "fails occurs check")
   case mb_uc of
@@ -530,8 +543,8 @@ satisfiesUnifyConstraint ty = \case
     (TypeBit, TypeBit) -> True
     (TypeChar, TypeChar) -> True
     (TypeArray ty1, TypeArray ty2) -> satisfiesUnifyConstraint ty1 (UnifyConstraintCasted ty2)
-    -- (TypeTuple tys1, TypeTuple tys2) -> all (\(ty1, ty2) -> satisfiesUnifyConstraint ty1 (UnifyConstraintCasted ty2)) $ tys1 `zip` tys2
-    -- (TypeOptional ty1, TypeOptional ty2) -> satisfiesUnifyConstraint ty1 (UnifyConstraintCasted ty2)
+    (TypeTuple tys1, TypeTuple tys2) -> all (\(ty1, ty2) -> satisfiesUnifyConstraint ty1 (UnifyConstraintCasted ty2)) $ tys1 `zip` tys2
+    (TypeOptional ty1, TypeOptional ty2) -> satisfiesUnifyConstraint ty1 (UnifyConstraintCasted ty2)
     (TypeUnifyVar _ mb_uc, _) -> maybe True (satisfiesUnifyConstraint ty') mb_uc
     -- !TODO FlexM.throw $ FlexLog "typing" $ "this case of `satisfiesUnifyConstraint` is not implemented yet:" $$ nest 2 ("type =" <+> pPrint ty) $$ nest 2 ("unifyConstraint =" <+> pPrint uc)
     _uc -> False
@@ -549,6 +562,7 @@ unifyVarOccursInType uv = \case
   TypeOptional ty -> unifyVarOccursInType uv ty
   TypeUnifyVar uv' _ | uv == uv' -> True
   _ -> False
+-}
 
 throwUnifyError :: Type -> Type -> Maybe Doc -> UnifyM a
 throwUnifyError tyExpect tySynth mb_msg =
