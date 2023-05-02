@@ -14,7 +14,7 @@ preludeTypingCtx =
                   CtxAlias
                     Alias
                       { aliasId = tyId,
-                        aliasType = return $ TypeArray TypeChar
+                        aliasType = TypeArray TypeChar
                       }
                 )
           ],

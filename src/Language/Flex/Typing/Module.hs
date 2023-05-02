@@ -29,62 +29,50 @@ moduleTypingCtx Module {..} = FlexM.markSection [FlexM.FlexMarkStep "moduleTypin
 
   flip execStateT ctx . forM_ moduleDeclarations $ \decl -> case decl of
     (DeclarationStructure struct@Structure {..}) -> do
-      -- extend structure
-      -- normalize structure
-      let struct'' = normalizeType <$> struct
       -- intro structure type
-      modifyInsertUnique (Just $ SyntaxDeclaration decl) structureId (ctxTypes . at structureId) (CtxStructure struct'')
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) structureId (ctxTypes . at structureId) (CtxStructure struct)
     (DeclarationNewtype newty@Newtype {..}) -> do
-      -- normalize newtype
-      let newty' = normalizeType <$> newty
       -- intro newtype type
-      modifyInsertUnique (Just $ SyntaxDeclaration decl) newtypeId (ctxTypes . at newtypeId) (CtxNewtype newty')
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) newtypeId (ctxTypes . at newtypeId) (CtxNewtype newty)
       -- intro constructor applicant
       let app =
             ApplicantNewtypeConstructor
               { applicantNewtypeId = newtypeId,
                 applicantConstructorId = newtypeConstructorId,
-                applicantOutputAnn = return $ TypeNamed newtypeId
+                applicantOutputAnn = TypeNamed newtypeId
               }
       let protoapp = fromApplicantToProtoApplicant app
       modifyInsertUnique Nothing (void app) (ctxApplicants . at protoapp) app
-    (DeclarationVariant vari) -> do
-      -- intro normalize type
-      let vari'@Variant {..} = normalizeType <$> vari
-      modifyInsertUnique (Just $ SyntaxDeclaration decl) variantId (ctxTypes . at variantId) (CtxVariant vari')
+    (DeclarationVariant vari@Variant {..}) -> do
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) variantId (ctxTypes . at variantId) (CtxVariant vari)
       -- intro constructors' applicants
       forM_ variantConstructors \(ctorId, _) -> do
         let app =
               ApplicantVariantConstructor
                 { applicantVariantId = variantId,
                   applicantConstructorId = ctorId,
-                  applicantOutputAnn = return $ TypeNamed variantId
+                  applicantOutputAnn = TypeNamed variantId
                 }
         let protoapp = fromApplicantToProtoApplicant app
         modifyInsertUnique Nothing (void app) (ctxApplicants . at protoapp) app
-    (DeclarationEnum enum) -> do
-      -- intro normalize type
-      let enum'@Enum {..} = normalizeType <$> enum
-      modifyInsertUnique (Just $ SyntaxDeclaration decl) enumId (ctxTypes . at enumId) (CtxEnum enum')
+    (DeclarationEnum enum@Enum {..}) -> do
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) enumId (ctxTypes . at enumId) (CtxEnum enum)
       -- intro constructors' applicants
       forM_ enumConstructors \(ctorId, _) -> do
         let app =
               ApplicantEnumConstructor
                 { applicantEnumId = enumId,
                   applicantConstructorId = ctorId,
-                  applicantOutputAnn = return $ TypeNamed enumId
+                  applicantOutputAnn = TypeNamed enumId
                 }
         let protoapp = fromApplicantToProtoApplicant app
         modifyInsertUnique Nothing (void app) (ctxApplicants . at protoapp) app
-    (DeclarationAlias alias) -> do
-      -- intro normalize type
-      let alias'@Alias {..} = normalizeType <$> alias
-      modifyInsertUnique (Just $ SyntaxDeclaration decl) aliasId (ctxTypes . at aliasId) (CtxAlias alias')
-    (DeclarationFunction fun) -> do
+    (DeclarationAlias alias@Alias {..}) -> do
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) aliasId (ctxTypes . at aliasId) (CtxAlias alias)
+    (DeclarationFunction fun@Function {..}) -> do
       -- intro normalized function
-      let fun'@Function {..} = fmapTy normalizeType fun
       let FunctionType {..} = functionType
-      modifyInsertUnique (Just $ SyntaxDeclaration decl) functionId (ctxFunctions . at functionId) fun'
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) functionId (ctxFunctions . at functionId) fun
       -- intro application applicant
       let app =
             ApplicantFunction
@@ -93,10 +81,8 @@ moduleTypingCtx Module {..} = FlexM.markSection [FlexM.FlexMarkStep "moduleTypin
               }
       let protoapp = fromApplicantToProtoApplicant app
       modifyInsertUnique Nothing (void app) (ctxApplicants . at protoapp) app
-    (DeclarationConstant con) -> do
-      -- intro constant
-      let con'@Constant {..} = fmapTy normalizeType con
-      modifyInsertUnique (Just $ SyntaxDeclaration decl) constantId (ctxConstants . at constantId) con'
+    (DeclarationConstant con@Constant {..}) -> do
+      modifyInsertUnique (Just $ SyntaxDeclaration decl) constantId (ctxConstants . at constantId) con
       -- intro named applicant
       let app =
             Applicant

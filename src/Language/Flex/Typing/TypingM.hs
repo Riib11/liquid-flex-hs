@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 {-# HLINT ignore "Use camelCase" #-}
+{-# HLINT ignore "Redundant return" #-}
 
 module Language.Flex.Typing.TypingM where
 
@@ -36,18 +37,12 @@ runTypingM_unsafe env ctx m = liftFlex do
     (Left err) -> FlexM.throw $ pPrint err
     (Right (a, _)) -> return a
 
--- | During typing, store each type as a `MType = TypingM Type` so that whenever
--- a `Type`'s value is used, the `TypingM` must be run first (in a `TypingM`
--- computation), which normalizes the internal `Type` via the contextual
--- unification substitution.
-type MType = TypingM Type
-
 data TypingCtx = TypingCtx
-  { _ctxTypes :: Map.Map TypeId (CtxType MType),
-    _ctxFunctions :: Map.Map TermId (Function MType ()),
-    _ctxConstants :: Map.Map TermId (Constant MType ()),
+  { _ctxTypes :: Map.Map TypeId (CtxType Type),
+    _ctxFunctions :: Map.Map TermId (Function Type ()),
+    _ctxConstants :: Map.Map TermId (Constant Type ()),
     _ctxRefinedTypes :: Map.Map TypeId (RefinedType ()),
-    _ctxApplicants :: Map.Map (ProtoApplicant ()) (Applicant MType),
+    _ctxApplicants :: Map.Map (ProtoApplicant ()) (Applicant Type),
     -- | Map of contextual parameter newtype ids (introduced by transform's
     -- contextual parameters)
     _ctxCxparamNewtypeIds :: Map.Map TermId TypeId,
@@ -127,7 +122,7 @@ modifyInsertUnique mb_syn a l b = modifyM \s -> case s ^. l of
 -- ** Normalization
 
 -- defaults unsubstituted type vars
-normalizeType :: Type -> MType
+normalizeType :: Type -> TypingM Type
 normalizeType = go []
   where
     go aliasIds type0 = do
@@ -140,7 +135,7 @@ normalizeType = go []
           asks (^. ctxTypes . at tyId) >>= \case
             Nothing -> return (TypeNamed tyId)
             Just ctxType -> case ctxType of
-              (CtxAlias Alias {..}) -> go (aliasId : aliasIds) =<< aliasType
+              (CtxAlias Alias {..}) -> go (aliasId : aliasIds) aliasType
               _ -> return (TypeNamed tyId)
         TypeUnifyVar uv ->
           gets (^. envUnification . at uv) >>= \case
@@ -149,22 +144,12 @@ normalizeType = go []
             _ -> return type0
         _ -> return type0
 
-normalizeInternalTypes :: Traversable t => t MType -> TypingM (t Type)
-normalizeInternalTypes t_mty = do
-  env <- get
-  ctx <- ask
-  traverse
-    ( ( ( FlexM.liftFlex
-            >=> ( \case
-                    (Left err) -> throwError err
-                    (Right (ty, _)) -> return ty
-                )
-        )
-          . runTypingM env ctx
-      )
-        >=> assertNormalType
-    )
-    t_mty
+normalizeInternalTypes :: Traversable t => t Type -> TypingM (t Type)
+normalizeInternalTypes t0 = do
+  t1 <- normalizeType `traverse` t0
+  t2 <- defaultInternalTypes t1
+  t3 <- assertNormalType `traverse` t2
+  return t3
 
 assertNormalType :: Type -> TypingM Type
 assertNormalType ty = case ty of
@@ -232,9 +217,9 @@ assertTypedTerm = error "assertTypedTerm"
 
 -- ** Utilities
 
-introLocal :: Maybe (Syntax Type ()) -> TermId -> MType -> TypingM a -> TypingM a
-introLocal mb_syn tmId mty = do
-  let mty' = assertNormalType =<< mty
+introLocal :: Maybe (Syntax Type ()) -> TermId -> Type -> TypingM a -> TypingM a
+introLocal mb_syn tmId ty m = do
+  ty' <- normalizeType ty
   let protoapp =
         ProtoApplicant
           { protoApplicantMaybeTypeId = Nothing,
@@ -243,25 +228,27 @@ introLocal mb_syn tmId mty = do
   let app =
         Applicant
           { applicantTermId = tmId,
-            applicantOutputAnn = mty'
+            applicantOutputAnn = ty'
           }
-  localM . execStateT $
-    modifyInsertUnique mb_syn tmId (ctxApplicants . at protoapp) app
+  ( localM . execStateT $
+      modifyInsertUnique mb_syn tmId (ctxApplicants . at protoapp) app
+    )
+    m
 
-lookupApplicant :: ProtoApplicant () -> TypingM (Applicant MType)
+lookupApplicant :: ProtoApplicant () -> TypingM (Applicant Type)
 lookupApplicant protoapp =
   asks (^. ctxApplicants . at protoapp) >>= \case
     Nothing -> throwTypingError ("unknown applicant:" <+> ticks (pPrint protoapp)) Nothing
     Just app -> return app
 
-lookupType :: TypeId -> TypingM (CtxType MType)
+lookupType :: TypeId -> TypingM (CtxType Type)
 lookupType tyId =
   asks (^. ctxTypes . at tyId)
     >>= \case
       Nothing -> throwTypingError ("unknown type id" <+> ticks (pPrint tyId)) Nothing
       Just tyM -> return tyM
 
-lookupFunctionType :: TermId -> TypingM (FunctionType MType)
+lookupFunctionType :: TermId -> TypingM (FunctionType Type)
 lookupFunctionType tmId =
   asks (^. ctxFunctions . at tmId) >>= \case
     Nothing -> throwTypingError ("unknown function type id" <+> ticks (pPrint tmId)) Nothing

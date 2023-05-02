@@ -53,10 +53,9 @@ synthDeclaration decl0 = FlexM.markSection [FlexM.FlexMarkStep ("synthDeclaratio
     (DeclarationAlias alias) -> return $ DeclarationAlias alias
   FlexM.debugMark True $ FlexM.FlexMarkStep "normalizeInternalTypes" Nothing
   decl2 <- unTm <$> normalizeInternalTypes (Tm decl1)
-  decl3 <- unTm <$> defaultInternalTypes (Tm decl2)
-  return decl3
+  return decl2
 
-synthFunction :: Function Type () -> TypingM (Function Type MType)
+synthFunction :: Function Type () -> TypingM (Function Type Type)
 synthFunction fun@Function {..} = do
   let mb_syn = Just $ SyntaxDeclaration $ DeclarationFunction fun
   let FunctionType {..} = functionType
@@ -65,7 +64,7 @@ synthFunction fun@Function {..} = do
         -- intro params
         forM_ functionParameters \(paramId, paramType) -> do
           -- assert param type is normal
-          paramType' <- lift . return $ assertNormalType paramType
+          paramType' <- lift $ assertNormalType paramType
           let app =
                 Applicant
                   { applicantTermId = paramId,
@@ -77,7 +76,7 @@ synthFunction fun@Function {..} = do
 
         -- intro contextual params
         forM_ functionContextualParameters $ mapM \(cxparamNewtypeId, cxparamId) -> do
-          cxparamType' <- lift . return $ assertNormalType $ TypeNamed cxparamNewtypeId
+          cxparamType' <- lift $ assertNormalType $ TypeNamed cxparamNewtypeId
           let app =
                 Applicant
                   { applicantTermId = cxparamId,
@@ -90,15 +89,15 @@ synthFunction fun@Function {..} = do
           modifyInsertUnique mb_syn cxparamId (ctxCxparamNewtypeIds . at cxparamId) cxparamNewtypeId
           modifyInsertUnique mb_syn cxparamId (ctxCxparamIds . at cxparamNewtypeId) cxparamId
   localM intros do
-    functionBody1 <- synthCheckTerm' (normalizeType functionOutput) functionBody
+    functionBody1 <- synthCheckTerm functionOutput functionBody
     return fun {functionBody = functionBody1}
 
-synthConstant :: Constant Type () -> TypingM (Constant Type MType)
+synthConstant :: Constant Type () -> TypingM (Constant Type Type)
 synthConstant con@Constant {..} = do
-  constantBody1 <- synthCheckTerm' (normalizeType constantType) constantBody
+  constantBody1 <- synthCheckTerm constantType constantBody
   return con {constantBody = constantBody1}
 
-synthRefinedType :: RefinedType () -> TypingM (RefinedType MType)
+synthRefinedType :: RefinedType () -> TypingM (RefinedType Type)
 synthRefinedType rt@(RefinedType {..}) = do
   -- get the fields to add to scope
   fields <-
@@ -109,13 +108,13 @@ synthRefinedType rt@(RefinedType {..}) = do
         (CtxNewtype Newtype {..}) -> return [(newtypeFieldId, newtypeType)]
         _ -> FlexM.throw "should have found that this is not a refinable type's id during construction of TypingCtx"
   comps
-    ( fields <&> \(fieldId, fieldMType) -> do
+    ( fields <&> \(fieldId, fieldType) -> do
         let mb_syn = Just $ SyntaxDeclaration $ DeclarationRefinedType rt
         let tmId = fromFieldIdToTermId fieldId
         let app =
               Applicant
                 { applicantTermId = tmId,
-                  applicantOutputAnn = fieldMType
+                  applicantOutputAnn = fieldType
                 }
         let protoapp = fromApplicantToProtoApplicant app
         localM . execStateT $
@@ -125,10 +124,10 @@ synthRefinedType rt@(RefinedType {..}) = do
       refinedTypeRefinement1 <- synthRefinement refinedTypeRefinement
       return rt {refinedTypeRefinement = refinedTypeRefinement1}
 
-synthRefinement :: Refinement () -> TypingM (Refinement MType)
+synthRefinement :: Refinement () -> TypingM (Refinement Type)
 synthRefinement (Refinement tm) = Refinement <$> synthCheckTerm TypeBit tm
 
-synthTerm :: Term () -> TypingM (Term MType)
+synthTerm :: Term () -> TypingM (Term Type)
 synthTerm term0 = FlexM.markSection
   [FlexM.FlexMarkStep ("synthTerm:" <+> pPrint term0) Nothing]
   case term0 of
@@ -152,22 +151,22 @@ synthTerm term0 = FlexM.markSection
             Left (missing, extra, dups) -> throwTypingError ("the structure constructor is missing fields" <+> pPrint (fst <$> missing) <+> ", has extra fields" <+> pPrint (fst <$> extra) <+> ", and has duplicated fields" <+> pPrint (fst <$> dups)) (Just $ toSyntax term0)
             Right fieldItems -> return fieldItems
           -- synth-check fields
-          fields' <- forM fieldItems \(fieldId, (fieldMType, fieldTerm)) -> do
-            fieldTerm' <- synthCheckTerm' fieldMType fieldTerm
+          fields' <- forM fieldItems \(fieldId, (fieldType, fieldTerm)) -> do
+            fieldTerm' <- synthCheckTerm fieldType fieldTerm
             return (fieldId, fieldTerm')
-          let structType = return $ TypeNamed structId
+          let structType = TypeNamed structId
           return $ TermStructure structId fields' structType
         ctxType -> throwTypingError ("the type id" <+> ticks (pPrint structId) <+> "was expected to be of a struct, but it is actually of" <+> ticks (pPrintDeclarationHeader (fromCtxTypeToDeclaration ctxType))) (Just $ toSyntax term0)
     (TermMember tm fieldId ()) -> do
       tm' <- synthTerm tm
-      termAnn tm' >>= \case
+      normalizeType (termAnn tm') >>= \case
         (TypeNamed tyId) ->
           lookupType tyId >>= \case
             (CtxStructure Structure {..}) -> do
-              fieldMType <- case fieldId `lookup` structureFields of
+              fieldType <- case fieldId `lookup` structureFields of
                 Nothing -> throwTypingError ("the structure" <+> ticks (pPrint structureId) <+> "does not have the field" <+> ticks (pPrint fieldId)) (Just $ toSyntax term0)
-                Just fieldMType -> return fieldMType
-              return $ TermMember tm' fieldId fieldMType
+                Just fieldType -> return fieldType
+              return $ TermMember tm' fieldId fieldType
             ctxType -> throwTypingError ("the base of the field access has non-structure type" <+> ticks (pPrint ctxType)) (Just $ toSyntax term0)
         type_ -> throwTypingError ("the base of the field access has non-structure type" <+> ticks (pPrint type_)) (Just $ toSyntax term0)
     (TermNeutral _ ()) -> FlexM.throw $ "TermNeutral should only appear as an OUTPUT of type synthesis, not as an INPUT:" <+> pPrint term0
@@ -184,59 +183,59 @@ synthTerm term0 = FlexM.markSection
           unless (length args == length functionParameters) $ throwTypingError ("incorrect number of arguments given to function application; expected" <+> pPrint (length functionParameters) <+> "but got" <+> pPrint (length args)) mb_syn
 
           -- synth-check args
-          args' <- forM (functionParameters `zip` args) \((_argId, argMType), argTerm) -> synthCheckTerm' argMType argTerm
+          args' <- forM (functionParameters `zip` args) \((_argId, argType), argTerm) -> synthCheckTerm argType argTerm
 
-          mb_cxargs' <- case functionContextualParameters of
+          mb_cxargs' :: Maybe [Term Type] <- case functionContextualParameters of
             Nothing -> do
               -- assert that no contextual args are given
               unless (isNothing protoNeutralMaybeCxargs) $ throwTypingError "function application provided explicit contextual arguments when the function does not have contextual parameters" mb_syn
               return Nothing
-            Just cxparams ->
-              do
-                case protoNeutralMaybeCxargs of
-                  -- infer implicit contextual arguments
-                  Nothing -> do
-                    let cxargsWriter :: WriterT [(TermId, TypeId)] TypingM [Maybe (TermId, TypeId)]
-                        cxargsWriter = forM cxparams \(cxparamNewtypeId, cxparamId) -> do
-                          -- look in context for a cxarg that has the right newtype id
-                          -- lookup in context a cxparam that has the right newtype id
-                          asks (^. ctxCxparamIds . at cxparamNewtypeId) >>= \case
-                            Nothing -> do
-                              tell [(cxparamId, cxparamNewtypeId)]
-                              return Nothing
-                            Just cxparamId' -> return $ Just (cxparamId', cxparamNewtypeId)
-                    cxargs <-
-                      runWriterT cxargsWriter >>= \(ls_mb_cxarg, missing) ->
-                        if not (null missing)
-                          then do
-                            -- there are some cxargs missing
-                            throwTypingError ("could not infer the implicit contextual arguments:" <+> commaList (missing <&> \(cxparamId, cxparamNewtypeId) -> parens (pPrint cxparamId <+> ":" <+> pPrint cxparamNewtypeId))) mb_syn
-                          else do
-                            -- all cxargs were inferred
-                            return . flip concatMap ls_mb_cxarg $
-                              maybe [] . comp1 pure $ \(cxargId, cxNewtypeId) ->
-                                let cxargMType = normalizeType $ TypeNamed cxNewtypeId
-                                 in TermNeutral
-                                      { termNeutral = Neutral {neutralTermId = cxargId},
-                                        termAnn = cxargMType
-                                      }
-                    return $ Just cxargs
-                  -- check explicit contextual args
-                  Just cxargs -> do
-                    -- synth and check that each cxarg has a newtype type
-                    cxargs' <- forM cxargs \cxarg -> do
-                      cxarg' <- synthTerm cxarg
-                      Syntax.termAnn cxarg' >>= \case
-                        TypeNamed tyId ->
-                          lookupType tyId >>= \case
-                            (CtxNewtype Newtype {..}) -> return (newtypeId, cxarg')
-                            ctxType -> throwTypingError ("function call's explicit contextual argument" <+> ticks (pPrint cxarg') <+> "has a non-newtype type" <+> ticks (pPrint ctxType)) mb_syn
-                        type_ -> throwTypingError ("function call's explicit contextual argument" <+> ticks (pPrint cxarg') <+> "has a non-newtype type" <+> ticks (pPrint type_)) mb_syn
-                    -- put contextual args in canonical order
-                    cxargs'' <- case zipAssoc cxparams cxargs' of
-                      Left (missing, extra, dups) -> throwTypingError ("function call's explicit contextual arguments is missing contextual arguments" <+> commaList (missing <&> \(newtypeId, paramId) -> pPrint paramId <+> ":" <+> pPrint newtypeId) <+> ", has extra contextual arguments with newtypes" <+> commaList (pPrint <$> extra) <+> "and has contextual arguments with overlapping newtypes for newtypes" <+> commaList (pPrint . fst <$> dups)) mb_syn
-                      Right cxargsItemsAssoc -> return $ snd . snd <$> cxargsItemsAssoc
-                    return $ Just cxargs''
+            Just cxparams -> do
+              case protoNeutralMaybeCxargs of
+                -- infer implicit contextual arguments
+                Nothing -> do
+                  let cxargsWriter :: WriterT [(TermId, TypeId)] TypingM [Maybe (TermId, TypeId)]
+                      cxargsWriter = forM cxparams \(cxparamNewtypeId, cxparamId) -> do
+                        -- look in context for a cxarg that has the right newtype id
+                        -- lookup in context a cxparam that has the right newtype id
+                        asks (^. ctxCxparamIds . at cxparamNewtypeId) >>= \case
+                          Nothing -> do
+                            tell [(cxparamId, cxparamNewtypeId)]
+                            return Nothing
+                          Just cxparamId' -> return $ Just (cxparamId', cxparamNewtypeId)
+                  cxargs :: [Term Type] <-
+                    runWriterT cxargsWriter >>= \(ls_mb_cxarg, missing) ->
+                      if not (null missing)
+                        then do
+                          -- there are some cxargs missing
+                          throwTypingError ("could not infer the implicit contextual arguments:" <+> commaList (missing <&> \(cxparamId, cxparamNewtypeId) -> parens (pPrint cxparamId <+> ":" <+> pPrint cxparamNewtypeId))) mb_syn
+                        else do
+                          -- all cxargs were inferred
+                          fmap concat . flip traverse ls_mb_cxarg . maybe (return []) $ \(cxargId, cxNewtypeId) -> do
+                            cxargType <- normalizeType $ TypeNamed cxNewtypeId
+                            return $
+                              [ TermNeutral
+                                  { termNeutral = Neutral {neutralTermId = cxargId},
+                                    termAnn = cxargType
+                                  }
+                              ]
+                  return $ Just cxargs
+                -- check explicit contextual args
+                Just cxargs -> do
+                  -- synth and check that each cxarg has a newtype type
+                  cxargs' <- forM cxargs \cxarg -> do
+                    cxarg' <- synthTerm cxarg
+                    normalizeType (termAnn cxarg') >>= \case
+                      TypeNamed tyId ->
+                        lookupType tyId >>= \case
+                          (CtxNewtype Newtype {..}) -> return (newtypeId, cxarg')
+                          ctxType -> throwTypingError ("function call's explicit contextual argument" <+> ticks (pPrint cxarg') <+> "has a non-newtype type" <+> ticks (pPrint ctxType)) mb_syn
+                      type_ -> throwTypingError ("function call's explicit contextual argument" <+> ticks (pPrint cxarg') <+> "has a non-newtype type" <+> ticks (pPrint type_)) mb_syn
+                  -- put contextual args in canonical order
+                  cxargs'' <- case zipAssoc cxparams cxargs' of
+                    Left (missing, extra, dups) -> throwTypingError ("function call's explicit contextual arguments is missing contextual arguments" <+> commaList (missing <&> \(newtypeId, paramId) -> pPrint paramId <+> ":" <+> pPrint newtypeId) <+> ", has extra contextual arguments with newtypes" <+> commaList (pPrint <$> extra) <+> "and has contextual arguments with overlapping newtypes for newtypes" <+> commaList (pPrint . fst <$> dups)) mb_syn
+                    Right cxargsItemsAssoc -> return $ snd . snd <$> cxargsItemsAssoc
+                  return $ Just cxargs''
           return $
             TermNeutral
               { termNeutral =
@@ -277,7 +276,7 @@ synthTerm term0 = FlexM.markSection
               params <- case applicantConstructorId `lookup` variantConstructors of
                 Nothing -> throwTypingError "the variant doesn't have the constructor" mb_syn
                 Just params -> return params
-              args' <- forM (params `zip` args) (uncurry synthCheckTerm')
+              args' <- forM (params `zip` args) (uncurry synthCheckTerm)
               return $
                 TermNeutral
                   { termNeutral =
@@ -299,7 +298,7 @@ synthTerm term0 = FlexM.markSection
                 Just [arg] -> return arg
                 _ -> throwTypingError "a newtype construction must have exactly one argument" mb_syn
               -- synth-check arg
-              arg' <- synthCheckTerm' newtypeType arg
+              arg' <- synthCheckTerm newtypeType arg
               return $
                 TermNeutral
                   { termNeutral =
@@ -323,92 +322,88 @@ synthTerm term0 = FlexM.markSection
               }
     (TermAscribe tm ty ()) ->
       -- unwraps TermAscribe, so TermAscribe should not appear in a typed term
-      synthCheckTerm' (normalizeType ty) tm
+      synthCheckTerm ty tm
     (TermMatch tm branches ()) -> do
       tm' <- synthTerm tm
       ty <- freshTypeUnifyVar' (render $ "match result" <+> pPrint term0) Nothing
       branches' <- forM branches (synthCheckBranch (termAnn tm') ty)
       return $ TermMatch tm' branches' ty
 
-synthCheckBranch :: MType -> MType -> Branch () -> TypingM (Branch MType)
-synthCheckBranch inMType outMType (pat, tm) = do
-  pat' <- synthCheckPattern' inMType pat
-  tm' <- introPattern pat' $ synthCheckTerm' outMType tm
+synthCheckBranch :: Type -> Type -> Branch () -> TypingM (Branch Type)
+synthCheckBranch inType outType (pat, tm) = do
+  pat' <- synthCheckPattern' inType pat
+  tm' <- introPattern pat' $ synthCheckTerm outType tm
   return (pat', tm')
 
-synthLiteral :: Literal -> TypingM MType
+synthLiteral :: Literal -> TypingM Type
 synthLiteral (LiteralInteger n) = freshTypeUnifyVar' (render $ "literal integer" <+> pPrint n) (pure $ UnifyConstraintCasted (TypeNumber TypeInt 32))
 synthLiteral (LiteralFloat x) = freshTypeUnifyVar' (render $ "literal float" <+> pPrint x) (pure $ UnifyConstraintCasted (TypeNumber TypeFloat 32))
 synthLiteral (LiteralBit b) = freshTypeUnifyVar' (render $ "literal bit" <+> pPrint b) (pure $ UnifyConstraintCasted TypeBit)
 synthLiteral (LiteralChar c) = freshTypeUnifyVar' (render $ "literal char" <+> pPrint c) (pure $ UnifyConstraintCasted TypeChar)
 synthLiteral (LiteralString s) = freshTypeUnifyVar' (render $ "literal string" <+> pPrint s) (pure $ UnifyConstraintCasted (TypeArray TypeChar))
 
-synthPrimitive :: Primitive () -> TypingM (Term MType)
+synthPrimitive :: Primitive () -> TypingM (Term Type)
 synthPrimitive (PrimitiveTry te) = do
   te' <- synthTerm te
-  return $ TermPrimitive (PrimitiveTry te') (TypeOptional <$> termAnn te')
+  return $ TermPrimitive (PrimitiveTry te') (TypeOptional $ termAnn te')
 synthPrimitive PrimitiveNone = do
   TermPrimitive PrimitiveNone <$> freshTypeUnifyVar' "None" Nothing
 synthPrimitive (PrimitiveSome tm) = do
   tm' <- synthTerm tm
-  return $ TermPrimitive (PrimitiveSome tm') (TypeOptional <$> termAnn tm')
+  return $ TermPrimitive (PrimitiveSome tm') (TypeOptional $ termAnn tm')
 synthPrimitive (PrimitiveCast te) = do
   -- PrimitiveCase is unwrapped during typing, so should not appear in typed
   -- result
   te' <- synthTerm te
   -- since we haven't finished typechecking, this type can be non-normal by the
   -- time it's used again, so make sure to normalize there!
-  ty' <- termAnn te'
+  ty' <- normalizeType (termAnn te')
   ty <- freshTypeUnifyVar' (render $ "cast" <+> pPrint te') (Just (UnifyConstraintCasted ty'))
   return te' {termAnn = ty}
 synthPrimitive (PrimitiveTuple tes) = do
   tes' <- synthTerm `traverse` tes
-  return $ TermPrimitive (PrimitiveTuple tes') (TypeTuple <$> mapM termAnn tes')
+  return $ TermPrimitive (PrimitiveTuple tes') (TypeTuple $ termAnn <$> tes')
 synthPrimitive (PrimitiveArray tes) = do
   ty <- freshTypeUnifyVar' (render $ "primitive array" <+> pPrint tes) Nothing
-  tes' <- synthCheckTerm' ty `traverse` tes
-  return $ TermPrimitive (PrimitiveArray tes') (TypeArray <$> ty)
+  tes' <- synthCheckTerm ty `traverse` tes
+  return $ TermPrimitive (PrimitiveArray tes') (TypeArray $ ty)
 synthPrimitive (PrimitiveIf te te1 te2) = do
   te' <- synthCheckTerm TypeBit te
   ty <- freshTypeUnifyVar' (render $ "primitive if branches" <+> pPrint [te1, te2]) Nothing
-  te1' <- synthCheckTerm' ty te1
-  te2' <- synthCheckTerm' ty te2
+  te1' <- synthCheckTerm ty te1
+  te2' <- synthCheckTerm ty te2
   return $ TermPrimitive (PrimitiveIf te' te1' te2') ty
 synthPrimitive (PrimitiveBoolBinOp bbo te1 te2) = do
   te1' <- synthCheckTerm TypeBit te1
   te2' <- synthCheckTerm TypeBit te2
-  return $ TermPrimitive (PrimitiveBoolBinOp bbo te1' te2') (return TypeBit)
+  return $ TermPrimitive (PrimitiveBoolBinOp bbo te1' te2') TypeBit
 synthPrimitive (PrimitiveNot te) = do
   te' <- synthCheckTerm TypeBit te
-  return $ TermPrimitive (PrimitiveNot te') (return TypeBit)
+  return $ TermPrimitive (PrimitiveNot te') TypeBit
 synthPrimitive (PrimitiveEq neg te1 te2) = do
-  m_ty <- freshTypeUnifyVar' (render $ "primitive equality" <+> pPrint [te1, te2]) Nothing
-  te1' <- synthCheckTerm' m_ty te1
+  ty <- freshTypeUnifyVar' (render $ "primitive equality" <+> pPrint [te1, te2]) Nothing
+  te1' <- synthCheckTerm ty te1
   -- !TODO why do i need to normalize again here; shouldn't that be handled already via being wrapped in a TypingM?
-  te2' <- synthCheckTerm' (normalizeType =<< m_ty) te2
-  return $ TermPrimitive (PrimitiveEq neg te1' te2') (return TypeBit)
+  te2' <- synthCheckTerm ty te2
+  return $ TermPrimitive (PrimitiveEq neg te1' te2') TypeBit
 synthPrimitive (PrimitiveNumBinOp nbo te1 te2) = do
   ty <- freshTypeUnifyVar' (render $ "primitive" <+> text (operatorOfNumBinOp nbo) <+> pPrint [te1, te2]) (Just UnifyConstraintNumeric)
-  te1' <- synthCheckTerm' ty te1
-  te2' <- synthCheckTerm' ty te2
+  te1' <- synthCheckTerm ty te1
+  te2' <- synthCheckTerm ty te2
   return $ TermPrimitive (PrimitiveNumBinOp nbo te1' te2') ty
 synthPrimitive (PrimitiveNumBinRel nbr te1 te2) = do
   ty <- freshTypeUnifyVar' (render $ "primitive" <+> text (operatorOfNumBinRel nbr) <+> pPrint [te1, te2]) (Just UnifyConstraintNumeric)
-  te1' <- synthCheckTerm' ty te1
-  te2' <- synthCheckTerm' ty te2
-  return $ TermPrimitive (PrimitiveNumBinRel nbr te1' te2') (return TypeBit)
+  te1' <- synthCheckTerm ty te1
+  te2' <- synthCheckTerm ty te2
+  return $ TermPrimitive (PrimitiveNumBinRel nbr te1' te2') TypeBit
 synthPrimitive (PrimitiveExtends {}) = error "synthPrimitive PrimitiveExtends"
 
-synthCheckTerm :: Type -> Term () -> TypingM (Term MType)
+synthCheckTerm :: Type -> Term () -> TypingM (Term Type)
 synthCheckTerm type_ term = FlexM.markSection [FlexM.FlexMarkStep ("synthCheckTerm (" <> pPrint type_ <> ") (" <> pPrint term <> ")") Nothing] do
+  type' <- normalizeType type_
   term' <- synthTerm term
-  checkTerm type_ term'
+  checkTerm type' term'
   return term'
-
-synthCheckTerm' :: MType -> Term () -> TypingM (Term MType)
-synthCheckTerm' m_type term = do
-  type_ <- m_type
-  synthCheckTerm type_ term
 
 -- ** Checking
 
@@ -423,9 +418,9 @@ tryUnify tyExpect tyInfer = do
       put env'
       return (Right ())
 
-checkTerm :: Type -> Term MType -> TypingM ()
+checkTerm :: Type -> Term Type -> TypingM ()
 checkTerm expectType term = do
-  synthType <- termAnn term
+  synthType <- normalizeType $ termAnn term
   runExceptT (unify expectType synthType) >>= \case
     Left (mb_doc, tyExpect, tySynth) ->
       throwTypingError
@@ -440,37 +435,35 @@ checkTerm expectType term = do
         (Just $ SyntaxTerm (void term))
     Right () -> return ()
 
-checkTerm' :: MType -> Term MType -> TypingM ()
-checkTerm' mExpectType term = do
-  expectType <- mExpectType
-  checkTerm expectType term
-
-synthCheckPattern' :: MType -> Pattern () -> TypingM (Pattern MType)
-synthCheckPattern' mtype pat@(PatternConstructor tyId' ctorId tmIds ()) =
-  mtype >>= \case
-    TypeNamed tyId | tyId == tyId' -> return $ PatternConstructor tyId ctorId tmIds mtype
+synthCheckPattern' :: Type -> Pattern () -> TypingM (Pattern Type)
+synthCheckPattern' type_ pat@(PatternConstructor tyId' ctorId tmIds ()) =
+  case type_ of
+    TypeNamed tyId | tyId == tyId' -> return $ PatternConstructor tyId ctorId tmIds type_
     ty -> throwTypingError ("can't match on term of type" <+> ticks (pPrint ty)) (Just $ SyntaxPattern pat)
-synthCheckPattern' mtype pat@(PatternNone ()) =
-  mtype >>= \case
-    (TypeOptional _ty) -> return $ PatternNone mtype
+synthCheckPattern' type_ pat@(PatternNone ()) =
+  case type_ of
+    (TypeOptional _ty) -> return $ PatternNone type_
     ty -> throwTypingError ("can't match on term of type" <+> ticks (pPrint ty)) (Just $ SyntaxPattern pat)
-synthCheckPattern' mtype pat@(PatternSome tmId ()) =
-  mtype >>= \case
-    (TypeOptional _ty) -> return $ PatternSome tmId mtype
+synthCheckPattern' type_ pat@(PatternSome tmId ()) =
+  case type_ of
+    (TypeOptional _ty) -> return $ PatternSome tmId type_
     ty -> throwTypingError ("can't match on term of type" <+> ticks (pPrint ty)) (Just $ SyntaxPattern pat)
 
-introTermId :: TermId -> MType -> TypingM a -> TypingM a
-introTermId tmId mty = do
+introTermId :: TermId -> Type -> TypingM a -> TypingM a
+introTermId tmId ty m = do
+  ty' <- normalizeType ty
   let app =
         Applicant
           { applicantTermId = tmId,
-            applicantOutputAnn = mty
+            applicantOutputAnn = ty'
           }
   let protoapp = fromApplicantToProtoApplicant app
-  localM . execStateT $
-    modifyInsertUnique Nothing app (ctxApplicants . at protoapp) app
+  ( localM . execStateT $
+      modifyInsertUnique Nothing app (ctxApplicants . at protoapp) app
+    )
+    m
 
-introPattern :: Pattern MType -> TypingM a -> TypingM a
+introPattern :: Pattern Type -> TypingM a -> TypingM a
 introPattern (PatternConstructor tyId ctorId tmIds _) m = do
   lookupType tyId >>= \case
     CtxVariant Variant {..} -> do
@@ -484,10 +477,10 @@ introPattern (PatternConstructor tyId ctorId tmIds _) m = do
       m
     _ -> FlexM.throw $ "attempted to match on a term of type:" <+> ticks (pPrint tyId)
 introPattern (PatternNone _) m = m
-introPattern (PatternSome tmId mty) m =
-  mty >>= \case
-    TypeOptional ty -> introTermId tmId (normalizeType ty) m
-    ty -> FlexM.throw $ "PatternSome should not have been typed with type" <+> ticks (pPrint ty)
+introPattern (PatternSome tmId ty) m =
+  case ty of
+    TypeOptional ty' -> introTermId tmId ty' m
+    _ -> FlexM.throw $ "PatternSome should not have been typed with type" <+> ticks (pPrint ty)
 
 -- ** Unification
 
@@ -512,11 +505,11 @@ unify type1 type2 = FlexM.markSection [FlexM.FlexMarkStep ("unify (" <> pPrint t
   -- non-unifiable types
   (tyExpect, tySynth) -> throwUnifyError tyExpect tySynth Nothing
 
-unify' :: MType -> MType -> UnifyM ()
-unify' mtype1 mtype2 = do
-  type1 <- lift mtype1
-  type2 <- lift mtype2
-  unify type1 type2
+unify' :: Type -> Type -> UnifyM ()
+unify' type1 type2 = do
+  type1' <- lift $ normalizeType type1
+  type2' <- lift $ normalizeType type2
+  unify type1' type2'
 
 substUnifyVar :: Type -> Type -> UnifyVar -> Type -> UnifyM ()
 substUnifyVar type1 type2 uv ty = FlexM.markSection [FlexM.FlexMarkStep ("substUnifyVar; uv = " <> pPrint uv <> "; ty = " <> pPrint ty) Nothing] do
@@ -624,5 +617,5 @@ freshTypeUnifyVar str mb_uc = do
     Nothing -> return ()
   return $ TypeUnifyVar uv
 
-freshTypeUnifyVar' :: String -> Maybe UnifyConstraint -> TypingM MType
-freshTypeUnifyVar' str mb_uc' = normalizeType <$> freshTypeUnifyVar str mb_uc'
+freshTypeUnifyVar' :: String -> Maybe UnifyConstraint -> TypingM Type
+freshTypeUnifyVar' str mb_uc' = normalizeType =<< freshTypeUnifyVar str mb_uc'
