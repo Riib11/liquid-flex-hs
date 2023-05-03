@@ -68,7 +68,7 @@ reflTerm (TermConstructor varntId ctorId args _ty) = do
   exs <- reflTerm `traverse` args
   return $ F.eApps (F.eVar (makeVariantConstructorSymbol (varntId, ctorId))) exs
 -- !TODO use field accessors
-reflTerm (TermMatch tm branches ty) =
+reflTerm (TermMatch _tm _branches _ty) =
   -- case termType tm of
   --   TypeOptional ty -> case branches of
   --     [(PatternNone, noneBranch), (PatternSome tmId, someBranch)] -> undefined -- TODO
