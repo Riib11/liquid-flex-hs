@@ -15,8 +15,18 @@ const ex1: bit = {
     true
 }
 
-// !TODO fix bug in typing to allow for recursive types
-// variant Nat {
-//     Zero();
-//     Suc(Nat);
-// }
+variant Nat {
+   Zero();
+   Suc(Nat);
+}
+
+const ex2: bit = {
+    let zero = Nat#Zero();
+    let one = Nat#Suc(zero);
+
+    let one' = Nat#Suc(Nat#Zero());
+
+    assert one == one';
+
+    true
+}

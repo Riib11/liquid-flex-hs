@@ -19,7 +19,7 @@ import Text.PrettyPrint.HughesPJ (render, text, ($$), (<+>))
 import Text.PrettyPrint.HughesPJClass (Pretty (pPrint))
 
 -- whether to do FULL test suite or just the specified tests
-_FULL = False
+_FULL = True
 
 _DEBUG = not _FULL
 
@@ -48,7 +48,7 @@ test =
                 -- makeTest_refineModule True "examples/refining/Matches.flex"
                 -- makeTest_refineModule True "examples/refining/Casting.flex"
                 -- makeTest_refineModule True "examples/refining/Functions.flex"
-                makeTest_refineModule True "examples/refining/Matches.flex"
+                makeTest_refineModule True "examples/refining/Variants.flex"
                 -- makeTest_refineModule True "examples/refining/RefinedStructureInputs.flex"
                 -- makeTest_refineModule True "examples/refining/RefinedTransformOutput.flex"
               ]
