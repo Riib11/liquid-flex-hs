@@ -2,6 +2,8 @@
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 
+{-# HLINT ignore "Use newtype instead of data" #-}
+
 module Language.Flex.Refining.RefiningM where
 
 import Control.DeepSeq (NFData)
@@ -11,6 +13,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Data.Bifunctor (Bifunctor (second))
 import qualified Data.Map as Map
+import Data.Set (Set)
 import GHC.Generics (Generic)
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
@@ -49,7 +52,9 @@ data CtxType
 
 -- ** Refining Environment
 
-data RefiningEnv = RefiningEnv {}
+data RefiningEnv = RefiningEnv
+  { _envUsedCastings :: Set (Type, Type)
+  }
 
 -- ** RefiningError
 

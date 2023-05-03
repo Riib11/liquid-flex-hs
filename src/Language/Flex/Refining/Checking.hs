@@ -20,7 +20,7 @@ import qualified Language.Fixpoint.Types as F
 import Language.Flex.FlexM (freshenTermId)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Refining.Constraint
-import Language.Flex.Refining.Prelude (preludeQuery)
+import Language.Flex.Refining.Prelude (castProperties, preludeQuery)
 import Language.Flex.Refining.Primitive (option_SomeFieldAccessorLocatedSymbol, optional_SomeConstructorSymbol, primitiveDataDecls, tuple_FirstFieldAccessorSymbol, tuple_SecondFieldAccessorSymbol)
 import Language.Flex.Refining.Query
 import Language.Flex.Refining.RefiningM
@@ -253,8 +253,7 @@ initCheckingContext = do
             _ctxAssertion = F.prop True -- will be overwritten
           }
   flip execStateT ctx $ do
-    -- intro primitive properties, like inArray
-    introPrimitiveProperties
+    introCastProperties
 
     -- intro datatypes
     -- - intro primitive datatypes
@@ -270,9 +269,9 @@ initCheckingContext = do
 
     return ()
 
--- intro primitive properties, like inArray
-introPrimitiveProperties :: StateT CheckingCtx RefiningM ()
-introPrimitiveProperties = return () -- !TODO
+introCastProperties :: StateT CheckingCtx RefiningM ()
+introCastProperties = do
+  for_ castProperties \p -> do ctxAssumptionsReversed %= (p :)
 
 introUserDatatypes :: StateT CheckingCtx RefiningM ()
 introUserDatatypes = do
@@ -650,7 +649,6 @@ checkBranch matchTerm (PatternSome tmId) branchTerm = flip localExecM (checkTerm
 
 checkPrimitive :: Type -> Primitive -> CheckingM ()
 checkPrimitive _ (PrimitiveTry tm) = checkTerm `traverse_` [tm]
--- !TODO assert that cast is actually defined given the value being casted
 checkPrimitive _ (PrimitiveCast tm _ty1 _ty2) = checkTerm `traverse_` [tm]
 checkPrimitive _ PrimitiveNone = return ()
 checkPrimitive _ (PrimitiveSome tm) = checkTerm `traverse_` [tm]

@@ -1,9 +1,12 @@
 module Language.Flex.Refining.Translating where
 
+import Control.Lens
 import Control.Monad (foldM, liftM2)
+import Control.Monad.State (modify)
 import Data.Functor
 import qualified Data.Map as Map
 import Data.Maybe
+import qualified Data.Set as Set
 import Data.Traversable
 import Language.Flex.FlexM (FlexM)
 import qualified Language.Flex.FlexM as FlexM
@@ -73,7 +76,10 @@ transTerm' term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
       let tyOuter = ty
       isTotalCast tyInner tyOuter >>= \case
         True -> transTerm te
-        False -> TermPrimitive <$> (PrimitiveCast <$> transTerm te <*> pure tyInner <*> pure tyOuter) <*> pure tyOuter
+        False -> do
+          FlexM.debug True $ "transTerm': got here 1"
+          envUsedCastings %= Set.insert (tyInner, tyOuter)
+          TermPrimitive <$> (PrimitiveCast <$> transTerm te <*> pure tyInner <*> pure tyOuter) <*> pure tyOuter
 transTerm' (Crude.TermLet mb_tmId te' te2 ty) = TermLet mb_tmId <$> transTerm te' <*> transTerm te2 <*> return ty
 transTerm' (Crude.TermAssert te' te2 ty) = TermAssert <$> transTerm te' <*> transTerm te2 <*> return ty
 transTerm' (Crude.TermStructure structId fields ty) = do
@@ -147,19 +153,19 @@ isTotalCast (TypeOptional ty) (TypeOptional ty') = isTotalCast ty ty'
 isTotalCast (TypeNamed tyId) (TypeNamed tyId') = return (tyId == tyId')
 isTotalCast _ _ = return False
 
-transBranch :: Term -> Crude.Branch Type -> RefiningM Branch
-transBranch _tm (Crude.PatternConstructor ti ti' tis _ty, body) = do
-  let pat' = PatternConstructor ti ti' tis
-  body' <- transTerm body
-  return (pat', body')
-transBranch _tm (Crude.PatternSome ti _ty, body) = do
-  let pat' = PatternSome ti
-  body' <- transTerm body
-  return (pat', body')
-transBranch _tm (Crude.PatternNone _ty, body) = do
-  let pat' = PatternNone
-  body' <- transTerm body
-  return (pat', body')
+-- transBranch :: Term -> Crude.Branch Type -> RefiningM Branch
+-- transBranch _tm (Crude.PatternConstructor ti ti' tis _ty, body) = do
+--   let pat' = PatternConstructor ti ti' tis
+--   body' <- transTerm body
+--   return (pat', body')
+-- transBranch _tm (Crude.PatternSome ti _ty, body) = do
+--   let pat' = PatternSome ti
+--   body' <- transTerm body
+--   return (pat', body')
+-- transBranch _tm (Crude.PatternNone _ty, body) = do
+--   let pat' = PatternNone
+--   body' <- transTerm body
+--   return (pat', body')
 
 transRefinement :: Crude.Refinement Type -> RefiningM Term
 transRefinement (Crude.Refinement tm) = transTerm tm

@@ -9,7 +9,7 @@ import Data.Text (pack)
 import qualified Data.Text as Text
 import qualified Language.Fixpoint.Types as F
 import qualified Language.Flex.FlexM as FlexM
-import Language.Flex.Refining.Prelude (makeCastFunctionSymbol)
+import Language.Flex.Refining.Prelude (makeCast, makeCastFunctionSymbol)
 import Language.Flex.Refining.Primitive
 import Language.Flex.Refining.RefiningM
 import Language.Flex.Refining.Syntax
@@ -64,7 +64,7 @@ reflPrimitive (PrimitiveTry {}) = error "!TODO reflect PrimitiveTry"
 -- only partial casts are still left to handle
 reflPrimitive (PrimitiveCast tm ty1 ty2) = do
   ex <- reflTerm tm
-  return $ F.eApps (F.eVar (makeCastFunctionSymbol ty1 ty2)) [ex]
+  return $ makeCast ty1 ty2 ex
 reflPrimitive PrimitiveNone = return $ F.eVar optional_NoneConstructorSymbol
 reflPrimitive (PrimitiveSome tm) = do
   ex <- reflTerm tm

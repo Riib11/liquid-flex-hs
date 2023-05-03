@@ -62,7 +62,7 @@ data Type
   | TypeTuple !Type !Type
   | TypeOptional !Type
   | TypeNamed !Crude.TypeId
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 instance Pretty Type where
   pPrint (TypeNumber nt n) = pPrint nt <> pPrint n

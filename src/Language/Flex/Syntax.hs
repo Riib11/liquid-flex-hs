@@ -781,7 +781,7 @@ data NumberType
   = TypeInt
   | TypeUInt
   | TypeFloat
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 instance Pretty NumberType where
   pPrint = \case

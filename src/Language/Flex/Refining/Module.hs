@@ -98,4 +98,6 @@ moduleRefiningCtx Crude.Module {..} = FlexM.markSection [FlexM.FlexMarkStep "mod
 moduleRefiningEnv :: MonadFlex m => m RefiningEnv
 moduleRefiningEnv =
   return
-    RefiningEnv {}
+    RefiningEnv
+      { _envUsedCastings = mempty
+      }
