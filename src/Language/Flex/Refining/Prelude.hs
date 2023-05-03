@@ -60,49 +60,52 @@ casts =
     (makeCastFunctionSymbol (TypeNumber TypeFloat 32) (TypeNumber TypeFloat 32), F.FFunc F.realSort (F.FFunc F.realSort (F.FFunc F.realSort F.realSort)))
   ]
 
-castProperties :: [F.Pred]
+castProperties :: FlexM [F.Pred]
 castProperties =
-  [ -- forall inf sup x . inf <= x <= sup ==> cast{inf ~> sup}(x) = x
-    do
-      let ty1 = TypeNumber TypeInt 32
-      let ty2 = TypeNumber TypeInt 32
-      let inf = F.symbol @String "inf"
-      let sup = F.symbol @String "sup"
-      let x = F.symbol @String "x"
-      let cast = makeCastFunctionSymbol ty1 ty2
-      F.PAll [(inf, F.intSort), (sup, F.intSort), (x, F.intSort)]
-        $ F.PImp
-          ( F.pAnd
-              [ -- inf <= x
-                F.PAtom F.Le (F.eVar inf) (F.eVar x),
-                -- x <= sup
-                F.PAtom F.Le (F.eVar x) (F.eVar sup)
-              ]
-          )
-        $
-        -- cast{inf ~> sup}(x) = x
-        F.PAtom F.Eq (F.eApps (F.eVar cast) [F.eVar inf, F.eVar sup, F.eVar x]) (F.eVar x),
-    -- forall inf sup x . inf <= x <= sup ==> cast{inf ~> sup}(x) = x
-    do
-      let ty1 = TypeNumber TypeFloat 32
-      let ty2 = TypeNumber TypeFloat 32
-      let inf = F.symbol @String "inf"
-      let sup = F.symbol @String "sup"
-      let x = F.symbol @String "x"
-      let cast = makeCastFunctionSymbol ty1 ty2
-      F.PAll [(inf, F.realSort), (sup, F.realSort), (x, F.realSort)]
-        $ F.PImp
-          ( F.pAnd
-              [ -- inf <= x
-                F.PAtom F.Le (F.eVar inf) (F.eVar x),
-                -- x <= sup
-                F.PAtom F.Le (F.eVar x) (F.eVar sup)
-              ]
-          )
-        $
-        -- cast{inf ~> sup}(x) = x
-        F.PAtom F.Eq (F.eApps (F.eVar cast) [F.eVar inf, F.eVar sup, F.eVar x]) (F.eVar x)
-  ] -- !TODO same sort of rule, but for float casts
+  sequence
+    [ -- forall inf sup x . inf <= x <= sup ==> cast{inf ~> sup}(x) = x
+      do
+        let ty1 = TypeNumber TypeInt 32
+        let ty2 = TypeNumber TypeInt 32
+        let inf = F.symbol @String "inf"
+        let sup = F.symbol @String "sup"
+        x <- FlexM.freshSymbol "x"
+        let cast = makeCastFunctionSymbol ty1 ty2
+        return
+          $ F.PAll [(inf, F.intSort), (sup, F.intSort), (x, F.intSort)]
+          $ F.PImp
+            ( F.pAnd
+                [ -- inf <= x
+                  F.PAtom F.Le (F.eVar inf) (F.eVar x),
+                  -- x <= sup
+                  F.PAtom F.Le (F.eVar x) (F.eVar sup)
+                ]
+            )
+          $
+          -- cast{inf ~> sup}(x) = x
+          F.PAtom F.Eq (F.eApps (F.eVar cast) [F.eVar inf, F.eVar sup, F.eVar x]) (F.eVar x),
+      -- forall inf sup x . inf <= x <= sup ==> cast{inf ~> sup}(x) = x
+      do
+        let ty1 = TypeNumber TypeFloat 32
+        let ty2 = TypeNumber TypeFloat 32
+        let inf = F.symbol @String "inf"
+        let sup = F.symbol @String "sup"
+        x <- FlexM.freshSymbol "x"
+        let cast = makeCastFunctionSymbol ty1 ty2
+        return
+          $ F.PAll [(inf, F.realSort), (sup, F.realSort), (x, F.realSort)]
+          $ F.PImp
+            ( F.pAnd
+                [ -- inf <= x
+                  F.PAtom F.Le (F.eVar inf) (F.eVar x),
+                  -- x <= sup
+                  F.PAtom F.Le (F.eVar x) (F.eVar sup)
+                ]
+            )
+          $
+          -- cast{inf ~> sup}(x) = x
+          F.PAtom F.Eq (F.eApps (F.eVar cast) [F.eVar inf, F.eVar sup, F.eVar x]) (F.eVar x)
+    ] -- !TODO same sort of rule, but for float casts
 
 -- castTypePairs =
 --   [ (TypeNumber TypeInt 32, TypeNumber TypeInt 16)

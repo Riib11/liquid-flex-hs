@@ -271,7 +271,8 @@ initCheckingContext = do
 
 introCastProperties :: StateT CheckingCtx RefiningM ()
 introCastProperties = do
-  for_ castProperties \p -> do ctxAssumptionsReversed %= (p :)
+  props <- FlexM.liftFlex castProperties
+  for_ props \p -> do ctxAssumptionsReversed %= (p :)
 
 introUserDatatypes :: StateT CheckingCtx RefiningM ()
 introUserDatatypes = do
