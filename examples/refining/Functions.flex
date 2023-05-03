@@ -29,7 +29,6 @@ transform main(x: int32) -> bit {
 
     if (x == 0) then {
         let _ = assertIsZero(x);
-        // assert x == x;
         true
     } else {
         true

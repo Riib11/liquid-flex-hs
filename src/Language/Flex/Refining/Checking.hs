@@ -14,6 +14,7 @@ import Data.Foldable hiding (toList)
 import Data.HashMap.Strict (toList)
 import qualified Data.Map as Map
 import Data.Maybe
+import Data.Traversable (for)
 import qualified Data.Traversable as Traversable
 import qualified Language.Fixpoint.Horn.Types as H
 import qualified Language.Fixpoint.Types as F
@@ -315,8 +316,8 @@ introStructureUserDatatype struct = do
   (ctxQuery . _qCon . at (makeDatatypePropertySymbol structId))
     ?= F.FFunc structSort F.boolSort
 
-  FlexM.debug True $ "structureFields struct =" <+> pPrint (structureFields struct)
-  FlexM.debug True $ "structureRefinement struct =" <+> pPrint (structureRefinement struct)
+  FlexM.debug False $ "structureFields struct =" <+> pPrint (structureFields struct)
+  FlexM.debug False $ "structureRefinement struct =" <+> pPrint (structureRefinement struct)
 
   -- Intro assumption about predicate
   asmpExpr <- do
@@ -339,7 +340,7 @@ introStructureUserDatatype struct = do
               refnExpr0
       -- !TODO handle univ quantified items in scope???
       return reflExpr1
-    -- replace appearances of each variable with field access from struct var x
+    -- replace appearances of each variable with field access from struct var
     -- > P(x.a, x.b, ...)
     let sigma =
           F.Su $
@@ -354,6 +355,7 @@ introStructureUserDatatype struct = do
 
     let refnExpr' = F.subst sigma refnExpr
 
+    -- Infer refinements of fields based on their types
     (params', exs) <-
       lift . runWriterT . execWriterT $
         structureFields struct <&*> \(fieldId, fieldType) -> do
@@ -371,10 +373,65 @@ introStructureUserDatatype struct = do
 
 introVariantUserDatatype :: Variant -> StateT CheckingCtx RefiningM ()
 introVariantUserDatatype varnt = do
+  let varntId = variantId varnt
+  symLoc <- FlexM.defaultLocated $ makeTypeIdSymbol varntId
   -- intro reflected datatype
   dd <- lift $ reflVariant varnt
   ctxQuery . _qData %= (dd :)
   -- !TODO intro refinement predicate
+
+  let varntSort = F.FTC (F.symbolFTycon symLoc)
+
+  -- Intro unintepreted predicate.
+  -- > propV : V -> Bool
+  (ctxQuery . _qCon . at (makeDatatypePropertySymbol varntId))
+    ?= F.FFunc varntSort F.boolSort
+
+  -- Intro assumption about predicate.
+  asmpExpr <- do
+    varntVar <- FlexM.freshSymbol "varnt"
+
+    -- In each case of variant
+    (params, exs) <-
+      bimap concat concat . unzip <$> for (variantConstructors varnt) \(cstrId, fieldTypes) -> do
+        -- Intro fresh variables for fields
+        fieldParams <- for fieldTypes \ty -> do
+          sym <- FlexM.freshSymbol "x"
+          srt <- lift $ reflType ty
+          return (sym, srt)
+
+        -- Infer refinements on fields based on their types
+        (params, exs) <-
+          lift . runWriterT . execWriterT $
+            for_ (fieldParams `zip` fieldTypes) \((fieldVar, _), cstrParamType) -> do
+              -- let proj = F.eVar $ makeVariantFieldAccessorSymbol (varntId, cstrId, i)
+              inferTypeRefinements (F.eVar fieldVar) cstrParamType
+        -- varnt == C x y z ==> ... exs ...
+        return
+          ( (varntVar, varntSort) : fieldParams <> params,
+            [ F.PImp
+                ( F.PAtom
+                    F.Eq
+                    (F.eVar varntVar)
+                    ( F.eVar (makeVariantConstructorSymbol (varntId, cstrId))
+                        -- `F.eApps` ( [ F.eVar $ makeVariantFieldAccessorSymbol (varntId, cstrId, i)
+                        --               | i <- [0 .. length fieldTypes]
+                        --             ]
+                        --           )
+                        `F.eApps` (F.eVar . fst <$> fieldParams)
+                    )
+                )
+                (F.pAnd exs)
+            ]
+          )
+
+    -- > forall (varnt : V) . isV(v) ==> ...
+    return $
+      F.PAll params $
+        F.PImp (F.eVar (makeDatatypePropertySymbol varntId) `F.eApps` [F.eVar varntVar]) $
+          F.pAnd exs
+
+  ctxAssumptionsReversed %= (asmpExpr :)
   return ()
 
 introTransforms :: StateT CheckingCtx RefiningM ()
