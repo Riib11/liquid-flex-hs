@@ -131,7 +131,7 @@ normalizeType = go []
       case type0 of
         (TypeArray ty) -> TypeArray <$> normalizeType ty
         (TypeTuple tys) -> TypeTuple <$> normalizeType `traverse` tys
-        (TypeOptional ty) -> TypeArray <$> normalizeType ty
+        (TypeOptional ty) -> TypeOptional <$> normalizeType ty
         (TypeNamed tyId) ->
           asks (^. ctxTypes . at tyId) >>= \case
             Nothing -> return (TypeNamed tyId)
