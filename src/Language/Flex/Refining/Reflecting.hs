@@ -1,6 +1,7 @@
 module Language.Flex.Refining.Reflecting where
 
 import Control.Category hiding ((.))
+import Control.Lens
 import Control.Monad (forM)
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer (MonadWriter (tell), WriterT)
@@ -26,18 +27,28 @@ reflTerm :: Term -> ReflM F.Expr
 reflTerm (TermLiteral lit _ty) = reflLiteral lit
 reflTerm (TermPrimitive prim _ty) = reflPrimitive prim
 reflTerm (TermLet Nothing _tm1 tm2 _ty) = reflTerm tm2
+-- -- style: convert let to lambda-on-the-left !TODO doesn't work because LF inserts a fresh var as the bind of the lambda (???)
 -- reflTerm (TermLet (Just x) tm1 tm2 _ty) = do
 --   -- (let x = a in b) ~~> ((lam x => b) a)
 --   ex1 <- reflTerm tm1
---   srt <- reflType (termType tm1)
+--   srt <- lift $ reflType (termType tm1)
 --   ex2 <- reflTerm tm2
 --   return $ F.eApps (F.ELam (makeTermIdSymbol x, srt) ex2) [ex1]
+-- style: emitting bound quantifications !TODO doesn't work with local scoping
+-- reflTerm (TermLet (Just x) tm1 tm2 _ty) = do
+--   ex1 <- reflTerm tm1
+--   srt <- lift $ reflType (termType tm1)
+--   ex2 <- reflTerm tm2
+--   tell [(makeTermIdSymbol x, srt, Just ex1)]
+--   return ex2
+-- style: inline let !TODO works, but is really not preferable
 reflTerm (TermLet (Just x) tm1 tm2 _ty) = do
+  -- (let x = a in b) ~~> b[x := a]
+  let sym = makeTermIdSymbol x
   ex1 <- reflTerm tm1
-  srt <- lift $ reflType (termType tm1)
+  -- srt <- lift $ reflType (termType tm1)
   ex2 <- reflTerm tm2
-  tell [(makeTermIdSymbol x, srt, Just ex1)]
-  return ex2
+  return $ F.subst (F.Su (mempty & at sym %~ const (Just ex1))) ex2
 reflTerm (TermAssert _te tm _ty) = do
   -- assert is unwrapped
   reflTerm tm

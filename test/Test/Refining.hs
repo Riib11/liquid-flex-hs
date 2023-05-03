@@ -41,12 +41,12 @@ test =
             ]
           else
             [ [ -- makeTest_refineModule True "examples/refining/Tuples.flex",
-                -- makeTest_refineModule True "examples/refining/Locals.flex",
+                makeTest_refineModule True "examples/refining/Locals.flex"
                 -- makeTest_refineModule True "examples/refining/Parameters.flex",
                 -- makeTest_refineModule True "examples/refining/StructureConstructors.flex",
                 -- makeTest_refineModule True "examples/refining/Structures.flex"
                 -- makeTest_refineModule True "examples/refining/Matches.flex"
-                makeTest_refineModule True "examples/refining/Casting.flex"
+                -- makeTest_refineModule True "examples/refining/Casting.flex"
                 -- makeTest_refineModule True "examples/refining/Functions.flex"
                 -- makeTest_refineModule True "examples/refining/Matches.flex"
                 -- makeTest_refineModule True "examples/refining/RefinedStructureInputs.flex"
