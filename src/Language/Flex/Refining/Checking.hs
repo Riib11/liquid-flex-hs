@@ -141,9 +141,6 @@ introForall' sym srt = localExecM do
 
 introCase :: Term -> Crude.TypeId -> Crude.TermId -> [Crude.TermId] -> [Type] -> CheckingM a -> CheckingM a
 introCase tm tyId ctorId paramIds paramTypes = localExecM do
-  liftIO . putStrLn $ "[introCase] paramIds = " <> show (prettyShow <$> paramIds)
-  liftIO . putStrLn $ "[introCase] paramTypes = " <> show (prettyShow <$> paramTypes)
-
   paramTypeSorts <- lift $ paramTypes <&*> reflType
   -- !TODO assume refinements implied by types
   ctxScopeReversed %= ((uncurry ScopeForall <$> ((makeTermIdSymbol <$> paramIds) `zip` paramTypeSorts)) <>)
@@ -683,10 +680,6 @@ checkTerm' (TermMatch tm branches _) = do
 
 checkBranch :: Term -> Pattern -> Term -> CheckingM ()
 checkBranch matchTerm (PatternConstructor tyId ctorId ctorParamIds) branchTerm = do
-  liftIO . putStrLn $ "[checkBranch] matchTerm = " <> prettyShow matchTerm
-  liftIO . putStrLn $ "[checkBranch] tyId = " <> prettyShow tyId
-  liftIO . putStrLn $ "[checkBranch] ctorId = " <> prettyShow ctorId
-  liftIO . putStrLn $ "[checkBranch] ctorParamIds = " <> prettyShow ctorParamIds
   ctorParamTypes <- lift $ lookupConstructorParameterTypes tyId ctorId
   introCase matchTerm tyId ctorId ctorParamIds ctorParamTypes $
     checkTerm branchTerm
