@@ -3,12 +3,12 @@ module Result where
 // A result type as specified by some external component's interface.
 
 message Result {
-  value: Optional<int32>;
   status: Status;
+  value: Optional<int32>;
   assert(
-    ((value != None) && (status == Status#Ok)) ||
-    ((value != None) && (status == Status#Unstable)) ||
-    ((value == None) && (status == Status#Error))
+    ((status == Status#Ok) && (value != None)) ||
+    ((status == Status#Unstable) && (value != None)) ||
+    ((status == Status#Error) && (value == None))
   );
 }
 
