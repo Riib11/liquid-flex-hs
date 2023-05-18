@@ -6,16 +6,36 @@
 
 module Main (main) where
 
-main :: IO ()
-main = return ()
+import Control.Monad.Except (ExceptT (ExceptT), MonadError (throwError), liftEither, runExceptT)
+import Control.Monad.Trans
+import Language.Flex.DefaultFlexCtx (defaultFlexCtx)
+import Language.Flex.Elaboration (elaborateModule)
+import Language.Flex.FlexM (FlexCtx (flexDebug, flexVerbose), runFlexM)
+import Language.Flex.Parsing (parseModuleFile)
+import Language.Flex.Refining (refineModule)
+import Language.Flex.Typing (typeModule)
+import Options.Applicative
+import Text.PrettyPrint.HughesPJClass (prettyShow)
 
-{-
 data Options = Options
   { mode :: Mode,
-    mb_filepath :: Maybe String
+    mb_filepath :: Maybe String,
+    debug :: Bool,
+    verbose :: Bool
   }
 
-data Mode = ModeInterp | ModeRepl
+data Mode
+  = ModeHelp
+  | ModeParse
+  | ModeType
+  | ModeRefine
+
+instance Show Mode where
+  show = \case
+    ModeHelp -> "help"
+    ModeParse -> "parse"
+    ModeType -> "type"
+    ModeRefine -> "refine"
 
 options :: ParserInfo Options
 options =
@@ -23,237 +43,152 @@ options =
     ( Options
         <$> subparser
           ( mconcat
-              [ command "interp" $ info (pure ModeInterp) (progDesc "interpret a Flex program"),
-                command "repl" $ info (pure ModeRepl) (progDesc "start a repl; if a Flex program is given the REPL starts at the end of the program")
+              [ command (show ModeHelp) $ info (pure ModeHelp) (progDesc "Get help."),
+                command (show ModeParse) $ info (pure ModeParse) (progDesc "Parse a module file."),
+                command (show ModeType) $ info (pure ModeType) (progDesc "Type-check a module file."),
+                command (show ModeRefine) $ info (pure ModeRefine) (progDesc "Refinement-check a module file.")
               ]
           )
         <*> optional
-          (argument str $ help "input Flex program")
+          (argument str $ help "input Flex module file")
+        <*> flag False True (long "debug")
+        <*> flag False True (long "verbose")
     )
     ( mconcat
         [ fullDesc,
-          progDesc "the Flex Haskell interpreter"
+          progDesc "Liquid Flex; implemented in Haskell."
         ]
     )
 
 main :: IO ()
 main = do
   Options {..} <- execParser options
-
-  -- mb_env <- case mb_filepath of
-  --   Just fp -> do
-
-  --   Nothing -> return ()
-
   case mode of
-    ModeInterp -> do
-      fp <- case mb_filepath of
-        Nothing -> do
-          putStrLn "interpetation mode requires an input file"
-          fail "invalid options"
-        Just fp -> return fp
-      void $ interpFile fp
-      return ()
-    ModeRepl -> do
-      flexEnv <- case mb_filepath of
-        Nothing -> do
-          return Flex.emptyFlexEnv
-        Just fp -> interpFile fp
-      repl $ emptyReplEnv flexEnv
+    ModeHelp -> do
+      putStrLn "!TODO provide some help"
+    ModeParse -> do
+      let me :: ExceptT String IO ()
+          me = do
+            fp <- case mb_filepath of
+              Nothing -> do
+                throwError "Invalid usage: The 'parse' command requires an input Flex module file."
+              Just fp -> pure fp
+            mdl <-
+              lift (parseModuleFile fp) >>= \case
+                Left err -> throwError $ "Parsing error: " <> show err
+                Right mdl -> return mdl
+            let header_stub = "==[ parsed module: " <> fp <> " ]"
+            let header = header_stub <> replicate (76 - length header_stub) '=' <> "=="
+            let footer = replicate (length header) '='
+            lift . putStrLn . unlines $
+              [ header,
+                prettyShow mdl,
+                footer
+              ]
+      -- flip runExceptT
+      runExceptT me >>= \case
+        Left err -> putStrLn err
+        Right _ -> return ()
+    ModeType -> do
+      let me :: ExceptT String IO ()
+          me = do
+            -- parse
 
-interpFile :: String -> IO Flex.FlexEnv
-interpFile fp = do
-  source <- readFile fp
-  mdl <-
-    Parsec.runParserT Parsing.parseModule (Lexing.emptyEnv Syntax.topModuleId) fp source >>= \case
-      Left err -> throw (show err)
-      Right mdl -> return mdl
-  putStrLn $ "\n[parsed module]\n" <> prettyShow mdl
+            fp <- case mb_filepath of
+              Nothing -> do
+                throwError "Invalid usage: The 'parse' command requires an input Flex module file."
+              Just fp -> pure fp
+            mdl <-
+              lift (parseModuleFile fp) >>= \case
+                Left err -> throwError $ "Parsing error: " <> show err
+                Right mdl -> return mdl
+            let parsed_header_stub = "==[ parsed module: " <> fp <> " ]"
+            let parsed_header = parsed_header_stub <> replicate (76 - length parsed_header_stub) '=' <> "=="
+            let parsed_footer = replicate (length parsed_header) '='
+            lift . putStrLn . unlines $
+              [ parsed_header,
+                prettyShow mdl,
+                parsed_footer
+              ]
 
-  env <-
-    Flex.runFlexT Flex.emptyFlexEnv (Flex.loadModule mdl) >>= \case
-      Left err -> throw (prettyShow err)
-      Right (_, env) -> return env
+            !_ <- return ()
 
-  env <-
-    (Typing.runTypingM Typing.emptyCtx . Flex.runFlexT env) (Typing.procModule mdl) >>= \case
-      Left err -> throw (prettyShow err)
-      Right (_, env) -> return env
+            -- flexCtx
 
-  putStrLn $ "\n[typechecking environmnt]\n" <> prettyShow env
+            let flexCtx = defaultFlexCtx {flexDebug = debug, flexVerbose = verbose}
 
-  env <-
-    (Interp.runInterpM Interp.emptyCtx . Flex.runFlexT env) (Interp.procModule mdl) >>= \case
-      Left err -> throw (prettyShow err)
-      Right (_, env) -> return env
+            -- elaborate
 
-  putStrLn $ "\n[interpreted environmnt]\n" <> prettyShow env
+            mdlElab <- lift (runFlexM flexCtx (elaborateModule mdl))
 
-  return env
-  where
-    throw msg = do
-      putStrLn msg
-      fail "interpretation error"
+            -- type
 
-data ReplEnv = ReplEnv
-  { envFlex :: Flex.FlexEnv,
-    iInput :: Int
-  }
+            _mdlType <-
+              lift (runFlexM flexCtx . runExceptT $ typeModule mdlElab) >>= \case
+                Left err -> throwError $ "Type error: " <> prettyShow err
+                Right (_env, mdlType) -> do
+                  lift . putStrLn $ "[well-typed]"
+                  return mdlType
 
-emptyReplEnv :: Flex.FlexEnv -> ReplEnv
-emptyReplEnv envFlex =
-  ReplEnv
-    { envFlex,
-      iInput = 0
-    }
+            return ()
+      -- flip runExceptT
+      runExceptT me >>= \case
+        Left err -> putStrLn err
+        Right _ -> return ()
+    ModeRefine -> do
+      let me :: ExceptT String IO ()
+          me = do
+            -- parse
 
-repl :: ReplEnv -> IO ()
-repl envRepl = do
-  let throw msg = do
-        putStrLn msg
-        repl envRepl
-        fail "exit"
+            fp <- case mb_filepath of
+              Nothing -> do
+                throwError "Invalid usage: The 'parse' command requires an input Flex module file."
+              Just fp -> pure fp
+            mdl <-
+              lift (parseModuleFile fp) >>= \case
+                Left err -> throwError $ "Parsing error: " <> show err
+                Right mdl -> return mdl
+            let parsed_header_stub = "==[ parsed module: " <> fp <> " ]"
+            let parsed_header = parsed_header_stub <> replicate (76 - length parsed_header_stub) '=' <> "=="
+            let parsed_footer = replicate (length parsed_header) '='
+            lift . putStrLn . unlines $
+              [ parsed_header,
+                prettyShow mdl,
+                parsed_footer
+              ]
 
-  let name = pack ("$" <> show (iInput envRepl))
-  let x = Syntax.fromUnqualText name
+            !_ <- return ()
 
-  hPutStr stdout "> "
-  hFlush stdout
-  input <- hGetLine stdin
-  case input of
-    _ | Just _input <- List.stripPrefix (":help") input -> do
-      putStrLn . unlines $
-        [ "[repl help]",
-          ":quit        -- quit the repl",
-          ":decl <decl> -- create new declaration",
-          ":type <term> -- print inferred type of term",
-          ":info <id>   -- print information about referenced thing",
-          ":env         -- print current repl environment",
-          "<term>       -- print evaluation of term"
-        ]
-      repl envRepl
-    _ | Just _input <- List.stripPrefix (":quit") input -> return ()
-    _ | Just input <- List.stripPrefix (":decl ") input -> do
-      -- parse as declaration
-      decl <-
-        Parsec.runParserT
-          Parsing.parseDeclaration
-          (Lexing.emptyEnv (envFlex envRepl ^. Flex.envModuleCtx . Syntax.ctxModuleId))
-          ("repl input " <> show (iInput envRepl))
-          input
-          >>= \case
-            Left err -> throw (show err)
-            Right tm -> return tm
+            -- flexCtx
 
-      -- typecheck
-      envRepl <- do
-        envFlex <-
-          Typing.runTypingM
-            Typing.emptyCtx
-            (Flex.runFlexT (envFlex envRepl) (Typing.procDeclaration decl))
-            >>= \case
-              Left err -> throw (prettyShow err)
-              Right (_, envFlex) -> return envFlex
-        return (envRepl {envFlex = envFlex})
+            let flexCtx = defaultFlexCtx {flexDebug = debug, flexVerbose = verbose}
 
-      repl envRepl
-    _ | Just input <- List.stripPrefix ":type " input -> do
-      -- parse as term
-      tm <-
-        Parsec.runParserT
-          Parsing.parseTerm
-          (Lexing.emptyEnv (envFlex envRepl ^. Flex.envModuleCtx . Syntax.ctxModuleId))
-          ("repl input " <> show (iInput envRepl))
-          input
-          >>= \case
-            Left err -> throw (show err)
-            Right tm -> return tm
+            -- elaborate
 
-      -- typecheck
-      (tm, envRepl) <- do
-        (tm, envFlex) <-
-          Typing.runTypingM
-            Typing.emptyCtx
-            (Flex.runFlexT (envFlex envRepl) (Typing.inferTerm tm))
-            >>= \case
-              Left err -> throw (prettyShow err)
-              Right (tm, env) -> return (tm, env)
-        return (tm, envRepl {envFlex = envFlex})
+            mdlElab <- lift (runFlexM flexCtx (elaborateModule mdl))
 
-      ty <- case tm ^. Syntax.termType of
-        Nothing -> throw $ "type not inferred for term: " <> prettyShow tm
-        Just ty -> return ty
+            -- type
 
-      hPutStrLn stdout $ prettyShow tm <> " : " <> prettyShow ty
+            mdlType <-
+              lift (runFlexM flexCtx . runExceptT $ typeModule mdlElab) >>= \case
+                Left err -> throwError $ "Type error: " <> prettyShow err
+                Right (_env, mdlType) -> do
+                  lift . putStrLn $ "[well-typed]"
+                  return mdlType
 
-      repl envRepl
-    _ | Just _input <- List.stripPrefix ":env" input -> do
-      putStrLn "[repl environment]"
-      putStrLn . indent . prettyShow $ envFlex envRepl
-      repl envRepl
-    _ | Just input <- List.stripPrefix ":" input -> do
-      putStrLn $ "invalid repl command: \"" <> input <> "\""
-      repl envRepl
-    _ -> do
-      -- parse as term
-      tm <-
-        Parsec.runParserT
-          Parsing.parseTerm
-          (Lexing.emptyEnv (envFlex envRepl ^. Flex.envModuleCtx . Syntax.ctxModuleId))
-          ("repl input " <> show (iInput envRepl))
-          input
-          >>= \case
-            Left err -> throw (show err)
-            Right tm -> return tm
+            -- refine
 
-      let tm_orig = tm
+            !_ <- return ()
 
-      -- typecheck
-      (tm, envRepl) <- do
-        (tm, envFlex) <-
-          Typing.runTypingM
-            Typing.emptyCtx
-            (Flex.runFlexT (envFlex envRepl) (Typing.inferTerm tm))
-            >>= \case
-              Left err -> throw (prettyShow err)
-              Right (tm, env) -> return (tm, env)
-        return (tm, envRepl {envFlex = envFlex})
+            _envRefn <-
+              lift (runFlexM flexCtx . runExceptT $ refineModule mdlType) >>= \case
+                Left err -> throwError $ "Refinement error: " <> prettyShow err
+                Right envRefn -> do
+                  lift . putStrLn $ "[well-refined]"
+                  return envRefn
 
-      ty <- case tm ^. Syntax.termType of
-        Nothing -> throw $ "type not inferred for term: " <> prettyShow tm
-        Just ty -> return ty
-
-      -- interpret
-      (tm, envRepl) <- do
-        (tm, envFlex) <-
-          Interp.runInterpM
-            Interp.emptyCtx
-            (Flex.runFlexT (envFlex envRepl) (Interp.evalTerm tm))
-            >>= \case
-              Left err -> throw (prettyShow err)
-              Right (tm, env) -> return (tm, env)
-        return (tm, envRepl {envFlex = envFlex})
-
-      -- hPutStrLn stdout $ prettyShow x <> " = " <> prettyShow tm
-      hPutStrLn stdout $ prettyShow tm_orig <> " = " <> prettyShow tm
-
-      envRepl <-
-        return
-          envRepl
-            { envFlex =
-                envFlex envRepl
-                  & Flex.envModuleCtx . Syntax.ctxModuleConstants
-                    %~ Map.insert
-                      x
-                      Syntax.Constant
-                        { Syntax.constantName = name,
-                          Syntax.constantModuleId = envFlex envRepl ^. Flex.envModuleCtx . Syntax.ctxModuleId,
-                          Syntax.constantBody = Syntax.DefinitionBodyTerm tm,
-                          Syntax.constantType = ty,
-                          Syntax.constantAnnotations = []
-                        },
-              iInput = iInput envRepl + 1
-            }
-
-      repl envRepl
--}
+            return ()
+      -- flip runExceptT
+      runExceptT me >>= \case
+        Left err -> putStrLn err
+        Right _ -> return ()
