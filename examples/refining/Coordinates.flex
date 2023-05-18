@@ -36,6 +36,7 @@ transform fromCartesianToPolar(cartesian: Cartesian) -> Polar {
       theta = Angle{ radians = if (cartesian.x >= 0.0) then 0.0 else pi };
       r = abs(cartesian.x)
     }
+    // !TODO more verbose way
     // if (cartesian.x >= 0.0) then {
     //   Polar{ 
     //     theta = Angle{ radians = 0.0 }; 
@@ -73,8 +74,8 @@ transform cos(x: float32) -> float32 { x }
 // --------
 //   b
 //
-// tan(θ) = a / b
-// c² = a² + b² 
+// tan(θ) =        a / b
+//     θ  = arctan(a / b)
 //
 struct ArcTan {
   angle: Angle;
@@ -86,7 +87,10 @@ transform arctan(x: float32) -> ArcTan {
 }
 
 // fake
-function sqrt(x: float32) -> float32 { x }
+function sqrt(x: float32) -> float32 {
+  assert(0.0 <= x);
+  x
+}
 
 function sq(x: float32) -> float32 { x * x }
 
