@@ -598,7 +598,6 @@ checkQuery = do
                 "refinement checking context:",
                 nest 2 $ pPrint ctx
               ]
-      FlexM.print doc
       throwRefiningError doc
     (F.Unsafe st res) -> do
       let doc =
@@ -609,7 +608,6 @@ checkQuery = do
                 "stats:",
                 nest 2 (text $ show st)
               ]
-      FlexM.print doc
       throwRefiningError doc
     (F.Safe _st) -> do
       FlexM.print "checked: safe"

@@ -125,7 +125,7 @@ main = do
 
             _mdlType <-
               lift (runFlexM flexCtx . runExceptT $ typeModule mdlElab) >>= \case
-                Left err -> throwError $ "Type error: " <> prettyShow err
+                Left err -> throwError $ prettyShow err
                 Right (_env, mdlType) -> do
                   lift . putStrLn $ "[well-typed]"
                   return mdlType
@@ -182,13 +182,13 @@ main = do
 
             _envRefn <-
               lift (runFlexM flexCtx . runExceptT $ refineModule mdlType) >>= \case
-                Left err -> throwError $ "Refinement error: " <> prettyShow err
+                Left err -> throwError $ prettyShow err
                 Right envRefn -> do
                   lift . putStrLn $ "[well-refined]"
                   return envRefn
 
             return ()
-      -- flip runExceptT
+
       runExceptT me >>= \case
         Left err -> putStrLn err
         Right _ -> return ()
