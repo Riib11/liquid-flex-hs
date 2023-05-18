@@ -564,22 +564,15 @@ inferTypeRefinements ex (TypeNamed tyId) = do
 
 introConstants :: StateT CheckingCtx RefiningM ()
 introConstants = do
-  -- intro constant as  equation
+  -- intro constant as equation
   asks (^. ctxConstants . to Map.toList) >>= traverse_ \(tmId, tm) -> do
+    liftIO . putStrLn $ "[introConstants] intro constant:\n  - tmId = " <> prettyShow tmId <> "\n  - tm = " <> prettyShow tm
     let sym = makeTermIdSymbol tmId
     tm' <- lift $ transTerm tm
     ex <- reflTermState tm'
     srt <- lift $ reflType (termType tm')
-    (ctxQuery . _qEqns)
-      %= ( F.Equ
-             { eqName = sym,
-               eqArgs = [],
-               eqBody = ex,
-               eqSort = srt,
-               eqRec = False
-             }
-             :
-         )
+    ctxScopeReversed %= (ScopeLet sym ex srt :)
+    return ()
 
 -- ** Check Query
 
