@@ -141,6 +141,9 @@ introForall' sym srt = localExecM do
 
 introCase :: Term -> Crude.TypeId -> Crude.TermId -> [Crude.TermId] -> [Type] -> CheckingM a -> CheckingM a
 introCase tm tyId ctorId paramIds paramTypes = localExecM do
+  liftIO . putStrLn $ "[introCase] paramIds = " <> show (prettyShow <$> paramIds)
+  liftIO . putStrLn $ "[introCase] paramTypes = " <> show (prettyShow <$> paramTypes)
+
   paramTypeSorts <- lift $ paramTypes <&*> reflType
   -- !TODO assume refinements implied by types
   ctxScopeReversed %= ((uncurry ScopeForall <$> ((makeTermIdSymbol <$> paramIds) `zip` paramTypeSorts)) <>)
@@ -680,6 +683,10 @@ checkTerm' (TermMatch tm branches _) = do
 
 checkBranch :: Term -> Pattern -> Term -> CheckingM ()
 checkBranch matchTerm (PatternConstructor tyId ctorId ctorParamIds) branchTerm = do
+  liftIO . putStrLn $ "[checkBranch] matchTerm = " <> prettyShow matchTerm
+  liftIO . putStrLn $ "[checkBranch] tyId = " <> prettyShow tyId
+  liftIO . putStrLn $ "[checkBranch] ctorId = " <> prettyShow ctorId
+  liftIO . putStrLn $ "[checkBranch] ctorParamIds = " <> prettyShow ctorParamIds
   ctorParamTypes <- lift $ lookupConstructorParameterTypes tyId ctorId
   introCase matchTerm tyId ctorId ctorParamIds ctorParamTypes $
     checkTerm branchTerm
@@ -688,11 +695,17 @@ checkBranch matchTerm PatternNone branchTerm = flip localExecM (checkTerm branch
   propPred <- reflTermState propTerm
   ctxAssumptionsReversed %= (propPred :)
 checkBranch matchTerm (PatternSome tmId) branchTerm = flip localExecM (checkTerm branchTerm) do
+  let sym = makeTermIdSymbol tmId
   ty <- case termType matchTerm of
     TypeOptional ty -> return ty
     ty -> FlexM.throw $ "PatternSome should not have matched term with type" <+> ticks (pPrint ty)
+  srt <- lift $ reflType ty
+  -- intro into scope
+  ctxScopeReversed %= (ScopeForall sym srt :)
+  -- assume equal to construction using params
   let propTerm = eqTerm matchTerm (TermPrimitive (PrimitiveSome (TermNamed tmId ty)) (termType matchTerm))
   propPred <- reflTermState propTerm
+  ctxAssumptionsReversed %= (propPred :)
   ctxAssumptionsReversed %= (propPred :)
 
 checkPrimitive :: Type -> Primitive -> CheckingM ()
