@@ -19,9 +19,9 @@ enum Status string {
 }
 
 // Incrementing a result:
-//   - incrementing an Ok result yields an Ok result with an incremented value
-//   - incrementing a Unstable result yields an Error result (discard the value)
-//   - incrementing an Error result yields an Error
+// - Incrementing an Ok result yields an Ok result with an incremented value
+// - Incrementing a Unstable result yields an Error result (discard the value)
+// - Incrementing an Error result yields an Error
 transform incrementResult(result: Result) -> Result {
   match result.value with {
     None => result;
