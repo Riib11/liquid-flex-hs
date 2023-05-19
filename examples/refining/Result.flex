@@ -29,11 +29,8 @@ transform incrementResult(result: Result) -> Result {
       match result.status with {
         Status#Ok => Result{ value = Some(x + 1); status = Status#Ok };
         Status#Unstable => Result{ value = None; status = Status#Error };
-        Status#Error => {
-          // this branch is impossible
-          assert(false);
-          result
-        };
+        // this branch is impossible
+        Status#Error => exception;
       }
     };
   }
