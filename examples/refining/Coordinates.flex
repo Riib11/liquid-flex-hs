@@ -1,14 +1,12 @@
 module Coordinates where
 
-const pi: float32 = 3.14
-
 struct Angle {
   radians: float32;
   assert(0.0 <= radians && radians <= 2.0*pi);
 }
 
-// Polar coordinates encode coordinates by an angle from the horizon and a
-// radius along that angle. 
+// Polar coordinates are encoded by an angle from the horizon and a radius 
+// in the direction of that angle. 
 struct Polar {
   theta: Angle;
   r: float32;
@@ -18,79 +16,37 @@ struct Polar {
   assert(r == 0.0  ==>  theta.radians == 0.0);
 }
 
+// Cartesian coordinates are encoded by a point on the x-axis and a point on the
+// y-axis.
 struct Cartesian {
   x: float32;
   y: float32;
 }
 
+// Polar -> Cartesian
 transform fromPolarToCartesian(polar: Polar) -> Cartesian {
   Cartesian{ 
-    x = polar.r * cos(polar.theta.radians);
-    y = polar.r * sin(polar.theta.radians)
+    x = polar.r * cos(polar.theta);
+    y = polar.r * sin(polar.theta)
   }
 }
 
+// Cartesian -> Polar
 transform fromCartesianToPolar(cartesian: Cartesian) -> Polar {
-  if (cartesian.y == 0.0) then {
-    Polar{
-      theta = Angle{ radians = if (cartesian.x >= 0.0) then 0.0 else pi };
-      r = abs(cartesian.x)
-    }
-    // !TODO more verbose way
-    // if (cartesian.x >= 0.0) then {
-    //   Polar{ 
-    //     theta = Angle{ radians = 0.0 }; 
-    //     r = cartesian.x
-    //   }
-    // } else {
-    //   Polar{ 
-    //     theta = Angle{ radians = pi }; 
-    //     r = neg(1.0) * cartesian.x
-    //   }
-    // }
-  } else {
-    Polar{
-      theta = arctan(cartesian.x / cartesian.y).angle;
-      r = sqrt(sq(cartesian.x) + sq(cartesian.y))
-    }
+  Polar{
+    theta = 
+      if (cartesian.y == 0.0) then {
+        Angle{ radians = if (0.0 <= cartesian.x) then 0.0 else pi }
+      } else {
+        arctan(cartesian.x / cartesian.y)
+      };
+    r = sqrt(sq(cartesian.x) + sq(cartesian.y))
   }
 }
 
 // utilities
 
-// fake
-transform sin(x: float32) -> float32 { x }
-
-// fake
-transform cos(x: float32) -> float32 { x }
-
-//
-//       /|
-//      / |
-//     /  |
-//  c /   |
-//   /    | a
-//  / θ   |
-// --------
-//   b
-//
-// tan(θ) =        a / b
-//     θ  = arctan(a / b)
-//
-struct ArcTan {
-  angle: Angle;
-  assert(angle.radians != pi/2.0);
-}
-// fake
-transform arctan(x: float32) -> ArcTan {
-  ArcTan{ angle = Angle{ radians = 0.0 } }
-}
-
-// fake
-function sqrt(x: float32) -> float32 {
-  assert(0.0 <= x);
-  x
-}
+const pi: float32 = 3.14
 
 function sq(x: float32) -> float32 { x * x }
 
@@ -104,4 +60,20 @@ function signum(x: float32) -> float32 {
 
 function abs(x: float32) -> float32 {
   if (x >= 0.0) then x else neg(1.0) * x
+}
+
+// fake utilities
+
+transform sin(theta: Angle) -> float32 { theta.radians }
+
+transform cos(theta: Angle) -> float32 { theta.radians }
+
+// ensures output.radians != pi/2.0
+transform arctan(x: float32) -> Angle {
+  Angle{ radians = 0.0 }
+}
+
+function sqrt(x: float32) -> float32 {
+  assert(0.0 <= x);
+  x
 }
