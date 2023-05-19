@@ -1,8 +1,9 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# HLINT ignore "Redundant flip" #-}
+{-# HLINT ignore "Use camelCase" #-}
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
-
-{-# HLINT ignore "Redundant flip" #-}
 
 module Language.Flex.Refining.Checking where
 
@@ -732,3 +733,4 @@ checkPrimitive ty prim@(PrimitiveNumBinOp Crude.NumBinOpMod tm1 tm2) = do
   checkTerm tm2
 checkPrimitive _ (PrimitiveNumBinOp _ tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
 checkPrimitive _ (PrimitiveNumBinRel _ tm1 tm2) = checkTerm `traverse_` [tm1, tm2]
+checkPrimitive _ PrimitiveException = assert "exception" $ TermLiteral (Crude.LiteralBit False) TypeBit

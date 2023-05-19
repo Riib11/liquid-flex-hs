@@ -402,7 +402,7 @@ instance Traversable (Tm Function ty) where
     Tm
       . (\functionBody' -> fun {functionBody = functionBody'})
       <$> f
-        `traverse` functionBody
+      `traverse` functionBody
 
 instance (Pretty ty, Pretty tm) => Pretty (Function ty tm) where
   pPrint (Function {..}) =
@@ -500,7 +500,7 @@ instance Traversable (Tm Constant ty) where
     Tm
       . (\constantBody' -> con {constantBody = constantBody'})
       <$> f
-        `traverse` constantBody
+      `traverse` constantBody
 
 instance Pretty (Constant ty tm) where
   pPrint (Constant {..}) =
@@ -679,6 +679,7 @@ data Primitive ann
   | PrimitiveNumBinOp NumBinOp (Term ann) (Term ann)
   | PrimitiveNumBinRel NumBinRel (Term ann) (Term ann)
   | PrimitiveExtends (Term ann) TypeId
+  | PrimitiveException
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 data BoolBinOp
@@ -736,6 +737,7 @@ instance Pretty (Primitive ann) where
     PrimitiveNumBinOp nbo tm1 tm2 -> parens $ pPrint tm1 <+> text (operatorOfNumBinOp nbo) <+> pPrint tm2
     PrimitiveNumBinRel nbr tm1 tm2 -> parens $ pPrint tm1 <+> text (operatorOfNumBinRel nbr) <+> pPrint tm2
     PrimitiveExtends tm tyId -> parens $ pPrint tm <+> "extends" <+> pPrint tyId
+    PrimitiveException -> "exception"
 
 -- ** Pattern
 
@@ -896,6 +898,7 @@ renamePrimitive tmIds prim = case prim of
   PrimitiveNumBinOp nbo te te' -> PrimitiveNumBinOp nbo (renameTerm tmIds te) (renameTerm tmIds te')
   PrimitiveNumBinRel nbr te te' -> PrimitiveNumBinRel nbr (renameTerm tmIds te) (renameTerm tmIds te')
   PrimitiveExtends tm tyId -> PrimitiveExtends (renameTerm tmIds tm) tyId
+  PrimitiveException -> PrimitiveException
 
 -- substTerm x a b = b[x := a]
 substTerm :: Map.Map TermId (Term r) -> Term r -> Term r
@@ -913,6 +916,7 @@ substTerm sub (TermPrimitive (PrimitiveBoolBinOp bbo te te') r) = TermPrimitive 
 substTerm sub (TermPrimitive (PrimitiveNumBinOp nbo te te') r) = TermPrimitive (PrimitiveNumBinOp nbo (substTerm sub te) (substTerm sub te')) r
 substTerm sub (TermPrimitive (PrimitiveNumBinRel nbr te te') r) = TermPrimitive (PrimitiveNumBinRel nbr (substTerm sub te) (substTerm sub te')) r
 substTerm sub (TermPrimitive (PrimitiveExtends te ti) r) = TermPrimitive (PrimitiveExtends (substTerm sub te) ti) r
+substTerm _sub (TermPrimitive PrimitiveException r) = TermPrimitive PrimitiveException r
 substTerm sub (TermLet m_ti te te' r) = TermLet m_ti (substTerm sub te) (substTerm sub te') r
 substTerm sub (TermAssert te te' r) = TermAssert (substTerm sub te) (substTerm sub te') r
 substTerm sub (TermStructure ti fields r) = TermStructure ti (fields <&> second (substTerm sub)) r

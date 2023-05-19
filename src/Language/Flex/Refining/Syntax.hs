@@ -182,6 +182,7 @@ data Primitive
   | PrimitiveNumBinOp Crude.NumBinOp !Term !Term
   | PrimitiveNumBinRel Crude.NumBinRel !Term !Term
   | PrimitiveExtends !Term !Crude.TypeId
+  | PrimitiveException
   deriving (Eq, Show)
 
 instance Pretty Primitive where
@@ -201,6 +202,7 @@ instance Pretty Primitive where
   pPrint (PrimitiveNumBinOp nbo te te') = parens $ pPrint te <+> text (Crude.operatorOfNumBinOp nbo) <+> pPrint te'
   pPrint (PrimitiveNumBinRel nbr te te') = parens $ pPrint te <+> text (Crude.operatorOfNumBinRel nbr) <+> pPrint te'
   pPrint (PrimitiveExtends te structId) = parens $ pPrint te <+> "extends" <+> pPrint structId
+  pPrint PrimitiveException = "exception"
 
 -- ** Converting to Symbols
 

@@ -52,9 +52,7 @@ languageDef =
             -- type
             ["Array", "Tuple", "Optional", "int", "uint", "float", "bit"],
             -- term
-            -- "output": output of function (used in refinement types)
-            -- "_": discarded id or pattern
-            ["try", "cast", "match", "with", "if", "then", "else", "given"],
+            ["try", "cast", "match", "with", "if", "then", "else", "given", "exception"],
             -- pattern
             ["_"]
           ],

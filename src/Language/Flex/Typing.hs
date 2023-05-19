@@ -10,6 +10,7 @@ import Data.Bifunctor
 import Data.Foldable (foldlM)
 import qualified Data.Map as Map
 import Data.Maybe
+import qualified Data.Traversable as Traversable
 import Language.Flex.FlexM (MonadFlex)
 import qualified Language.Flex.FlexM as FlexM
 import Language.Flex.Syntax as Syntax
@@ -212,9 +213,9 @@ synthTerm term0 = FlexM.markSection
                           throwTypingError ("could not infer the implicit contextual arguments:" <+> commaList (missing <&> \(cxparamId, cxparamNewtypeId) -> parens (pPrint cxparamId <+> ":" <+> pPrint cxparamNewtypeId))) mb_syn
                         else do
                           -- all cxargs were inferred
-                          fmap concat . flip traverse ls_mb_cxarg . maybe (return []) $ \(cxargId, cxNewtypeId) -> do
+                          fmap concat . Traversable.for ls_mb_cxarg . maybe (return []) $ \(cxargId, cxNewtypeId) -> do
                             cxargType <- normalizeType $ TypeNamed cxNewtypeId
-                            return $
+                            return
                               [ TermNeutral
                                   { termNeutral = Neutral {neutralTermId = cxargId},
                                     termAnn = cxargType
@@ -365,7 +366,7 @@ synthPrimitive (PrimitiveTuple tes) = do
 synthPrimitive (PrimitiveArray tes) = do
   ty <- freshTypeUnifyVar' (render $ "primitive array" <+> pPrint tes) Nothing
   tes' <- synthCheckTerm ty `traverse` tes
-  return $ TermPrimitive (PrimitiveArray tes') (TypeArray $ ty)
+  return $ TermPrimitive (PrimitiveArray tes') (TypeArray ty)
 synthPrimitive (PrimitiveIf te te1 te2) = do
   te' <- synthCheckTerm TypeBit te
   ty <- freshTypeUnifyVar' (render $ "primitive if branches" <+> pPrint [te1, te2]) Nothing
@@ -396,6 +397,7 @@ synthPrimitive (PrimitiveNumBinRel nbr te1 te2) = do
   te2' <- synthCheckTerm ty te2
   return $ TermPrimitive (PrimitiveNumBinRel nbr te1' te2') TypeBit
 synthPrimitive (PrimitiveExtends {}) = error "synthPrimitive PrimitiveExtends"
+synthPrimitive PrimitiveException = TermPrimitive PrimitiveException <$> freshTypeUnifyVar' "exception" Nothing
 
 synthCheckTerm :: Type -> Term () -> TypingM (Term Type)
 synthCheckTerm type_ term = FlexM.markSection [FlexM.FlexMarkStep ("synthCheckTerm (" <> pPrint type_ <> ") (" <> pPrint term <> ")") Nothing] do

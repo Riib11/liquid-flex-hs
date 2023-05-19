@@ -8,7 +8,8 @@ main :: IO ()
 main = do
   void . runTestTT $
     TestList
-      -- [Parsing.test]
       -- [Typing.test]
+      -- [Parsing.test]
+      -- [Parsing.test, Typing.test, Refining.test]
       [Refining.test]
   return ()

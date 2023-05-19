@@ -51,6 +51,7 @@ transTerm' (Crude.TermLiteral lit ty) = do
   return $ TermLiteral lit ty
 transTerm' term0@(Crude.TermPrimitive prim ty) = transPrimitive prim
   where
+    transPrimitive Crude.PrimitiveException = return $ TermPrimitive PrimitiveException ty
     transPrimitive (Crude.PrimitiveTry te) = TermPrimitive <$> (PrimitiveTry <$> transTerm te) <*> return ty
     transPrimitive Crude.PrimitiveNone = return $ TermPrimitive PrimitiveNone ty
     transPrimitive (Crude.PrimitiveSome tm) = TermPrimitive <$> (PrimitiveSome <$> transTerm tm) <*> return ty

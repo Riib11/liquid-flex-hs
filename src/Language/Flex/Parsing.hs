@@ -360,6 +360,14 @@ parseTerm = buildExpressionParser table (k_term0 =<< term1) <?> "term"
                   { termPrimitive = PrimitiveArray tms,
                     termAnn = ()
                   },
+          -- starts with "exception"
+          do
+            try $ reserved "exception"
+            return $
+              TermPrimitive
+                { termPrimitive = PrimitiveException,
+                  termAnn = ()
+                },
           -- starts with "cast"
           do
             try $ reserved "cast"

@@ -117,6 +117,7 @@ reflPrimitive (PrimitiveNumBinRel Crude.NumBinRelLe tm1 tm2) = F.PAtom F.Le <$> 
 reflPrimitive (PrimitiveNumBinRel Crude.NumBinRelGt tm1 tm2) = F.PAtom F.Gt <$> reflTerm tm1 <*> reflTerm tm2
 reflPrimitive (PrimitiveNumBinRel Crude.NumBinRelGe tm1 tm2) = F.PAtom F.Ge <$> reflTerm tm1 <*> reflTerm tm2
 reflPrimitive (PrimitiveExtends {}) = error "!TODO reflect PrimitiveExtends"
+reflPrimitive (PrimitiveException {}) = error "!TODO reflect PrimitiveException"
 
 reflLiteral :: Crude.Literal -> ReflM F.Expr
 reflLiteral (Crude.LiteralInteger n) = return $ F.expr n
