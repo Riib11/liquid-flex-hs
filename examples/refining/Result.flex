@@ -1,3 +1,4 @@
+// "exception" should be called "assertFalse"
 module Result where
 
 // A result type as specified by some external component's interface.
@@ -30,7 +31,9 @@ transform incrementResult(result: Result) -> Result {
         Status#Ok => Result{ value = Some(x + 1); status = Status#Ok };
         Status#Unstable => Result{ value = None; status = Status#Error };
         // this branch is impossible
-        Status#Error => exception;
+        Status#Error => {
+          assertFalse;
+        }
       }
     };
   }

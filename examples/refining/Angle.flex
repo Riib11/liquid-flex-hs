@@ -1,3 +1,6 @@
+// !TODO look into how LF reasons about reals
+// !TODO reason about floats _as if_ they were reals, not accounting for inaccuracy introduced by actual floating point arith
+
 module Angle where
 
 // A degree is an angle measurement unit, where 360 deg = 0 deg. This struct

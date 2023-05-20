@@ -64,12 +64,12 @@ function abs(x: float32) -> float32 {
 
 // fake utilities
 
-transform sin(theta: Angle) -> float32 { theta.radians }
+function sin(theta: Angle) -> float32 { theta.radians }
 
-transform cos(theta: Angle) -> float32 { theta.radians }
+function cos(theta: Angle) -> float32 { theta.radians }
 
 // ensures output.radians != pi/2.0
-transform arctan(x: float32) -> Angle {
+function arctan(x: float32) -> Angle {
   Angle{ radians = 0.0 }
 }
 
