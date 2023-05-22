@@ -1,7 +1,6 @@
 module DivideByZero where
 
-// !TODO transforms must have message inputs and outputs
-// this example is too technical, not intuitive
+// NOTE: this example is too technical, not intuitive
 
 struct Value { x: int32; }
 

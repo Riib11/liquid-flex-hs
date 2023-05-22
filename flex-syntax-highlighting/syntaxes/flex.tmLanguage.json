@@ -25,15 +25,15 @@
 				},
 				{
 					"name": "keyword.control.flex",
-					"match": "\\b(let|if|then|else|assert|try|function|transform|message|struct|newtype|variant|enum|module|where|as|type|const|giving|int([0-9]+)|float([0-9]+)|string|char|bit|cast|match|with|given|assertFalse)\\b"
+					"match": "\\b(let|if|then|else|assert|try|function|transform|message|struct|newtype|variant|enum|module|where|as|type|const|giving|int([0-9]+)|uint([0-9])+|float([0-9]+)|string|char|bit|cast|match|with|given|assertFalse|extends)\\b"
 				},
 				{
 					"name": "constant.numeric.flex",
-					"match": "(\\d+(?:\\.\\d+)?)"
+					"match": "\\b(\\d+(?:\\.\\d+)?)\\b"
 				},
 				{
 					"name": "constant.other",
-					"match": "(true|false|some|none)"
+					"match": "(true|false|Some|None)"
 				}
 			]
 		},
