@@ -74,7 +74,11 @@ parseStructure = do
   structureIsMessage <-
     try $
       choice
-        [ reserved "message" $> True,
+        [ do
+            reserved "message"
+            optional $ reserved "struct"
+            return True,
+          -- reserved "message" $> True,
           reserved "struct" $> False
         ]
   structureId <- parseTypeId
