@@ -579,7 +579,7 @@ introConstants = do
 checkQuery :: CheckingM ()
 checkQuery = do
   ctx <- ask
-  FlexM.print . vcat $ ["checking:", nest 2 $ pPrint ctx]
+  FlexM.debug True . vcat $ ["checking:", nest 2 $ pPrint ctx]
   query <- asks (^. ctxQuery)
   result <- lift $ submitQuery query
   case result of

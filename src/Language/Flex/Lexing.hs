@@ -52,7 +52,7 @@ languageDef =
             -- type
             ["Array", "Tuple", "Optional", "int", "uint", "float", "bit"],
             -- term
-            ["try", "cast", "match", "with", "if", "then", "else", "given", "exception"],
+            ["try", "cast", "match", "with", "if", "then", "else", "given", "assertFalse"],
             -- pattern
             ["_"]
           ],

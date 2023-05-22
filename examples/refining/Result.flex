@@ -1,4 +1,4 @@
-// "exception" should be called "assertFalse"
+// "assertFalse" should be called "assertFalse"
 module Result where
 
 // A result type as specified by some external component's interface.
