@@ -71,7 +71,7 @@ main = do
           me = do
             fp <- case mb_filepath of
               Nothing -> do
-                throwError "Invalid usage: The 'parse' command requires an input Flex module file."
+                throwError $ "Invalid usage: The '" <> show ModeParse <> "' command requires an input Flex module file."
               Just fp -> pure fp
             mdl <-
               lift (parseModuleFile fp) >>= \case
@@ -96,7 +96,7 @@ main = do
 
             fp <- case mb_filepath of
               Nothing -> do
-                throwError "Invalid usage: The 'parse' command requires an input Flex module file."
+                throwError $ "Invalid usage: The '" <> show ModeType <> "' command requires an input Flex module file."
               Just fp -> pure fp
             mdl <-
               lift (parseModuleFile fp) >>= \case
@@ -142,7 +142,7 @@ main = do
 
             fp <- case mb_filepath of
               Nothing -> do
-                throwError "Invalid usage: The 'parse' command requires an input Flex module file."
+                throwError $ "Invalid usage: The '" <> show ModeRefine <> "' command requires an input Flex module file."
               Just fp -> pure fp
             mdl <-
               lift (parseModuleFile fp) >>= \case
