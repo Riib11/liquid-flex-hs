@@ -83,7 +83,7 @@ library:
   source-dirs: src
 
 executables:
-  liquid-flex-hs-exe:
+  liquid-flex-hs:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
