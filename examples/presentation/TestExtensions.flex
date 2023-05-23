@@ -13,7 +13,7 @@ struct TestSnapshot extends Test {
 }
 
 // uninterpreted predicate: isTestSnapshot
-// axiom: forall x. isTestSnapshot(x) ==> 1 <= x.ongoing && isTest(x)
+// axiom: isTestSnapshot(x) <==> 1 <= x.ongoing && isTest(x)
 
 struct TestSnapshotWithKnownTotal extends TestSnapshot {
   total: uint32;
@@ -21,8 +21,8 @@ struct TestSnapshotWithKnownTotal extends TestSnapshot {
 }
 
 // uninterpreted predicate: TestSnapshotWithKnownTotal
-// axiom: forall x . isTestSnapshotWithKnownTotal(x) ==> 
-//          x.total == x.successes + x.failures + x.ongoing + isTestSnapshot(x)
+// axiom: isTestSnapshotWithKnownTotal(x) <==> 
+//        x.total == x.successes + x.failures + x.ongoing + isTestSnapshot(x)
 
 function progressPercent(test: TestSnapshotWithKnownTotal) -> int32 {
   // asserts test.total != 0

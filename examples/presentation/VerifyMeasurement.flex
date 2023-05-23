@@ -22,3 +22,4 @@ transform verify(bounds: Bounds, sensor: Measurement) -> Result {
     Result { value = cast(sensor.defaultValue) }
   }
 }
+
