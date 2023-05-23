@@ -36,6 +36,7 @@ transform fromDegreesToRadians(degrees: Degrees) -> Radians {
     // Asserts inBounds(0.0, (degrees.d / 360.0) * (2.0 * pi), 2.0*pi).
     // No need to use modulus in order to pass.
     Radians { r = (degrees.d / 360.0) * (2.0 * pi) }
+    // Radians { r = degrees.d * (2.0 * pi) } // FAILS
 }
 
 // r rag => ((r / 2π) * 360) deg

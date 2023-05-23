@@ -1,25 +1,33 @@
 module VerifyMeasurement where
 
 message struct Measurement {
-  value: float64;
-  defaultValue: float64;
-}
+  value: float32;
+  defaultValue: float32;
 
-message struct Bounds {
-  min: float64;
-  max: float64;
+  minValue: float32;
+  maxValue: float32;
+  // assert(minValue <= defaultValue);
+  // assert(defaultValue <= maxValue);
 }
 
 message struct Result {
-  value: float32;
+  output: float32;
+
+  minOutput: float32;
+  maxOutput: float32;
+  assert(minOutput <= output);
+  assert(output <= maxOutput);
 }
 
-transform verify(bounds: Bounds, sensor: Measurement) -> Result {
-  if (bounds.min <= sensor.value && sensor.value <= bounds.max) {
-    Result { value = cast(sensor.value) }
-  } else {
-    assert(bounds <= sensor.defaultValue && sensor.defaultValue <= bounds.max);
-    Result { value = cast(sensor.defaultValue) }
+transform verify(input: Measurement) -> Result {
+  Result {
+    output = 
+      if ((input.minValue <= input.value) && 
+          (input.value <= input.maxValue))
+      then { input.value }
+      else { input.defaultValue };
+    minOutput = input.minValue;
+    maxOutput = input.maxValue
   }
 }
 
